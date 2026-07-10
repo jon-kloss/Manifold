@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&amp;family=Barlow:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b0c0e;font-family:Barlow,system-ui,sans-serif}
+a{color:#f78b23}a:hover{color:#ffa347}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(255,255,255,.07);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px "JetBrains Mono",monospace;padding:3px 7px;background:#f78b23;color:#141414;border-radius:3px;text-decoration:none}
+.dv-tname{font:600 16px/1.2 Rajdhani,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#eceef0}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px "JetBrains Mono",monospace;padding:3px 7px;background:rgba(255,255,255,.1);color:#eceef0;border-radius:3px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:500 11.5px/1.3 Barlow,sans-serif;color:rgba(255,255,255,.55)}
+.dv-card{max-width:100%;background:#15181b;border:1px solid #333a41;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.45);overflow:hidden}
+.dv-opt:target .dv-oid{background:#f78b23;color:#141414}
+.dv-next{margin:22px 0 0;font:12px/1.5 Barlow,sans-serif;color:rgba(255,255,255,.45)}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t7" data-screen-label="Turn 7 — Onboarding + principles">
+<div class="dv-thd"><a class="dv-tid" href="#t7">7</a><span class="dv-tname">Onboarding &amp; the living-blueprint principles</span></div>
+<div class="dv-opts">
+
+<!-- ============ 7a ASSET EXTRACTION ============ -->
+<div class="dv-opt" id="7a" data-screen-label="7a Onboarding extraction">
+  <div class="dv-olabel"><a class="dv-oid" href="#7a">7a</a>First run · steps 1–2 — install detection &amp; asset extraction · 880w</div>
+  <div class="dv-card" style="width:880px">
+    <div style="background:#15181b;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #262b30;background:#1c2024">
+        <div style="width:12px;height:12px;background:#f78b23"></div>
+        <span style="font:700 16px Rajdhani,sans-serif;letter-spacing:.1em;color:#eceef0">SETUP</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono',monospace">
+          <span style="color:#46c07a;border:1px solid #1e4531;padding:2px 8px">1 GAME ✓</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#141414;background:#f78b23;padding:2px 8px">2 ASSETS</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#6c7680;border:1px solid #333a41;padding:2px 8px">3 SAVE</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#6c7680;border:1px solid #333a41;padding:2px 8px">4 FIRST FACTORY</span>
+        </div>
+      </div>
+      <div style="padding:16px 18px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:12px">
+        <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">INSTALL</span>
+        <span style="font:500 11px 'JetBrains Mono',monospace;color:#aab3bb;background:#0e1012;border:1px solid #262b30;padding:5px 10px;flex:1">D:\Steam\steamapps\common\Satisfactory</span>
+        <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#46c07a;border:1px solid #1e4531;padding:2px 7px">v1.1.0.7 ✓ AUTO-DETECTED</span>
+        <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#aab3bb;border:1px solid #333a41;padding:4px 10px">CHANGE…</span>
+      </div>
+      <div style="padding:16px 18px;border-bottom:1px solid #262b30">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+          <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">EXTRACTING ICONS &amp; RECIPE DATA</span>
+          <span style="margin-left:auto;font:700 13px 'JetBrains Mono',monospace;color:#eceef0;font-variant-numeric:tabular-nums">1,204<span style="color:#6c7680">/2,410</span></span>
+        </div>
+        <div style="height:5px;background:#262b30;margin-bottom:12px"><div style="width:50%;height:5px;background:#f78b23"></div></div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:30px;height:30px;border:1px dashed #333a41"></div>
+          <div style="width:30px;height:30px;border:1px dashed #333a41"></div>
+          <div style="width:30px;height:30px;border:1px dashed #333a41"></div>
+          <span style="font:500 10px 'JetBrains Mono',monospace;color:#49525b;align-self:center;margin-left:6px">icons land as they extract</span>
+        </div>
+        <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#6c7680">▶ recipes: 289/312 · items: 604/611 · buildings: 311/487 · map tiles: queued</div>
+      </div>
+      <div style="padding:12px 18px;display:flex;align-items:center;gap:12px">
+        <span style="font:400 11px/1.5 Barlow,sans-serif;color:#6c7680;flex:1">Your install is the source of truth — nothing ships in this app, and it re-extracts automatically when the game patches. No install? A community icon pack is offered instead.</span>
+        <span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb;border:1px solid #333a41;padding:6px 14px">SKIP — USE COMMUNITY PACK</span>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ============ 7b SAVE IMPORT ============ -->
+<div class="dv-opt" id="7b" data-screen-label="7b Save import">
+  <div class="dv-olabel"><a class="dv-oid" href="#7b">7b</a>Step 3 · Save import — optional, enriches built layer only · 880w</div>
+  <div class="dv-card" style="width:880px">
+    <div style="background:#15181b;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #262b30;background:#1c2024">
+        <div style="width:12px;height:12px;background:#f78b23"></div>
+        <span style="font:700 16px Rajdhani,sans-serif;letter-spacing:.1em;color:#eceef0">SETUP — SAVE IMPORT</span>
+        <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:2px 7px">OPTIONAL</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono',monospace">
+          <span style="color:#46c07a;border:1px solid #1e4531;padding:2px 8px">1 ✓</span><span style="color:#49525b">─</span>
+          <span style="color:#46c07a;border:1px solid #1e4531;padding:2px 8px">2 ✓</span><span style="color:#49525b">─</span>
+          <span style="color:#141414;background:#f78b23;padding:2px 8px">3 SAVE</span><span style="color:#49525b">─</span>
+          <span style="color:#6c7680;border:1px solid #333a41;padding:2px 8px">4</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <div style="padding:16px 18px;border-right:1px solid #262b30">
+          <div style="border:1px dashed #49525b;background:#0e1012;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div style="width:34px;height:34px;border:2px dashed #49525b;display:flex;align-items:center;justify-content:center;font:400 16px 'JetBrains Mono',monospace;color:#49525b">↓</div>
+            <div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.08em;color:#aab3bb">DROP A .SAV — OR PICK FROM SAVES FOLDER</div>
+            <div style="font:500 10px 'JetBrains Mono',monospace;color:#49525b">PHASE-4.sav · 2.1 MB · detected 3 saves ▾</div>
+          </div>
+          <div style="margin-top:12px;padding:8px 10px;background:rgba(229,168,59,.07);border:1px solid #8a6423;font:400 11px/1.5 Barlow,sans-serif;color:#e5a83b">The save format is community-reverse-engineered. If parsing fails or the game just patched, skip this — everything works with manual entry.</div>
+        </div>
+        <div style="padding:16px 18px">
+          <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:10px">PARSE PREVIEW — PHASE-4.sav</div>
+          <div style="display:flex;flex-direction:column;gap:6px;font:500 11px 'JetBrains Mono',monospace;color:#aab3bb">
+            <div style="display:flex;justify-content:space-between"><span>FACTORIES (clustered)</span><span style="color:#eceef0">9</span></div>
+            <div style="display:flex;justify-content:space-between"><span>MACHINES</span><span style="color:#eceef0">214</span></div>
+            <div style="display:flex;justify-content:space-between"><span>BELTS / PIPES</span><span style="color:#eceef0">381 / 96</span></div>
+            <div style="display:flex;justify-content:space-between"><span>TRAINS · STATIONS</span><span style="color:#eceef0">4 · 11</span></div>
+            <div style="display:flex;justify-content:space-between"><span>POWER: GENERATORS</span><span style="color:#eceef0">36 (4.2 GW)</span></div>
+            <div style="display:flex;justify-content:space-between;color:#6c7680"><span>UNRECOGNIZED ENTITIES</span><span>17 → listed, ignored</span></div>
+          </div>
+          <div style="margin-top:12px;font:400 11px/1.55 Barlow,sans-serif;color:#aab3bb">Everything imports as <span style="font:600 10px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:0 4px">◆ BUILT</span>. Your plan is never touched — future re-imports diff against built and show what changed before applying.</div>
+        </div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid #262b30;display:flex;gap:10px;align-items:center">
+        <div style="height:34px;padding:0 20px;background:#f78b23;display:flex;align-items:center;font:700 12px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)">IMPORT AS BUILT</div>
+        <div style="height:34px;padding:0 16px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">SKIP — START MANUAL</div>
+        <span style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#49525b">RE-SYNC ANYTIME FROM THE TITLEBAR SAVE CHIP</span>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ============ 7c FIRST LANDING ============ -->
+<div class="dv-opt" id="7c" data-screen-label="7c First landing">
+  <div class="dv-olabel"><a class="dv-oid" href="#7c">7c</a>Step 4 · First landing — empty map, three doors, no tour · 720w</div>
+  <div class="dv-card" style="width:720px">
+    <div style="position:relative;height:420px;background:#0d1013;background-image:linear-gradient(#14181c 1px,transparent 1px),linear-gradient(90deg,#14181c 1px,transparent 1px);background-size:120px 120px;overflow:hidden">
+      <div style="position:absolute;left:24%;top:30%;width:14px;height:14px;border-radius:50%;border:2px solid #9aa3ab;background:#15181b"></div>
+      <div style="position:absolute;left:55%;top:55%;width:14px;height:14px;border-radius:50%;border:2px dashed #9aa3ab;background:#15181b"></div>
+      <div style="position:absolute;left:74%;top:26%;width:14px;height:14px;border-radius:50%;border:2px solid #9aa3ab;background:#15181b"></div>
+      <div style="position:absolute;left:50%;top:44px;transform:translateX(-50%);font:500 10px 'JetBrains Mono',monospace;color:#333a41">[ YOUR WORLD — NODES FROM GAME DATA, NOTHING CLAIMED YET ]</div>
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:440px;background:rgba(21,24,27,.97);border:1px solid #333a41">
+        <div style="padding:12px 16px;border-bottom:1px solid #262b30"><span style="font:700 15px Rajdhani,sans-serif;letter-spacing:.1em;color:#eceef0">WHERE DO YOU WANT TO START?</span></div>
+        <div style="display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #1c2024;background:rgba(247,139,35,.06)">
+            <span style="font:700 12px 'JetBrains Mono',monospace;color:#f78b23">N</span>
+            <div style="flex:1"><div style="font:600 13px Rajdhani,sans-serif;color:#eceef0">Place your first factory</div><div style="font:400 11px Barlow,sans-serif;color:#6c7680">click anywhere — claim nodes as you wire it up</div></div>
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#f78b23">→</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid #1c2024">
+            <span style="font:700 12px 'JetBrains Mono',monospace;color:#aab3bb">P</span>
+            <div style="flex:1"><div style="font:600 13px Rajdhani,sans-serif;color:#eceef0">Plan a supply chain</div><div style="font:400 11px Barlow,sans-serif;color:#6c7680">name a goal — the solver drafts the whole chain as a proposal</div></div>
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#49525b">→</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 16px">
+            <span style="font:700 12px 'JetBrains Mono',monospace;color:#aab3bb">S</span>
+            <div style="flex:1"><div style="font:600 13px Rajdhani,sans-serif;color:#eceef0">Import your save first</div><div style="font:400 11px Barlow,sans-serif;color:#6c7680">start from what you've already built</div></div>
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#49525b">→</span>
+          </div>
+        </div>
+        <div style="padding:9px 16px;border-top:1px solid #262b30;font:500 9.5px 'JetBrains Mono',monospace;color:#49525b">NO TOUR. THE MAP TEACHES BY DOING — ⌘K WHENEVER LOST.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 7d PRINCIPLES ============ -->
+<div class="dv-opt" id="7d" data-screen-label="7d Living blueprint principles">
+  <div class="dv-olabel"><a class="dv-oid" href="#7d">7d</a>The living-blueprint principles — deliverable #4, final</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;background:#f78b23"></div><span style="font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Interaction principles</span></div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:10px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">01</span> <span style="color:#eceef0;font-weight:600">The map is truth.</span> Every surface is a layer on it or a zoom level of it — never a separate place. Position is never lost.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">02</span> <span style="color:#eceef0;font-weight:600">Solver output is always editable.</span> A solve is a starting point; every number it writes can be grabbed and dragged, and it re-solves around you.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">03</span> <span style="color:#eceef0;font-weight:600">Nothing mutates without review.</span> Solver, advisor, chat, save re-import — all changes arrive as proposals with provenance; accept is one undo step.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">04</span> <span style="color:#eceef0;font-weight:600">◇ ◈ ◆ everywhere.</span> Planned, under-construction, built read identically on map, graph, and tables — stroke + fill + glyph, never color alone.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">05</span> <span style="color:#eceef0;font-weight:600">Numbers change, geometry doesn't.</span> Solves never move cards or pins. Layout is the user's; data is the solver's.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">06</span> <span style="color:#eceef0;font-weight:600">No dead ends.</span> Infeasible goals return best-achievable + relaxations; parse failures degrade to manual; AI offline degrades to local heuristics.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">07</span> <span style="color:#eceef0;font-weight:600">Orange is a verb.</span> Signal marks what you can do or must see — never decoration. Status belongs to Flow colors, planned-ness to Blueprint blue.</div>
+      <div><span style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">08</span> <span style="color:#eceef0;font-weight:600">Silence is a feature.</span> The advisor earns attention with gated, provenance-backed cards; a badge count is its loudest voice.</div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">This completes the surface set. Try: "riff any screen" · "export the token sheet" · "build the interactive map prototype"</p>
+</section>
+
+<section class="dv-turn" id="t6" data-screen-label="Turn 6 — AI chat + style guide">
+<div class="dv-thd"><a class="dv-tid" href="#t6">6</a><span class="dv-tname">AI layer — chat &amp; image-to-style-guide</span></div>
+<div class="dv-opts">
+
+<!-- ============ 6a CHAT ============ -->
+<div class="dv-opt" id="6a" data-screen-label="6a Advisor chat">
+  <div class="dv-olabel"><a class="dv-oid" href="#6a">6a</a>Ad-hoc chat — same right panel as the feed, CHAT tab · 420w</div>
+  <div class="dv-card" style="width:420px">
+    <div style="background:#15181b;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #262b30;background:#1c2024">
+        <div style="font:700 13px Rajdhani,sans-serif;letter-spacing:.14em;color:#eceef0">ADVISOR</div>
+        <div style="display:flex;margin-left:4px">
+          <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680;padding:3px 10px;border:1px solid #333a41;border-right:none">FEED <span style="font:600 8.5px 'JetBrains Mono',monospace;color:#0e1012;background:#f78b23;padding:0 3px">3</span></span>
+          <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414;background:#f78b23;padding:3px 10px">CHAT</span>
+        </div>
+        <span style="margin-left:auto;font:500 11px 'JetBrains Mono',monospace;color:#6c7680">»</span>
+      </div>
+
+      <!-- context bar -->
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-bottom:1px solid #262b30;background:#0e1012">
+        <span style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#49525b">CONTEXT</span>
+        <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:1px 6px">EMPIRE ▾</span>
+        <span style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">SNAPSHOT 14:07 · PLAN+BUILT · 48 KB ▸</span>
+      </div>
+
+      <!-- thread -->
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:14px">
+        <div style="align-self:flex-end;max-width:85%;background:#262b30;border:1px solid #333a41;padding:8px 12px;font:400 12.5px/1.5 Barlow,sans-serif;color:#eceef0">Why is Heavy Frame Annex starving?</div>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="font:400 12.5px/1.6 Barlow,sans-serif;color:#aab3bb">The bottleneck is upstream — the chain caps out at the coal feed into <span style="font:500 10.5px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:0 5px">◆ COASTAL STEEL</span>:</div>
+          <div style="background:#0e1012;border:1px solid #262b30;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font:500 10.5px/1.5 'JetBrains Mono',monospace">
+            <div style="color:#ff5d55">1 COAL FEED MK.3 — 270/270 · capped</div>
+            <div style="color:#e5a83b">2 └ foundry bank held to 480/min (needs 540)</div>
+            <div style="color:#e5a83b">3 &nbsp;&nbsp;└ steel pipe out −40/min short</div>
+            <div style="color:#ff5d55">4 &nbsp;&nbsp;&nbsp;&nbsp;└ ANNEX: HMF −4.2/min deficit</div>
+          </div>
+          <div style="font:400 12.5px/1.6 Barlow,sans-serif;color:#aab3bb">Cheapest standing fix is the Mk.4 belt upgrade on that one feed — everything downstream clears without new machines.</div>
+          <div style="display:flex;gap:6px">
+            <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#f78b23;border:1px solid #f78b23;padding:3px 9px">CREATE PROPOSAL: MK.4 FEED</span>
+            <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#aab3bb;border:1px solid #333a41;padding:3px 9px">SHOW CHAIN ON MAP</span>
+          </div>
+          <div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">SAW: PLAN+BUILT @14:07 · a4f2c9 · 1.8s</div>
+        </div>
+
+        <div style="align-self:flex-end;max-width:85%;background:#262b30;border:1px solid #333a41;padding:8px 12px;font:400 12.5px/1.5 Barlow,sans-serif;color:#eceef0">Cheapest fix without touching the belt?</div>
+
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font:400 12.5px/1.6 Barlow,sans-serif;color:#aab3bb">Comparing recipe routes that reduce coal draw at current rates: <span style="font:500 10.5px 'JetBrains Mono',monospace;color:#eceef0">Compacted Steel</span> cuts coal −50% but needs sulfur you haven't claim<span style="display:inline-block;width:7px;height:12px;background:#f78b23;vertical-align:text-bottom;margin-left:1px"></span></div>
+          <div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">STREAMING…</div>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div style="border-top:1px solid #262b30;padding:10px 14px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px;background:#0e1012;border:1px solid #333a41;padding:9px 12px">
+          <span style="font:400 12px Barlow,sans-serif;color:#49525b;flex:1">Ask about your empire… @ references any entity</span>
+          <span style="font:600 10px 'JetBrains Mono',monospace;color:#49525b;border:1px solid #262b30;padding:1px 5px">⏎</span>
+        </div>
+        <div style="font:400 10px/1.4 Barlow,sans-serif;color:#49525b">Answers can propose changes — they arrive as proposals, never as edits.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 6b STYLE GUIDE ============ -->
+<div class="dv-opt" id="6b" data-screen-label="6b Image to style guide">
+  <div class="dv-olabel"><a class="dv-oid" href="#6b">6b</a>Image → style guide — the vibe, not tile-for-tile · 1080w</div>
+  <div class="dv-card" style="width:1080px">
+    <div style="background:#15181b">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #262b30;background:#1c2024">
+        <span style="font:700 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:2px 7px">STYLE GUIDE</span>
+        <span style="font:700 16px Rajdhani,sans-serif;letter-spacing:.08em;color:#eceef0">"TERRACED BRUTALIST" — FROM SCREENSHOT</span>
+        <span style="margin-left:auto;font:500 10px 'JetBrains Mono',monospace;color:#6c7680">GENERATED 14:12 · 1 IMAGE · AESTHETIC INFERENCE, NOT A COPY</span>
+        <span style="font:400 15px 'JetBrains Mono',monospace;color:#6c7680">×</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:360px 1fr">
+        <!-- left: source -->
+        <div style="padding:16px 18px;border-right:1px solid #262b30;display:flex;flex-direction:column;gap:10px">
+          <div style="height:240px;background:repeating-linear-gradient(45deg,#1c2024 0 12px,#15181b 12px 24px);border:1px solid #333a41;display:flex;align-items:center;justify-content:center"><span style="font:500 10px 'JetBrains Mono',monospace;color:#49525b">[ COMMUNITY BUILD SCREENSHOT ]</span></div>
+          <div style="height:64px;background:repeating-linear-gradient(45deg,#1c2024 0 12px,#15181b 12px 24px);border:1px dashed #333a41;display:flex;align-items:center;justify-content:center"><span style="font:500 10px 'JetBrains Mono',monospace;color:#49525b">+ ADD ANGLES — improves massing analysis</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <span style="font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:2px 8px">BRUTALIST</span>
+            <span style="font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:2px 8px">ELEVATED DECK</span>
+            <span style="font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:2px 8px">8m GRID-LOCKED</span>
+            <span style="font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:2px 8px">RECESSED LIGHTING</span>
+          </div>
+          <div style="margin-top:auto;font:400 11px/1.5 Barlow,sans-serif;color:#6c7680">Sent to the model: this image + your unlocked building parts list. Nothing else.</div>
+        </div>
+
+        <!-- right: guide -->
+        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+          <div>
+            <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#f78b23;margin-bottom:8px">MATERIAL PALETTE</div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div><span style="font:600 12px Rajdhani,sans-serif;color:#eceef0;width:190px">Concrete Foundation 8m</span><span style="display:inline-block;flex:1;height:6px;background:#262b30"><span style="display:block;width:45%;height:6px;background:#aab3bb"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;width:36px;text-align:right">45%</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div><span style="font:600 12px Rajdhani,sans-serif;color:#eceef0;width:190px">Steel-Framed Window</span><span style="display:inline-block;flex:1;height:6px;background:#262b30"><span style="display:block;width:25%;height:6px;background:#aab3bb"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;width:36px;text-align:right">25%</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div><span style="font:600 12px Rajdhani,sans-serif;color:#eceef0;width:190px">Dark Steel Beam</span><span style="display:inline-block;flex:1;height:6px;background:#262b30"><span style="display:block;width:20%;height:6px;background:#aab3bb"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;width:36px;text-align:right">20%</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div><span style="font:600 12px Rajdhani,sans-serif;color:#eceef0;width:190px">Catwalk / Railing</span><span style="display:inline-block;flex:1;height:6px;background:#262b30"><span style="display:block;width:10%;height:6px;background:#aab3bb"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;width:36px;text-align:right">10%</span></div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+            <div>
+              <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#f78b23;margin-bottom:8px">MASSING &amp; RHYTHM</div>
+              <div style="font:400 11.5px/1.6 Barlow,sans-serif;color:#aab3bb">Three-story slabs on an 8m grid; machines on floor 2, logistics recessed below deck. Vertical beam every 4m sets the facade rhythm; corners always closed, never open-frame.</div>
+            </div>
+            <div>
+              <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#f78b23;margin-bottom:8px">SIGNATURE TECHNIQUES</div>
+              <div style="font:400 11.5px/1.6 Barlow,sans-serif;color:#aab3bb">1 · Half-foundation reveal at each floor line<br>2 · Inset lights under every walkway edge<br>3 · Beam-lattice screens over belt runs<br>4 · Glass only in continuous horizontal bands</div>
+            </div>
+          </div>
+
+          <div>
+            <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#f78b23;margin-bottom:8px">CONSTRUCTION SEQUENCE — per 8×8 module</div>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+              <div style="border:1px solid #262b30;background:#0e1012;padding:8px"><div style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">01</div><div style="font:600 11px Rajdhani,sans-serif;color:#eceef0;margin:3px 0">DECK</div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">16× FOUNDATION</div></div>
+              <div style="border:1px solid #262b30;background:#0e1012;padding:8px"><div style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">02</div><div style="font:600 11px Rajdhani,sans-serif;color:#eceef0;margin:3px 0">FRAME</div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">24× BEAM</div></div>
+              <div style="border:1px solid #262b30;background:#0e1012;padding:8px"><div style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">03</div><div style="font:600 11px Rajdhani,sans-serif;color:#eceef0;margin:3px 0">SKIN</div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">12× WALL · 8× GLASS</div></div>
+              <div style="border:1px solid #262b30;background:#0e1012;padding:8px"><div style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">04</div><div style="font:600 11px Rajdhani,sans-serif;color:#eceef0;margin:3px 0">LOGISTICS</div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">BELTS BELOW DECK</div></div>
+              <div style="border:1px solid #262b30;background:#0e1012;padding:8px"><div style="font:700 11px 'JetBrains Mono',monospace;color:#f78b23">05</div><div style="font:600 11px Rajdhani,sans-serif;color:#eceef0;margin:3px 0">DETAIL</div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">LIGHTS · RAILS · SIGNS</div></div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;border-top:1px solid #262b30;padding-top:12px">
+            <div style="height:32px;padding:0 16px;background:#f78b23;display:flex;align-items:center;font:700 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414">SAVE TO LIBRARY</div>
+            <div style="height:32px;padding:0 16px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">SET AS FACTORY THEME</div>
+            <span style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#49525b">TOTAL MATERIALS LIST ▸</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 6c AI TRUST SPEC ============ -->
+<div class="dv-opt" id="6c" data-screen-label="6c AI trust spec">
+  <div class="dv-olabel"><a class="dv-oid" href="#6c">6c</a>AI trust rules — offline posture, gating, provenance</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">AI layer rules</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Strictly additive</div>
+        No solver feature ever depends on AI. Offline / no API key: FEED and CHAT tabs show a quiet <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:0 4px">AI OFFLINE</span> state; local heuristic warnings (deficits, conflicts, saturation) keep flowing into the same feed — they're computed locally anyway.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Ambient gating — silence is a feature</div>
+        Local heuristics gate every call: only meaningful events (new deficit, conflict, saturation crossing 75%, power margin swing) arm the advisor; a 30s debounce collapses edit bursts; a visible hourly call budget caps it. Dismissing a card offers "mute this rule" — the gate learns per rule, not globally.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Provenance on everything</div>
+        Every AI output carries: context scope, snapshot time, state hash, latency (<a href="#6a">6a</a> SAW line — same grammar as solver proposals in <a href="#3a">3a</a>). "▸ view" on the context bar shows exactly the JSON sent. Images are only ever sent in the style-guide flow, explicitly.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">One door to change anything</div>
+        Chat and advisor cannot edit state. Every actionable suggestion routes through proposal review — one system (<a href="#3c">3c</a>), one muscle memory, zero surprise mutations.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Next: dashboard/audit full surface + onboarding, then the interaction-principles doc wrap-up. Try: "show AI OFFLINE states" · "onboarding next" · "style guide with 3 saved themes"</p>
+</section>
+
+<section class="dv-turn" id="t5" data-screen-label="Turn 5 — Supply chain wizard">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">"Plan a supply chain" wizard — goal → solve → review</span></div>
+<div class="dv-opts">
+
+<!-- ============ 5a GOAL STEP ============ -->
+<div class="dv-opt" id="5a" data-screen-label="5a Wizard goal step">
+  <div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Step 1 · Goal — modal over dimmed map · 880w</div>
+  <div class="dv-card" style="width:880px">
+    <div style="background:#15181b;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)">
+      <!-- header -->
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #262b30;background:#1c2024">
+        <span style="font:700 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:2px 7px">WIZARD</span>
+        <span style="font:700 16px Rajdhani,sans-serif;letter-spacing:.1em;color:#eceef0">PLAN A SUPPLY CHAIN</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono',monospace">
+          <span style="color:#141414;background:#f78b23;padding:2px 8px">1 GOAL</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#6c7680;border:1px solid #333a41;padding:2px 8px">2 SOLVE</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#6c7680;border:1px solid #333a41;padding:2px 8px">3 REVIEW</span>
+        </div>
+        <span style="font:400 15px 'JetBrains Mono',monospace;color:#6c7680;margin-left:6px">×</span>
+      </div>
+
+      <!-- goal row -->
+      <div style="padding:18px;border-bottom:1px solid #262b30">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">PRODUCE</span>
+          <div style="display:flex;align-items:center;gap:10px;background:#1c2024;border:1px solid #49525b;padding:8px 12px">
+            <div style="width:32px;height:32px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+            <span style="font:700 18px Rajdhani,sans-serif;letter-spacing:.04em;color:#eceef0">HEAVY MODULAR FRAME</span>
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#49525b">▾</span>
+          </div>
+          <span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">AT</span>
+          <div style="display:flex;align-items:baseline;gap:4px;background:#1c2024;border:1px solid #49525b;padding:8px 12px">
+            <span style="font:700 22px 'JetBrains Mono',monospace;color:#eceef0;font-variant-numeric:tabular-nums">8.0</span>
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">/min</span>
+          </div>
+          <span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">EMPIRE-WIDE</span>
+          <span style="margin-left:auto;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb;border:1px solid #333a41;padding:6px 12px">+ ADD GOAL</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:12px;align-items:center">
+          <span style="font:500 9.5px 'JetBrains Mono',monospace;color:#49525b">QUICK-FILL:</span>
+          <span style="font:500 10px 'JetBrains Mono',monospace;color:#ff5d55;border:1px solid #7a2622;padding:2px 8px">⚠ FIX HMF DEFICIT −4.2/min</span>
+          <span style="font:500 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:2px 8px">PHASE 4 ELEVATOR PARTS</span>
+          <span style="font:500 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:2px 8px">LAST GOAL: 480 SCREWS</span>
+        </div>
+      </div>
+
+      <!-- constraints -->
+      <div style="padding:14px 18px;border-bottom:1px solid #262b30">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#6c7680;margin-bottom:10px">CONSTRAINTS — the solver treats these as hard limits</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px">
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:16px;background:#f78b23;position:relative"><div style="position:absolute;right:2px;top:2px;width:12px;height:12px;background:#141414"></div></div><span style="font:400 12px Barlow,sans-serif;color:#aab3bb;flex:1">Consume existing surplus before building new</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;width:86px">TRANSPORT</span><span style="font:600 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:2px 8px">BELT</span><span style="font:600 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:2px 8px">RAIL</span><span style="font:600 10px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:2px 8px">TRUCK</span><span style="font:600 10px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:2px 8px">DRONE</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:16px;background:#f78b23;position:relative"><div style="position:absolute;right:2px;top:2px;width:12px;height:12px;background:#141414"></div></div><span style="font:400 12px Barlow,sans-serif;color:#aab3bb;flex:1">Allow new factory sites — max <span style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0">2</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;width:86px">NODES</span><span style="font:400 12px Barlow,sans-serif;color:#aab3bb">claim up to <span style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0">3</span> · skip impure</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:16px;background:#f78b23;position:relative"><div style="position:absolute;right:2px;top:2px;width:12px;height:12px;background:#141414"></div></div><span style="font:400 12px Barlow,sans-serif;color:#aab3bb;flex:1">Use unlocked alt recipes</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:16px;background:#333a41;position:relative"><div style="position:absolute;left:2px;top:2px;width:12px;height:12px;background:#15181b"></div></div><span style="font:400 12px Barlow,sans-serif;color:#6c7680;flex:1">Suggest locked alts (marked, never assumed)</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:16px;background:#f78b23;position:relative"><div style="position:absolute;right:2px;top:2px;width:12px;height:12px;background:#141414"></div></div><span style="font:400 12px Barlow,sans-serif;color:#aab3bb;flex:1">Stay within current power margin (+1.8 GW)</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;width:86px">PREFER</span><div style="flex:1;display:flex;align-items:center;gap:8px"><span style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">EXPAND EXISTING</span><div style="flex:1;height:4px;background:#262b30;position:relative"><div style="position:absolute;left:35%;top:-4px;width:10px;height:10px;transform:rotate(45deg);background:#f78b23"></div></div><span style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">GREENFIELD</span></div></div>
+        </div>
+      </div>
+
+      <!-- footer -->
+      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px">
+        <div style="height:38px;padding:0 26px;background:#f78b23;display:flex;align-items:center;gap:10px;font:700 13px Rajdhani,sans-serif;letter-spacing:.14em;color:#141414;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)">SOLVE <span style="font:500 10px 'JetBrains Mono',monospace;opacity:.7">⏎</span></div>
+        <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">TYPICALLY 5–15s · RUNS LOCALLY</span>
+        <span style="margin-left:auto;font:400 11px Barlow,sans-serif;color:#6c7680">Result is a proposal — nothing is applied until you review it.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 5b SOLVING ============ -->
+<div class="dv-opt" id="5b" data-screen-label="5b Wizard solving step">
+  <div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Step 2 · Solving — transparent progress, cancellable, backgroundable · 880w</div>
+  <div class="dv-card" style="width:880px">
+    <div style="background:#15181b;clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)">
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #262b30;background:#1c2024">
+        <span style="font:700 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:2px 7px">WIZARD</span>
+        <span style="font:700 16px Rajdhani,sans-serif;letter-spacing:.1em;color:#eceef0">SOLVING — 8.0 HMF/MIN</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono',monospace">
+          <span style="color:#46c07a;border:1px solid #1e4531;padding:2px 8px">1 ✓</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#141414;background:#f78b23;padding:2px 8px">2 SOLVE</span>
+          <span style="color:#49525b">──</span>
+          <span style="color:#6c7680;border:1px solid #333a41;padding:2px 8px">3 REVIEW</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:300px 1fr">
+        <!-- phases -->
+        <div style="padding:16px 18px;border-right:1px solid #262b30;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:16px;height:16px;background:#46c07a;color:#0e1012;font:700 10px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center">✓</span><span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.08em;color:#aab3bb;flex:1">DEMAND GRAPH</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">0.4s</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:16px;height:16px;background:#46c07a;color:#0e1012;font:700 10px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center">✓</span><span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.08em;color:#aab3bb;flex:1">RECIPE SELECTION</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">2.1s</span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:16px;height:16px;border:2px solid #f78b23;display:flex;align-items:center;justify-content:center"><span style="width:6px;height:6px;background:#f78b23"></span></span><span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.08em;color:#eceef0;flex:1">SITING</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#f78b23">4.2s…</span></div>
+          <div style="display:flex;align-items:center;gap:10px;opacity:.5"><span style="width:16px;height:16px;border:1px solid #49525b"></span><span style="font:600 12px Rajdhani,sans-serif;letter-spacing:.08em;color:#6c7680;flex:1">ROUTING &amp; POWER</span></div>
+          <div style="margin-top:auto">
+            <div style="display:flex;justify-content:space-between;font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;margin-bottom:4px"><span>OVERALL</span><span>62%</span></div>
+            <div style="height:4px;background:#262b30"><div style="width:62%;height:4px;background:#f78b23"></div></div>
+          </div>
+        </div>
+        <!-- log -->
+        <div style="padding:14px 18px;background:#0e1012">
+          <div style="font:600 9.5px Rajdhani,sans-serif;letter-spacing:.16em;color:#49525b;margin-bottom:8px">SOLVER LOG — live</div>
+          <div style="font:400 10.5px/1.8 'JetBrains Mono',monospace;color:#6c7680">
+            <div>picked alt: <span style="color:#aab3bb">Encased Industrial Pipe</span> — saves 2 assembler banks</div>
+            <div>surplus found: <span style="color:#aab3bb">+84 screws/min @ Northern Forge</span> — consuming first</div>
+            <div>site candidate 09/14: <span style="color:#aab3bb">Grass Fields E</span> · dist to FE #11 <span style="color:#aab3bb">40m</span> ✓</div>
+            <div>site candidate 10/14: Rocky Beach S · <span style="color:#e5a83b">power trunk 2.4km — penalized</span></div>
+            <div style="color:#aab3bb">evaluating belt vs rail for 2.1km leg…<span style="display:inline-block;width:7px;height:11px;background:#f78b23;vertical-align:text-bottom;margin-left:2px"></span></div>
+          </div>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid #1c2024;font:400 11px Barlow,sans-serif;color:#6c7680">Candidate sites ghost-flicker on the map behind this modal as they're evaluated.</div>
+        </div>
+      </div>
+
+      <div style="padding:12px 18px;border-top:1px solid #262b30;display:flex;align-items:center;gap:10px">
+        <div style="height:32px;padding:0 16px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">SOLVE IN BACKGROUND</div>
+        <div style="height:32px;padding:0 16px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#ff5d55">CANCEL</div>
+        <span style="margin-left:auto;font:500 10px 'JetBrains Mono',monospace;color:#6c7680">BACKGROUNDED SOLVES LAND AS A STATUS-BAR CHIP → OPENS REVIEW</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 5c WIZARD SPEC ============ -->
+<div class="dv-opt" id="5c" data-screen-label="5c Wizard spec">
+  <div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a>Wizard spec — entry points, step 3, infeasibility</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Wizard behavior</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Entry points — all pre-fill the goal</div>
+        P anywhere · PLAN SUPPLY CHAIN button (<a href="#2a">2a</a>) · FIX WITH SOLVER on any deficit/saturation row (<a href="#2d">2d</a>) · advisor CREATE PROPOSAL (<a href="#2c">2c</a>) · right-click any item icon → "plan production".
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Step 3 = proposal review</div>
+        The wizard's final step IS <a href="#3a">3a</a> — same surface, wizard breadcrumb in the banner. RE-SOLVE… returns here to step 1 with constraints intact; each run increments the draft number, previous drafts stay in the archive for comparison.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Infeasible ≠ dead end</div>
+        If the goal can't be met inside constraints, the solver returns the <span style="color:#eceef0">best achievable rate</span> (e.g. 6.2/8.0) plus the binding constraint, and offers one-tap relaxations: "allow 1 more node claim → 8.0 ✓" · "allow drones → 7.4". Each relaxation shows its cost before re-solving. Never a bare error.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Honest progress</div>
+        Phases + live log are real solver output, not theater — power users learn <span style="color:#eceef0">why</span> the solver chose what it chose, which is what makes them trust step 3. Cancel is instant and stateless; background solves never interrupt — they wait in the status bar.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Next: advisor chat + image-to-style-guide, then dashboard/audit deep-dive, onboarding. Try: "show the infeasible result state" · "advisor chat next" · "compare two drafts side by side"</p>
+</section>
+
+<section class="dv-turn" id="t4" data-screen-label="Turn 4 — Factory graph view">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Factory view — node graph + live local solver</span></div>
+<div class="dv-opts">
+
+<!-- ============ 4a FACTORY VIEW ============ -->
+<div class="dv-opt" id="4a" data-screen-label="4a Factory view 1920x1080">
+  <div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a>Coastal Steel, dived-in via zoom · foundry bank selected, inspector live · 1920×1080</div>
+  <div class="dv-card" style="width:1920px">
+    <div style="position:relative;width:1920px;height:1080px;background:#0e1012;overflow:hidden">
+
+      <!-- TITLEBAR -->
+      <div style="position:absolute;top:0;left:0;right:0;height:36px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;padding:0 0 0 14px;gap:12px;z-index:40">
+        <div style="width:12px;height:12px;background:#f78b23"></div>
+        <div style="font:700 14px Rajdhani,sans-serif;letter-spacing:.16em;color:#eceef0">FICSIT PLANNER</div>
+        <div style="width:1px;height:16px;background:#333a41"></div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">WORLD MAP</div>
+        <div style="font:600 11px 'JetBrains Mono',monospace;color:#49525b">/</div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#f78b23">COASTAL STEEL</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+          <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a">SOLVER BALANCED · 2.8ms</div>
+          <div style="display:flex;height:36px">
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 13px 'JetBrains Mono',monospace">–</div>
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 11px 'JetBrains Mono',monospace">□</div>
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 13px 'JetBrains Mono',monospace">×</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTEXT BAR -->
+      <div style="position:absolute;top:36px;left:0;right:360px;height:36px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:10px;padding:0 14px;z-index:40">
+        <span style="font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;background:#1c2024;border:1px solid #333a41;padding:3px 8px">⟵ WORLD · ESC</span>
+        <span style="font:700 15px Rajdhani,sans-serif;letter-spacing:.08em;color:#eceef0">COASTAL STEEL</span>
+        <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:1px 5px">◆ BUILT</span>
+        <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">ROCKY BEACH · 42 MACHINES · 186 MW <span style="color:#56a8ff;font-style:italic">→ 214 ◇</span></span>
+        <span style="font:500 9.5px 'JetBrains Mono',monospace;color:#56a8ff;border:1px dashed #2a5f96;padding:2px 6px;font-style:italic">◇ Δ#7 — 2 ITEMS PENDING BUILD</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414;background:#f78b23;padding:3px 10px">FLOW</span>
+          <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb;background:#1c2024;border:1px solid #333a41;padding:3px 10px">POWER</span>
+          <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb;background:#1c2024;border:1px solid #333a41;padding:3px 10px">DIFF</span>
+        </div>
+      </div>
+
+      <!-- GRAPH CANVAS -->
+      <div style="position:absolute;top:72px;left:0;right:360px;bottom:24px;background:#0e1012;background-image:radial-gradient(circle,#1d2126 1px,transparent 1px);background-size:16px 16px">
+
+        <!-- EDGES -->
+        <svg width="1560" height="984" style="position:absolute;inset:0" viewBox="0 0 1560 984">
+          <line x1="300" y1="240" x2="470" y2="300" stroke="#46c07a" stroke-width="2"></line>
+          <line x1="300" y1="430" x2="470" y2="350" stroke="#ff5d55" stroke-width="6" stroke-dasharray="6 4"></line>
+          <line x1="740" y1="300" x2="920" y2="230" stroke="#46c07a" stroke-width="2"></line>
+          <line x1="740" y1="350" x2="920" y2="450" stroke="#46c07a" stroke-width="2"></line>
+          <line x1="1160" y1="230" x2="1300" y2="330" stroke="#e5a83b" stroke-width="4" stroke-dasharray="10 5"></line>
+          <line x1="1160" y1="450" x2="1300" y2="370" stroke="#e5a83b" stroke-width="4" stroke-dasharray="10 5"></line>
+          <line x1="605" y1="366" x2="605" y2="470" stroke="#56a8ff" stroke-width="2" stroke-dasharray="8 6"></line>
+        </svg>
+
+        <!-- edge labels -->
+        <div style="position:absolute;left:385px;top:262px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#46c07a;background:rgba(14,16,18,.94);border:1px solid #1e4531;padding:1px 5px;z-index:2">312/780 · 40%</div>
+        <div style="position:absolute;left:385px;top:398px;transform:translate(-50%,-50%);font:700 10px 'JetBrains Mono',monospace;color:#0e1012;background:#ff5d55;padding:1px 5px;z-index:2">270/270 ⚠</div>
+        <div style="position:absolute;left:830px;top:258px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#46c07a;background:rgba(14,16,18,.94);border:1px solid #1e4531;padding:1px 5px;z-index:2">240/min</div>
+        <div style="position:absolute;left:830px;top:408px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#46c07a;background:rgba(14,16,18,.94);border:1px solid #1e4531;padding:1px 5px;z-index:2">240/min</div>
+        <div style="position:absolute;left:1230px;top:272px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(14,16,18,.94);border:1px solid #8a6423;padding:1px 5px;z-index:2">96/min</div>
+        <div style="position:absolute;left:1230px;top:418px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(14,16,18,.94);border:1px solid #8a6423;padding:1px 5px;z-index:2">120/min</div>
+
+        <!-- INPUT PORTS -->
+        <div style="position:absolute;left:100px;top:208px;width:200px;background:#15181b;border:1px solid #333a41;z-index:3">
+          <div style="padding:5px 10px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:6px"><span style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">INPUT</span><span style="margin-left:auto;font:500 9px 'JetBrains Mono',monospace;color:#46c07a">MK.4</span></div>
+          <div style="padding:7px 10px;display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div><div><div style="font:600 12px Rajdhani,sans-serif;color:#eceef0">IRON ORE</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">⟵ NORTHERN FORGE</div></div></div>
+        </div>
+        <div style="position:absolute;left:100px;top:398px;width:200px;background:#15181b;border:1px solid #7a2622;z-index:3">
+          <div style="padding:5px 10px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:6px"><span style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">INPUT</span><span style="margin-left:auto;font:700 9px 'JetBrains Mono',monospace;color:#ff5d55">MK.3 CAPPED</span></div>
+          <div style="padding:7px 10px;display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div><div><div style="font:600 12px Rajdhani,sans-serif;color:#eceef0">COAL</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">⟵ NODE #12</div></div></div>
+        </div>
+
+        <!-- FOUNDRY BANK (selected) -->
+        <div style="position:absolute;left:470px;top:262px;width:270px;background:#1c2024;border:2px solid #f78b23;z-index:3;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%)">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid #333a41;background:#262b30">
+            <div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+            <div style="font:700 14px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">FOUNDRY ×12</div>
+            <span style="margin-left:auto;font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #49525b;padding:1px 5px">100%</span>
+          </div>
+          <div style="padding:7px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #262b30">
+            <div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#15181b 2px 5px)"></div>
+            <span style="font:600 12px Rajdhani,sans-serif;color:#eceef0">STEEL INGOT</span>
+            <span style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#56a8ff;font-style:italic">◇ ALT PENDING</span>
+          </div>
+          <div style="padding:7px 11px;display:flex;justify-content:space-between;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">
+            <span>IN 270+270<span style="color:#6c7680">/min</span></span>
+            <span style="color:#eceef0">OUT 480<span style="color:#6c7680">/min</span></span>
+            <span style="color:#6c7680">124 MW</span>
+          </div>
+        </div>
+        <!-- planned ghost sub-card -->
+        <div style="position:absolute;left:470px;top:470px;width:270px;border:1px dashed #56a8ff;background:rgba(86,168,255,.05);z-index:3">
+          <div style="padding:7px 11px;display:flex;align-items:center;gap:8px">
+            <div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#2a5f96 0 2px,#15181b 2px 5px)"></div>
+            <span style="font:600 12px Rajdhani,sans-serif;font-style:italic;color:#56a8ff">+4 FOUNDRY — ◇ PLANNED</span>
+            <span style="margin-left:auto;font:500 9px 'JetBrains Mono',monospace;color:#5a86b3">Δ#7</span>
+          </div>
+          <div style="padding:0 11px 7px;font:500 10px 'JetBrains Mono',monospace;font-style:italic;color:#5a86b3">+120/min when built · build list ▸</div>
+        </div>
+
+        <!-- CONSTRUCTOR BANKS -->
+        <div style="position:absolute;left:920px;top:186px;width:240px;background:#1c2024;border:1px solid #49525b;z-index:3">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid #333a41;background:#262b30">
+            <div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+            <div style="font:700 13px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">CONSTRUCTOR ×8</div>
+            <span style="margin-left:auto;font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #49525b;padding:1px 5px">100%</span>
+          </div>
+          <div style="padding:7px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #262b30"><div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#15181b 2px 5px)"></div><span style="font:600 12px Rajdhani,sans-serif;color:#eceef0">STEEL BEAM</span></div>
+          <div style="padding:7px 11px;display:flex;justify-content:space-between;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb"><span>IN 240<span style="color:#6c7680">/min</span></span><span style="color:#eceef0">OUT 96<span style="color:#6c7680">/min</span></span><span style="color:#6c7680">32 MW</span></div>
+        </div>
+        <div style="position:absolute;left:920px;top:406px;width:240px;background:#1c2024;border:1px solid #49525b;z-index:3">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid #333a41;background:#262b30">
+            <div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+            <div style="font:700 13px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">CONSTRUCTOR ×10</div>
+            <span style="margin-left:auto;font:600 10px 'JetBrains Mono',monospace;color:#5bc8c0;border:1px solid #2a5f57;padding:1px 5px">80%↓</span>
+          </div>
+          <div style="padding:7px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #262b30"><div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#15181b 2px 5px)"></div><span style="font:600 12px Rajdhani,sans-serif;color:#eceef0">STEEL PIPE</span></div>
+          <div style="padding:7px 11px;display:flex;justify-content:space-between;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb"><span>IN 240<span style="color:#6c7680">/min</span></span><span style="color:#eceef0">OUT 120<span style="color:#6c7680">/min</span></span><span style="color:#6c7680">25 MW</span></div>
+        </div>
+
+        <!-- OUTPUT PORT -->
+        <div style="position:absolute;left:1300px;top:298px;width:210px;background:#15181b;border:1px solid #333a41;z-index:3">
+          <div style="padding:5px 10px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:6px"><span style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">OUTPUT</span><span style="margin-left:auto;font:500 9px 'JetBrains Mono',monospace;color:#e5a83b">MK.4 · 80%↗</span></div>
+          <div style="padding:7px 10px;display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div><div><div style="font:600 12px Rajdhani,sans-serif;color:#eceef0">STEEL</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">⟶ HEAVY FRAME ANNEX</div></div></div>
+        </div>
+
+        <!-- MINIMAP -->
+        <div style="position:absolute;left:12px;bottom:12px;width:170px;background:rgba(21,24,27,.95);border:1px solid #333a41">
+          <div style="height:86px;position:relative;background:repeating-linear-gradient(45deg,#111417 0 10px,#0e1012 10px 20px)">
+            <div style="position:absolute;left:44%;top:46%;width:8px;height:8px;transform:rotate(45deg);border:1.5px solid #f78b23;background:#262b30"></div>
+          </div>
+          <div style="padding:4px 8px;font:500 9px 'JetBrains Mono',monospace;color:#6c7680;border-top:1px solid #262b30">ROCKY BEACH · ESC ⟶ WORLD</div>
+        </div>
+
+        <!-- RECIPE STRIP (contextual, foundry selected) -->
+        <div style="position:absolute;left:50%;bottom:12px;transform:translateX(-50%);width:640px;background:rgba(21,24,27,.97);border:1px solid #333a41">
+          <div style="display:flex;align-items:center;padding:6px 12px;border-bottom:1px solid #262b30"><span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">RECIPES — FOUNDRY BANK</span><span style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#49525b">R · hover = ghost preview on graph</span></div>
+          <div style="display:flex;gap:8px;padding:10px 12px">
+            <div style="width:104px;border:2px solid #f78b23;background:#262b30;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div><div style="font:600 10.5px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">STEEL INGOT</div><div style="font:500 8.5px 'JetBrains Mono',monospace;color:#6c7680">CURRENT</div></div>
+            <div style="width:104px;border:1px dashed #56a8ff;background:rgba(86,168,255,.06);padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#2a5f96 0 2px,#15181b 2px 5px)"></div><div style="font:600 10.5px Rajdhani,sans-serif;letter-spacing:.06em;color:#56a8ff;font-style:italic">SOLID STEEL</div><div style="font:500 8.5px 'JetBrains Mono',monospace;color:#5a86b3">◇ Δ#7 · ORE −25%</div></div>
+            <div style="width:104px;border:1px solid #333a41;background:#1c2024;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#15181b 2px 5px)"></div><div style="font:600 10.5px Rajdhani,sans-serif;letter-spacing:.06em;color:#aab3bb">COMPACTED</div><div style="font:500 8.5px 'JetBrains Mono',monospace;color:#6c7680">COAL −50%</div></div>
+            <div style="width:104px;border:1px solid #262b30;background:#15181b;padding:8px 6px;display:flex;flex-direction:column;align-items:center;gap:5px;opacity:.5"><div style="width:30px;height:30px;background:repeating-linear-gradient(45deg,#262b30 0 2px,#15181b 2px 5px)"></div><div style="font:600 10.5px Rajdhani,sans-serif;letter-spacing:.06em;color:#6c7680">COKE STEEL</div><div style="font:500 8.5px 'JetBrains Mono',monospace;color:#49525b">NOT UNLOCKED</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INSPECTOR -->
+      <div style="position:absolute;top:36px;right:0;bottom:24px;width:360px;background:#15181b;border-left:1px solid #333a41;display:flex;flex-direction:column;z-index:35">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #262b30;background:#1c2024">
+          <div style="width:26px;height:26px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+          <div style="flex:1"><div style="font:700 14px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">FOUNDRY BANK</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">×12 <span style="color:#56a8ff;font-style:italic">+4◇</span> · STEEL INGOT</div></div>
+          <span style="font:400 14px 'JetBrains Mono',monospace;color:#6c7680">×</span>
+        </div>
+
+        <div style="padding:12px 14px;border-bottom:1px solid #262b30">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">OUTPUT TARGET</span><span style="margin-left:auto;font:700 18px 'JetBrains Mono',monospace;color:#eceef0;font-variant-numeric:tabular-nums">480<span style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">/min</span></span></div>
+          <div style="position:relative;height:18px;display:flex;align-items:center">
+            <div style="width:100%;height:4px;background:#262b30"><div style="width:60%;height:4px;background:#f78b23"></div></div>
+            <div style="position:absolute;left:60%;top:50%;width:14px;height:14px;transform:translate(-50%,-50%) rotate(45deg);background:#f78b23;border:2px solid #0e1012"></div>
+            <div style="position:absolute;left:75%;top:0;bottom:0;width:1px;background:#49525b"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font:500 9px 'JetBrains Mono',monospace;color:#49525b;margin-top:4px"><span>0</span><span style="color:#6c7680">▲ input ceiling 600/min</span><span>800</span></div>
+          <div style="margin-top:6px;font:500 9.5px 'JetBrains Mono',monospace;color:#46c07a">RE-SOLVES LIVE ON DRAG · LAST 2.8ms ✓</div>
+        </div>
+
+        <div style="padding:12px 14px;border-bottom:1px solid #262b30">
+          <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:8px">CLOCK</div>
+          <div style="display:flex;gap:4px;margin-bottom:6px">
+            <span style="flex:1;text-align:center;font:600 10px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:4px 0">50</span>
+            <span style="flex:1;text-align:center;font:600 10px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:4px 0">75</span>
+            <span style="flex:1;text-align:center;font:700 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:4px 0">100</span>
+            <span style="flex:1;text-align:center;font:600 10px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:4px 0">150</span>
+            <span style="flex:1;text-align:center;font:600 10px 'JetBrains Mono',monospace;color:#6c7680;border:1px solid #333a41;padding:4px 0">250</span>
+            <span style="width:64px;text-align:center;font:500 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #333a41;padding:4px 0">100.0%</span>
+          </div>
+          <div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">124 MW @100% · &gt;100% NEEDS SHARDS: 0 OWNED</div>
+        </div>
+
+        <div style="padding:12px 14px;border-bottom:1px solid #262b30">
+          <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:8px">I/O — SOLVED</div>
+          <div style="display:flex;flex-direction:column;gap:6px;font:500 10.5px 'JetBrains Mono',monospace">
+            <div style="display:flex;align-items:center;gap:8px"><span style="color:#aab3bb;flex:1">IN IRON ORE</span><span style="display:inline-block;width:50px;height:4px;background:#262b30"><span style="display:block;width:40%;height:4px;background:#46c07a"></span></span><span style="color:#aab3bb">270/min</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="color:#aab3bb;flex:1">IN COAL</span><span style="display:inline-block;width:50px;height:4px;background:#262b30"><span style="display:block;width:100%;height:4px;background:#ff5d55"></span></span><span style="color:#ff5d55">270/270⚠</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="color:#eceef0;flex:1">OUT STEEL INGOT</span><span style="color:#eceef0">480/min</span></div>
+          </div>
+          <div style="margin-top:8px;padding:6px 8px;background:rgba(255,93,85,.07);border:1px solid #7a2622;font:400 10.5px/1.4 Barlow,sans-serif;color:#ff8a84">Coal belt caps this bank at 480/min. Fixes: Mk.4 upgrade · Compacted Steel recipe · second claim.</div>
+        </div>
+
+        <div style="padding:12px 14px;border-bottom:1px solid #262b30">
+          <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:8px">FEED BELTS</div>
+          <div style="display:flex;flex-direction:column;gap:5px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">
+            <div style="display:flex;align-items:center;gap:8px"><span style="flex:1">ORE FEED</span><span style="color:#eceef0;border:1px solid #333a41;padding:1px 6px">MK.4 ▾</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="flex:1">COAL FEED</span><span style="color:#e5a83b;border:1px solid #8a6423;padding:1px 6px">MK.3 ▾ UPGRADE?</span></div>
+          </div>
+        </div>
+
+        <div style="margin-top:auto;padding:10px 14px;border-top:1px solid #262b30;font:400 10.5px/1.5 Barlow,sans-serif;color:#6c7680">
+          Edits apply instantly to the plan. On a ◆ built bank they become ◇ deltas — visible in DIFF until built in-game.
+        </div>
+      </div>
+
+      <!-- STATUS BAR -->
+      <div style="position:absolute;left:0;right:0;bottom:0;height:24px;background:#15181b;border-top:1px solid #262b30;display:flex;align-items:center;gap:18px;padding:0 14px;font:500 10px 'JetBrains Mono',monospace;color:#6c7680;z-index:40">
+        <span style="color:#46c07a">LOCAL SOLVE 2.8ms · BALANCED</span>
+        <span style="color:#ff5d55">⚠ 1 BOTTLENECK: COAL FEED</span>
+        <span style="color:#56a8ff">◇ 2 PLANNED DELTAS (Δ#7)</span>
+        <span style="margin-left:auto">42 MACHINES · 5 GROUPS · 186 MW</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4b CARD ANATOMY ============ -->
+<div class="dv-opt" id="4b" data-screen-label="4b Machine card anatomy">
+  <div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a>Machine-group card — anatomy</div>
+  <div class="dv-card" style="width:440px">
+    <div style="padding:16px;display:flex;gap:14px;align-items:flex-start">
+      <div style="width:270px;flex:none;background:#1c2024;border:1px solid #49525b">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid #333a41;background:#262b30">
+          <span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">1</span>
+          <div style="width:22px;height:22px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+          <div style="font:700 14px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">FOUNDRY ×12</div>
+          <span style="margin-left:auto;font:600 10px 'JetBrains Mono',monospace;color:#aab3bb;border:1px solid #49525b;padding:1px 5px">100%</span>
+          <span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">2</span>
+        </div>
+        <div style="padding:7px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #262b30">
+          <span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">3</span>
+          <div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#15181b 2px 5px)"></div>
+          <span style="font:600 12px Rajdhani,sans-serif;color:#eceef0">STEEL INGOT</span>
+        </div>
+        <div style="padding:7px 11px;display:flex;justify-content:space-between;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">
+          <span><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">4</span> IN 540</span>
+          <span style="color:#eceef0">OUT 480</span>
+          <span style="color:#6c7680"><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">5</span> 124 MW</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;font:400 11.5px/1.45 Barlow,sans-serif;color:#aab3bb">
+        <div><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">1</span> Game icon = the noun; count is part of the title.</div>
+        <div><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">2</span> Clock chip. Teal ↓ = underclocked, orange = overclocked (shard cost shown in inspector).</div>
+        <div><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">3</span> Recipe row — click = recipe strip. ◇ badge here if a swap is planned.</div>
+        <div><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">4</span> Solved totals, always tabular mono. Flash-settle on re-solve.</div>
+        <div><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:0 4px">5</span> Power draw at current clock.</div>
+        <div style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680;border-top:1px solid #262b30;padding-top:8px">STATES: built = solid #49525B border · selected = 2px signal + corner cut · planned = dashed blueprint + hatch · U/C = dashed amber + progress bar</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 4c INTERACTION SPEC ============ -->
+<div class="dv-opt" id="4c" data-screen-label="4c Factory interaction spec">
+  <div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a>Interaction spec — solver contract, direct manipulation, keyboard</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Factory view interactions</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">The solver contract</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div>· Every slider drag, recipe swap, clock or tier change re-solves the subgraph live (&lt;5ms budget; solve time always visible).</div>
+          <div>· <span style="color:#eceef0">Numbers change, geometry doesn't.</span> A solve never moves, adds, or removes cards — structural changes are only ever made by you, or arrive as a proposal.</div>
+          <div>· Changed values settle-flash amber→ink over 300ms so you can see what the solve touched. Reduced-motion: instant swap.</div>
+          <div>· Infeasible input (target above input ceiling) doesn't error — the slider hard-stops at the ceiling marker and the binding constraint highlights red (coal feed in <a href="#4a">4a</a>).</div>
+        </div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Direct manipulation</div>
+        Drag card = move, 16px grid snap. Drag from a port = draw belt; tier picker on drop; invalid targets dim. Alt-drag a bank = split it. Click edge = belt inspector (tier, contents, both endpoints). ⌫ deletes planned entities only — built ones ask "plan a demolition?". Double-click canvas = add machine group (icon-first picker).
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Keyboard</div>
+        <div style="font:500 10.5px/1.7 'JetBrains Mono',monospace;color:#aab3bb">R recipes · T target rate · C clock · B belt tier · / find in factory · F frame · ⌘Z undo (solves included) · ESC zoom back to world</div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Built vs planned inside one factory</div>
+        A factory is usually mixed: built banks + planned deltas coexist on the same canvas (ghost sub-cards, <a href="#4a">4a</a>). DIFF overlay isolates the deltas; a "build list" per factory exports what's left to build in-game.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Next: supply-chain wizard wrapping <a class="dv-oid" href="#3a">3a</a>, then advisor chat + image-to-style-guide, dashboard, onboarding. Try: "wizard next" · "show the settle-flash states" · "belt inspector detail"</p>
+</section>
+
+<section class="dv-turn" id="t3" data-screen-label="Turn 3 — Proposal review">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Proposal review — one system for solver + advisor</span></div>
+<div class="dv-opts">
+
+<!-- ============ 3a REVIEW MODE ============ -->
+<div class="dv-opt" id="3a" data-screen-label="3a Proposal review mode 1920x1080">
+  <div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Review mode — proposal ghosted onto the live map · partial accept with live consequences · 1920×1080</div>
+  <div class="dv-card" style="width:1920px">
+    <div style="position:relative;width:1920px;height:1080px;background:#0e1012;overflow:hidden">
+
+      <!-- TITLEBAR -->
+      <div style="position:absolute;top:0;left:0;right:0;height:36px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;padding:0 0 0 14px;gap:12px;z-index:40">
+        <div style="width:12px;height:12px;background:#f78b23"></div>
+        <div style="font:700 14px Rajdhani,sans-serif;letter-spacing:.16em;color:#eceef0">FICSIT PLANNER</div>
+        <div style="width:1px;height:16px;background:#333a41"></div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#f78b23">WORLD MAP</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+          <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#6c7680;background:#1c2024;border:1px solid #262b30;padding:3px 10px">PHASE-4.sav · BUILT LAYER SYNCED 14:02</div>
+          <div style="display:flex;height:36px">
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 13px 'JetBrains Mono',monospace">–</div>
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 11px 'JetBrains Mono',monospace">□</div>
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 13px 'JetBrains Mono',monospace">×</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REVIEW BANNER -->
+      <div style="position:absolute;top:36px;left:0;right:0;height:40px;background:#1c2024;border-bottom:2px solid #f78b23;display:flex;align-items:center;gap:12px;padding:0 14px;z-index:40">
+        <span style="font:700 10px 'JetBrains Mono',monospace;color:#141414;background:#f78b23;padding:2px 7px;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)">PROPOSAL #7</span>
+        <span style="font:600 13px Rajdhani,sans-serif;letter-spacing:.08em;color:#eceef0">SUPPLY CHAIN: 8.0 HEAVY MODULAR FRAME / MIN — EMPIRE-WIDE</span>
+        <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">GLOBAL SOLVER · 8.4s · SNAPSHOT 14:02 · NOTHING APPLIES UNTIL YOU ACCEPT</span>
+        <span style="margin-left:auto;font:600 10.5px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb;border:1px solid #333a41;padding:4px 12px">EXIT REVIEW · ESC</span>
+      </div>
+
+      <!-- MAP (dimmed, proposal ghosted) -->
+      <div style="position:absolute;top:76px;left:0;right:0;bottom:24px;background:#0d1013;background-image:linear-gradient(#14181c 1px,transparent 1px),linear-gradient(90deg,#14181c 1px,transparent 1px);background-size:160px 160px">
+
+        <!-- existing empire, dimmed -->
+        <div style="position:absolute;inset:0;opacity:.42">
+          <svg width="1920" height="980" style="position:absolute;inset:0" viewBox="0 0 1920 980">
+            <line x1="420" y1="300" x2="860" y2="460" stroke="#46c07a" stroke-width="2"></line>
+            <line x1="780" y1="620" x2="860" y2="460" stroke="#ff5d55" stroke-width="6" stroke-dasharray="6 4"></line>
+            <line x1="1500" y1="840" x2="1230" y2="600" stroke="#46c07a" stroke-width="6"></line>
+            <line x1="1500" y1="840" x2="1230" y2="600" stroke="#0d1013" stroke-width="2.5"></line>
+          </svg>
+          <div style="position:absolute;left:420px;top:300px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px solid #f78b23;background:#262b30"></div><div style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0;background:rgba(21,24,27,.94);border:1px solid #333a41;padding:2px 8px">◆ NORTHERN FORGE</div></div>
+          <div style="position:absolute;left:1500px;top:840px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px solid #f78b23;background:#262b30"></div><div style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0;background:rgba(21,24,27,.94);border:1px solid #333a41;padding:2px 8px">◆ OIL COAST PLASTICS</div></div>
+        </div>
+
+        <!-- amber dashed = existing route kept at risk (excluded upgrade) -->
+        <svg width="1920" height="980" style="position:absolute;inset:0" viewBox="0 0 1920 980">
+          <line x1="860" y1="460" x2="1230" y2="600" stroke="#e5a83b" stroke-width="4" stroke-dasharray="10 5"></line>
+          <line x1="420" y1="300" x2="580" y2="410" stroke="#56a8ff" stroke-width="2" stroke-dasharray="8 6"></line>
+          <line x1="580" y1="410" x2="1230" y2="600" stroke="#56a8ff" stroke-width="2" stroke-dasharray="8 6"></line>
+          <line x1="530" y1="230" x2="580" y2="410" stroke="#56a8ff" stroke-width="2" stroke-dasharray="8 6"></line>
+          <line x1="640" y1="700" x2="860" y2="460" stroke="#56a8ff" stroke-width="2" stroke-dasharray="8 6"></line>
+        </svg>
+
+        <!-- modified factories: amber delta ring -->
+        <div style="position:absolute;left:860px;top:460px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:40px;height:40px;border-radius:50%;border:2px dashed #e5a83b;display:flex;align-items:center;justify-content:center"><div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px solid #f78b23;background:#262b30"></div></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(21,24,27,.94);border:1px solid #8a6423;padding:2px 8px">Δ COASTAL STEEL · +4 · ALT RECIPE</div>
+        </div>
+        <div style="position:absolute;left:1230px;top:600px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:40px;height:40px;border-radius:50%;border:2px dashed #e5a83b;display:flex;align-items:center;justify-content:center"><div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px dashed #e5a83b;background:linear-gradient(to top,#8a6423 55%,#1c2024 55%)"></div></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(21,24,27,.94);border:1px dashed #8a6423;padding:2px 8px">Δ ◈ HEAVY FRAME ANNEX · +2 MFR</div>
+        </div>
+
+        <!-- NEW factory ghost -->
+        <div style="position:absolute;left:580px;top:410px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:3">
+          <div style="width:26px;height:26px;transform:rotate(45deg);border:2.5px dashed #56a8ff;background:repeating-linear-gradient(45deg,rgba(86,168,255,.22) 0 2px,transparent 2px 5px);box-shadow:0 0 0 5px rgba(86,168,255,.1)"></div>
+          <div style="font:600 11px 'JetBrains Mono',monospace;font-style:italic;color:#0e1012;background:#56a8ff;padding:2px 8px">+ SCREW WORKS — NEW</div>
+        </div>
+
+        <!-- claims -->
+        <div style="position:absolute;left:530px;top:230px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:2"><div style="width:22px;height:22px;border-radius:50%;border:2px dashed #56a8ff;display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px;border-radius:50%;border:2px dashed #9aa3ab;background:#15181b"></div></div><div style="font:500 9px 'JetBrains Mono',monospace;font-style:italic;color:#56a8ff">◉ CLAIM FE NORMAL #11</div></div>
+        <div style="position:absolute;left:640px;top:700px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:2"><div style="width:22px;height:22px;border-radius:50%;border:2px dashed #56a8ff;display:flex;align-items:center;justify-content:center"><div style="width:12px;height:12px;border-radius:50%;border:2px solid #9aa3ab;background:#15181b"></div></div><div style="font:500 9px 'JetBrains Mono',monospace;font-style:italic;color:#56a8ff">◉ CLAIM LIME PURE #03</div></div>
+
+        <!-- route projection labels -->
+        <div style="position:absolute;left:500px;top:352px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;font-style:italic;color:#56a8ff;background:rgba(13,16,19,.92);border:1px dashed #2a5f96;padding:2px 6px;z-index:2">◇ MK.4 · proj 62% · 1.2km</div>
+        <div style="position:absolute;left:905px;top:505px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;font-style:italic;color:#56a8ff;background:rgba(13,16,19,.92);border:1px dashed #2a5f96;padding:2px 6px;z-index:2">◇ MK.4 · proj 71% · 2.1km</div>
+        <div style="position:absolute;left:1045px;top:528px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#6c7680;background:rgba(13,16,19,.92);border:1px solid #333a41;padding:2px 6px;z-index:2">Δ MK.5 UPGRADE — EXCLUDED · stays 96% ⚠</div>
+
+      </div>
+
+      <!-- LEFT REVIEW PANEL -->
+      <div style="position:absolute;top:76px;left:0;bottom:24px;width:470px;background:rgba(21,24,27,.97);border-right:1px solid #333a41;display:flex;flex-direction:column;z-index:30">
+        <div style="padding:10px 14px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:8px">
+          <span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#eceef0">8 CHANGES · 7 INCLUDED</span>
+          <span style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">SPACE = TOGGLE · E = EDIT · CLICK = PAN MAP</span>
+        </div>
+
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+          <!-- CREATE -->
+          <div style="padding:8px 14px 4px;font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#56a8ff">CREATE (1)</div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;background:rgba(86,168,255,.06);border-top:1px solid #1c2024;border-bottom:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#0e1012;background:#56a8ff;padding:1px 4px">+</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">SCREW WORKS</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">GRASS FIELDS</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">14 constructors · 480 screws/min · site 40m from claimed FE #11</div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;text-align:right">+96 MW<br><span style="color:#49525b">E ▸</span></div>
+          </div>
+
+          <!-- MODIFY -->
+          <div style="padding:8px 14px 4px;font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#e5a83b">MODIFY (2)</div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:1px 4px">Δ</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">COASTAL STEEL</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:0 4px">◆</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">+4 smelters · alt recipe: Solid Steel Ingot · <a href="#3b" style="font:500 10px 'JetBrains Mono',monospace">VIEW DIFF ▸</a></div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;text-align:right">+28 MW<br><span style="color:#46c07a">ORE −25%</span></div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:1px 4px">Δ</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">HEAVY FRAME ANNEX</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#e5a83b;border:1px dashed #8a6423;padding:0 4px">◈ 62%</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">+2 manufacturers · output target 8.0 HMF/min</div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb;text-align:right">+104 MW</div>
+          </div>
+
+          <!-- CLAIM -->
+          <div style="padding:8px 14px 4px;font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#aab3bb">CLAIM (2)</div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:1px 4px">◉</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">FE NORMAL #11</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">480/min draw · exclusive → Screw Works · no competing plans</div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a;text-align:right">FREE ✓</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:1px 4px">◉</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">LIME PURE #03</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">240/min draw → Coastal Steel concrete line</div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a;text-align:right">FREE ✓</div>
+          </div>
+
+          <!-- ROUTE -->
+          <div style="padding:8px 14px 4px;font:600 10px Rajdhani,sans-serif;letter-spacing:.16em;color:#aab3bb">ROUTE (3)</div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:1px 4px">⟶</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">BELT MK.4 · NF → SCREW WORKS</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">1.2 km · projected 62% at goal</div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a;text-align:right">62%</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024">
+            <div style="width:14px;height:14px;background:#f78b23;color:#141414;font:700 11px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;margin-top:1px">✓</div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#141414;background:#aab3bb;padding:1px 4px">⟶</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">BELT MK.4 · SCREW WORKS → ANNEX</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#aab3bb;margin-top:2px">2.1 km · projected 71% · <span style="color:#e5a83b">rail viable at this distance — E to swap</span></div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a;text-align:right">71%</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 14px;border-top:1px solid #1c2024;opacity:.55">
+            <div style="width:14px;height:14px;border:1px solid #49525b;margin-top:1px"></div>
+            <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font:700 9px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:1px 4px">Δ</span><span style="font:600 13px Rajdhani,sans-serif;color:#aab3bb;text-decoration:line-through">UPGRADE CS → ANNEX TO MK.5</span></div>
+            <div style="font:400 11px Barlow,sans-serif;color:#6c7680;margin-top:2px">excluded by you</div></div>
+            <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#e5a83b;text-align:right">⚠ 96%</div>
+          </div>
+          <div style="margin:6px 14px;padding:6px 10px;background:rgba(229,168,59,.08);border:1px solid #8a6423;font:400 11px/1.4 Barlow,sans-serif;color:#e5a83b">1 warning from exclusions — CS → Annex belt lands at 96% of Mk.4 capacity. Goal still met.</div>
+        </div>
+
+        <!-- IMPACT FOOTER -->
+        <div style="border-top:1px solid #333a41;background:#1c2024">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #262b30">
+            <div style="padding:8px 14px;border-right:1px solid #262b30"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">GOAL CHECK</div><div style="font:700 13px 'JetBrains Mono',monospace;color:#46c07a">8.0/8.0 ✓</div></div>
+            <div style="padding:8px 14px;border-right:1px solid #262b30"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">Δ POWER</div><div style="font:700 13px 'JetBrains Mono',monospace;color:#eceef0">+228 <span style="font:500 9px 'JetBrains Mono',monospace;color:#46c07a">MW ✓</span></div></div>
+            <div style="padding:8px 14px;border-right:1px solid #262b30"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">MACHINES</div><div style="font:700 13px 'JetBrains Mono',monospace;color:#eceef0">+20</div></div>
+            <div style="padding:8px 14px"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">BUILD COST</div><div style="font:700 13px 'JetBrains Mono',monospace;color:#aab3bb">LIST ▸</div></div>
+          </div>
+          <div style="padding:10px 14px;display:flex;gap:8px;align-items:center">
+            <div style="flex:1;height:36px;background:#f78b23;display:flex;align-items:center;justify-content:center;gap:8px;font:700 12.5px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)">ACCEPT 7 AS PLANNED <span style="font:500 9.5px 'JetBrains Mono',monospace;opacity:.7">⏎</span></div>
+            <div style="height:36px;padding:0 14px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">RE-SOLVE…</div>
+            <div style="height:36px;padding:0 14px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#ff5d55">REJECT</div>
+          </div>
+          <div style="padding:0 14px 10px;font:400 10.5px/1.4 Barlow,sans-serif;color:#6c7680">Accepting creates ◇ planned entities only — one undo step. The built layer is never touched.</div>
+        </div>
+      </div>
+
+      <!-- STATUS BAR -->
+      <div style="position:absolute;left:0;right:0;bottom:0;height:24px;background:#15181b;border-top:1px solid #262b30;display:flex;align-items:center;gap:18px;padding:0 14px;font:500 10px 'JetBrains Mono',monospace;color:#6c7680;z-index:40">
+        <span style="color:#f78b23">REVIEWING PROPOSAL #7 — MAP SHOWS RESULTING PLAN</span>
+        <span style="color:#46c07a">PWR AFTER: 4.43/6.0 GW</span>
+        <span style="margin-left:auto">SOLVER INPUT HASH a4f2c9 · REPRODUCIBLE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 3b MODIFY DIFF ============ -->
+<div class="dv-opt" id="3b" data-screen-label="3b Modify diff detail">
+  <div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Change detail — before/after diff for a MODIFY item · 420w</div>
+  <div class="dv-card" style="width:420px">
+    <div style="background:#15181b;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,0 100%)">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #262b30;background:#1c2024">
+        <span style="font:700 9px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:1px 5px">Δ MODIFY</span>
+        <span style="font:700 14px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">COASTAL STEEL</span>
+        <span style="font:500 10px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:0 4px">◆ BUILT</span>
+        <span style="margin-left:auto;font:400 14px 'JetBrains Mono',monospace;color:#6c7680">×</span>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;padding:6px 14px;font:500 9.5px 'JetBrains Mono',monospace;color:#49525b;border-bottom:1px solid #1c2024">
+        <div></div><div>BEFORE</div><div></div><div>AFTER (PLANNED Δ)</div>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;align-items:center;padding:6px 14px;border-bottom:1px solid #1c2024;background:rgba(229,168,59,.05)">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680">RECIPE</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#aab3bb">Steel Ingot</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b">→</div><div style="font:600 11px 'JetBrains Mono',monospace;color:#e5a83b;font-style:italic">Solid Steel Ingot</div>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;align-items:center;padding:6px 14px;border-bottom:1px solid #1c2024;background:rgba(229,168,59,.05)">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680">SMELTERS</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#aab3bb">12</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b">→</div><div style="font:600 11px 'JetBrains Mono',monospace;color:#e5a83b;font-style:italic">16 <span style="color:#6c7680">(+4)</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;align-items:center;padding:6px 14px;border-bottom:1px solid #1c2024">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680">CLOCK</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">100%</div><div></div><div style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">100%</div>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;align-items:center;padding:6px 14px;border-bottom:1px solid #1c2024;background:rgba(229,168,59,.05)">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680">ORE DRAW</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#aab3bb">270/min</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b">→</div><div style="font:600 11px 'JetBrains Mono',monospace;color:#e5a83b;font-style:italic">202/min <span style="color:#46c07a">(−25%)</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;align-items:center;padding:6px 14px;border-bottom:1px solid #1c2024;background:rgba(229,168,59,.05)">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680">INGOTS OUT</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#aab3bb">480/min</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b">→</div><div style="font:600 11px 'JetBrains Mono',monospace;color:#e5a83b;font-style:italic">600/min</div>
+      </div>
+      <div style="display:grid;grid-template-columns:110px 1fr 24px 1fr;align-items:center;padding:6px 14px;border-bottom:1px solid #262b30;background:rgba(229,168,59,.05)">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680">POWER</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#aab3bb">186 MW</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b">→</div><div style="font:600 11px 'JetBrains Mono',monospace;color:#e5a83b;font-style:italic">214 MW</div>
+      </div>
+      <div style="padding:8px 14px;font:400 11px/1.5 Barlow,sans-serif;color:#6c7680;border-bottom:1px solid #262b30"><span style="color:#aab3bb">WHY:</span> solver needs +120 ingots/min inside the existing belt budget; the alt recipe achieves it without touching the saturated coal line.</div>
+      <div style="padding:10px 14px;display:flex;gap:8px">
+        <div style="height:30px;padding:0 12px;background:#f78b23;display:flex;align-items:center;font:700 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414">INCLUDED ✓</div>
+        <div style="height:30px;padding:0 12px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">EDIT VALUES</div>
+        <div style="height:30px;padding:0 12px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">EXCLUDE</div>
+      </div>
+      <div style="padding:0 14px 10px;font:400 10.5px/1.4 Barlow,sans-serif;color:#6c7680">Applies as ◇ planned deltas on a ◆ built factory — DIFF overlay shows the drift until you build them in-game.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 3c LIFECYCLE SPEC ============ -->
+<div class="dv-opt" id="3c" data-screen-label="3c Proposal lifecycle spec">
+  <div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>Proposal lifecycle &amp; rules — applies to wizard and advisor alike</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Lifecycle</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div style="display:flex;align-items:center;gap:6px;font:600 10px 'JetBrains Mono',monospace">
+        <span style="color:#aab3bb;border:1px solid #49525b;padding:3px 8px">DRAFT</span><span style="color:#49525b">→</span>
+        <span style="color:#f78b23;border:1px solid #f78b23;padding:3px 8px">REVIEWING</span><span style="color:#49525b">→</span>
+        <span style="color:#56a8ff;border:1px dashed #2a5f96;padding:3px 8px">ACCEPTED → ◇ PLAN</span>
+        <span style="color:#49525b;margin-left:4px">or</span>
+        <span style="color:#6c7680;border:1px solid #333a41;padding:3px 8px">REJECTED · archived</span>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Invariants</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div>· Proposals <span style="color:#eceef0">never auto-apply</span> and never touch the built layer — accept creates ◇ planned entities only.</div>
+          <div>· Accept (full or partial) is <span style="color:#eceef0">one undo step</span>. Rejected proposals are archived and recallable.</div>
+          <div>· Partial accept: excluded items stay in the draft; consequences of exclusion are recomputed live and shown before accept (<a href="#3a">3a</a> warning strip).</div>
+          <div>· Every proposal carries provenance: source (solver / advisor / chat), state snapshot time, input hash — so a result is <span style="color:#eceef0">reproducible and auditable</span>.</div>
+          <div>· If the plan changes while a proposal is open, it gets a <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:0 4px">STALE</span> badge + one-click RE-SOLVE with the same goal.</div>
+          <div>· Any item is editable before accept (E) — solver output is a starting point, not a verdict.</div>
+        </div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Keyboard</div>
+        <div style="font:500 10.5px/1.7 'JetBrains Mono',monospace;color:#aab3bb">↑↓ walk items (map pans along) · SPACE include/exclude · E edit · D diff detail · ⏎ accept included · ESC exit review (draft kept)</div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Where it appears</div>
+        Wizard step 3 renders this exact surface; advisor "CREATE PROPOSAL" opens it with source = ADVISOR; chat can produce one too. One system, one muscle memory.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Next: factory graph view (live local solver), then wizard shell around <a class="dv-oid" href="#3a">3a</a>. Try: "show a STALE proposal state" · "build cost list expanded" · "factory view next"</p>
+</section>
+
+<section class="dv-turn" id="t2" data-screen-label="Turn 2 — Map home screen">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Map (home) — committed: <a class="dv-oid" href="#1g">1g</a> + Tab HUD · own design, no reference mockup</span></div>
+<div class="dv-opts">
+
+<!-- ============ 2a MAP SCREEN ============ -->
+<div class="dv-opt" id="2a" data-screen-label="2a Map home 1920x1080">
+  <div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Map home · default state · FLOWS overlay on · 1920×1080</div>
+  <div class="dv-card" style="width:1920px">
+    <div style="position:relative;width:1920px;height:1080px;background:#0e1012;overflow:hidden">
+
+      <!-- TITLEBAR -->
+      <div style="position:absolute;top:0;left:0;right:0;height:36px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;padding:0 0 0 14px;gap:12px;z-index:40">
+        <div style="width:12px;height:12px;background:#f78b23"></div>
+        <div style="font:700 14px Rajdhani,sans-serif;letter-spacing:.16em;color:#eceef0">FICSIT PLANNER</div>
+        <div style="width:1px;height:16px;background:#333a41"></div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#f78b23">WORLD MAP</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+          <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#6c7680;background:#1c2024;border:1px solid #262b30;padding:3px 10px">PHASE-4.sav · BUILT LAYER SYNCED 14:02</div>
+          <div style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a;padding:3px 4px">SOLVER IDLE · 3ms</div>
+          <div style="display:flex;height:36px">
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 13px 'JetBrains Mono',monospace">–</div>
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 11px 'JetBrains Mono',monospace">□</div>
+            <div style="width:40px;display:flex;align-items:center;justify-content:center;color:#6c7680;font:400 13px 'JetBrains Mono',monospace">×</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MAP CANVAS -->
+      <div style="position:absolute;top:36px;left:0;right:0;bottom:24px;background:#0d1013;background-image:linear-gradient(#14181c 1px,transparent 1px),linear-gradient(90deg,#14181c 1px,transparent 1px);background-size:160px 160px">
+
+        <!-- biome placeholder hints -->
+        <div style="position:absolute;left:120px;top:120px;width:640px;height:520px;border-radius:45% 55% 50% 40%;background:rgba(110,150,100,.045);border:1px solid rgba(110,150,100,.09)"></div>
+        <div style="position:absolute;left:1180px;top:80px;width:560px;height:380px;border-radius:50% 40% 55% 45%;background:rgba(200,165,95,.04);border:1px solid rgba(200,165,95,.08)"></div>
+        <div style="position:absolute;left:1240px;top:640px;width:560px;height:360px;border-radius:40% 50% 45% 55%;background:rgba(120,150,190,.04);border:1px solid rgba(120,150,190,.08)"></div>
+        <div style="position:absolute;left:300px;top:196px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.2em;color:#3b434b">GRASS FIELDS</div>
+        <div style="position:absolute;left:1400px;top:140px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.2em;color:#3b434b">DUNE DESERT</div>
+        <div style="position:absolute;left:1450px;top:700px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.2em;color:#3b434b">OIL COAST</div>
+        <div style="position:absolute;left:50%;top:490px;transform:translateX(-50%);font:500 11px 'JetBrains Mono',monospace;letter-spacing:.14em;color:#333a41">[ WORLD MAP IMAGERY — EXTRACTED FROM GAME INSTALL AT FIRST RUN ]</div>
+
+        <!-- ROUTES (svg lines) -->
+        <svg width="1920" height="1020" style="position:absolute;inset:0" viewBox="0 0 1920 1020">
+          <line x1="350" y1="260" x2="420" y2="320" stroke="#46c07a" stroke-width="2"></line>
+          <line x1="1560" y1="900" x2="1500" y2="860" stroke="#46c07a" stroke-width="2"></line>
+          <line x1="420" y1="320" x2="860" y2="480" stroke="#46c07a" stroke-width="2"></line>
+          <line x1="860" y1="480" x2="1230" y2="620" stroke="#e5a83b" stroke-width="4" stroke-dasharray="10 5"></line>
+          <line x1="780" y1="640" x2="860" y2="480" stroke="#ff5d55" stroke-width="6" stroke-dasharray="6 4"></line>
+          <line x1="1500" y1="860" x2="1230" y2="620" stroke="#46c07a" stroke-width="6"></line>
+          <line x1="1500" y1="860" x2="1230" y2="620" stroke="#0d1013" stroke-width="2.5"></line>
+          <line x1="1400" y1="300" x2="1230" y2="620" stroke="#56a8ff" stroke-width="2" stroke-dasharray="8 6"></line>
+        </svg>
+
+        <!-- route labels -->
+        <div style="position:absolute;left:640px;top:400px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#46c07a;background:rgba(13,16,19,.92);border:1px solid #1e4531;padding:2px 6px">BELT MK.4 · 312/780 · 40%</div>
+        <div style="position:absolute;left:1045px;top:550px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(13,16,19,.92);border:1px solid #8a6423;padding:2px 6px">BELT MK.4 · 624/780 · 80% ↗</div>
+        <div style="position:absolute;left:806px;top:572px;transform:translate(-50%,-50%);font:700 10px 'JetBrains Mono',monospace;color:#0e1012;background:#ff5d55;padding:2px 6px">MK.3 · 270/270 · 100% ⚠</div>
+        <div style="position:absolute;left:1365px;top:742px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;color:#46c07a;background:rgba(13,16,19,.92);border:1px solid #1e4531;padding:2px 6px">RAIL · 84/120 · 70% · RT 4:20</div>
+        <div style="position:absolute;left:1315px;top:460px;transform:translate(-50%,-50%);font:500 10px 'JetBrains Mono',monospace;font-style:italic;color:#56a8ff;background:rgba(13,16,19,.92);border:1px dashed #2a5f96;padding:2px 6px">◇ RAIL — PLANNED</div>
+
+        <!-- RESOURCE NODES -->
+        <div style="position:absolute;left:350px;top:260px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px solid #9aa3ab;background:#15181b;display:flex;align-items:center;justify-content:center"><div style="width:5px;height:5px;border-radius:50%;background:#f78b23"></div></div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">FE PURE #08</div></div>
+        <div style="position:absolute;left:530px;top:230px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px dashed #9aa3ab;background:#15181b;display:flex;align-items:center;justify-content:center"><div style="width:5px;height:5px;border-radius:50%;background:#f78b23"></div></div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">FE NORMAL</div></div>
+        <div style="position:absolute;left:780px;top:640px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px dashed #9aa3ab;background:#15181b;display:flex;align-items:center;justify-content:center"><div style="width:5px;height:5px;border-radius:50%;background:#f78b23"></div></div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">COAL NORM #12</div></div>
+        <div style="position:absolute;left:640px;top:720px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px solid #49525b;background:#15181b"></div><div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">LIME PURE</div></div>
+        <div style="position:absolute;left:1050px;top:160px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px dotted #49525b;background:#15181b"></div><div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">CAT IMPURE</div></div>
+        <div style="position:absolute;left:1560px;top:900px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px solid #9aa3ab;background:#15181b;display:flex;align-items:center;justify-content:center"><div style="width:5px;height:5px;border-radius:50%;background:#f78b23"></div></div><div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680">OIL PURE ×3</div></div>
+        <div style="position:absolute;left:1450px;top:240px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;border:2px solid #ff5d55;background:#15181b;display:flex;align-items:center;justify-content:center"><div style="width:5px;height:5px;border-radius:50%;background:#ff5d55"></div></div><div style="font:700 9px 'JetBrains Mono',monospace;color:#ff5d55">QZ PURE #04 ⚠×2</div></div>
+
+        <!-- FACTORY PINS -->
+        <div style="position:absolute;left:420px;top:320px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px solid #f78b23;background:#262b30;box-shadow:0 0 0 4px rgba(13,16,19,.85)"></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0;background:rgba(21,24,27,.94);border:1px solid #333a41;padding:2px 8px">◆ NORTHERN FORGE</div>
+        </div>
+        <div style="position:absolute;left:860px;top:480px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px solid #f78b23;background:#262b30;box-shadow:0 0 0 4px rgba(13,16,19,.85)"></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0;background:rgba(21,24,27,.94);border:1px solid #333a41;padding:2px 8px">◆ COASTAL STEEL</div>
+        </div>
+        <div style="position:absolute;left:1230px;top:620px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px dashed #e5a83b;background:linear-gradient(to top,#8a6423 55%,#1c2024 55%);box-shadow:0 0 0 4px rgba(13,16,19,.85)"></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(21,24,27,.94);border:1px dashed #8a6423;padding:2px 8px">◈ HEAVY FRAME ANNEX · 62%</div>
+        </div>
+        <div style="position:absolute;left:1500px;top:860px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px solid #f78b23;background:#262b30;box-shadow:0 0 0 4px rgba(13,16,19,.85)"></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#eceef0;background:rgba(21,24,27,.94);border:1px solid #333a41;padding:2px 8px">◆ OIL COAST PLASTICS</div>
+        </div>
+        <div style="position:absolute;left:1400px;top:300px;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:7px;z-index:2">
+          <div style="width:22px;height:22px;transform:rotate(45deg);border:2.5px dashed #56a8ff;background:repeating-linear-gradient(45deg,rgba(86,168,255,.2) 0 2px,transparent 2px 5px);box-shadow:0 0 0 4px rgba(13,16,19,.85)"></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;font-style:italic;color:#56a8ff;background:rgba(21,24,27,.94);border:1px dashed #2a5f96;padding:2px 8px">◇ QUARTZ ANNEX</div>
+        </div>
+
+        <!-- SEARCH -->
+        <div style="position:absolute;top:12px;left:12px;width:280px;height:30px;background:#15181b;border:1px solid #333a41;display:flex;align-items:center;gap:8px;padding:0 10px">
+          <div style="width:10px;height:10px;border:1.5px solid #6c7680;border-radius:50%;position:relative"><div style="position:absolute;width:5px;height:1.5px;background:#6c7680;transform:rotate(45deg);left:8px;top:9px"></div></div>
+          <div style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">find item, factory, node…</div>
+          <div style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#49525b;border:1px solid #262b30;padding:1px 5px">⌘K</div>
+        </div>
+
+        <!-- OVERLAY CHIPS -->
+        <div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px">
+          <div style="height:30px;display:flex;align-items:center;gap:6px;background:#f78b23;padding:0 12px;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414">FLOWS <span style="font:500 9px 'JetBrains Mono',monospace;opacity:.7">1</span></div>
+          <div style="height:30px;display:flex;align-items:center;gap:6px;background:#15181b;border:1px solid #333a41;padding:0 12px;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">POWER <span style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">2</span></div>
+          <div style="height:30px;display:flex;align-items:center;gap:6px;background:#15181b;border:1px solid #333a41;padding:0 12px;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">DIFF <span style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">3</span></div>
+          <div style="height:30px;display:flex;align-items:center;gap:6px;background:#15181b;border:1px solid #333a41;padding:0 12px;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">NODES <span style="font:500 9px 'JetBrains Mono',monospace;color:#49525b">4</span></div>
+        </div>
+
+        <!-- ACTIONS + ZOOM top-right -->
+        <div style="position:absolute;top:12px;right:12px;display:flex;gap:8px;align-items:center">
+          <div style="height:30px;display:flex;align-items:center;background:#15181b;border:1px solid #333a41;padding:0 12px;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">+ FACTORY <span style="font:500 9px 'JetBrains Mono',monospace;color:#49525b;margin-left:6px">N</span></div>
+          <div style="height:30px;display:flex;align-items:center;background:#f78b23;padding:0 14px;font:700 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414">PLAN SUPPLY CHAIN <span style="font:500 9px 'JetBrains Mono',monospace;opacity:.7;margin-left:6px">P</span></div>
+          <div style="height:30px;display:flex;align-items:center;background:#15181b;border:1px solid #333a41">
+            <div style="width:30px;text-align:center;font:500 13px 'JetBrains Mono',monospace;color:#aab3bb;border-right:1px solid #262b30">−</div>
+            <div style="width:52px;text-align:center;font:500 10.5px 'JetBrains Mono',monospace;color:#6c7680">100%</div>
+            <div style="width:30px;text-align:center;font:500 13px 'JetBrains Mono',monospace;color:#aab3bb;border-left:1px solid #262b30">+</div>
+          </div>
+        </div>
+
+        <!-- LEGEND -->
+        <div style="position:absolute;left:12px;bottom:12px;width:230px;background:rgba(21,24,27,.95);border:1px solid #333a41">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid #262b30"><span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680">LEGEND</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#49525b">–</span></div>
+          <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px;font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">
+            <div style="display:flex;gap:10px"><span style="color:#56a8ff">◇ PLANNED</span><span style="color:#e5a83b">◈ U/C</span><span style="color:#eceef0">◆ BUILT</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><div style="width:26px;height:2px;background:#46c07a"></div><div style="width:26px;height:4px;background:repeating-linear-gradient(90deg,#e5a83b 0 8px,#8a6423 8px 11px)"></div><div style="width:26px;height:6px;background:repeating-linear-gradient(90deg,#ff5d55 0 5px,#7a2622 5px 8px)"></div><span style="color:#6c7680">LOAD &lt;70·95·100%</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><div style="width:26px;height:2px;background:#9aa3ab"></div><span style="color:#6c7680">BELT</span><div style="width:26px;height:6px;border-top:2px solid #9aa3ab;border-bottom:2px solid #9aa3ab"></div><span style="color:#6c7680">RAIL</span><div style="width:26px;height:0;border-top:2px dotted #9aa3ab"></div><span style="color:#6c7680">DRONE</span></div>
+            <div style="display:flex;align-items:center;gap:6px"><div style="width:11px;height:11px;border-radius:50%;border:2px solid #9aa3ab;display:flex;align-items:center;justify-content:center"><div style="width:4px;height:4px;border-radius:50%;background:#f78b23"></div></div><span style="color:#6c7680">CLAIMED</span><div style="width:11px;height:11px;border-radius:50%;border:2px solid #49525b"></div><span style="color:#6c7680">FREE</span><div style="width:11px;height:11px;border-radius:50%;border:2px solid #ff5d55"></div><span style="color:#6c7680">CONFLICT</span></div>
+          </div>
+        </div>
+
+        <!-- ADVISOR TAB -->
+        <div style="position:absolute;right:0;top:180px;width:26px;height:118px;background:#15181b;border:1px solid #333a41;border-right:none;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:8px">
+          <div style="width:16px;height:16px;border-radius:50%;background:#f78b23;color:#141414;font:700 10px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center">3</div>
+          <div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.16em;color:#6c7680;writing-mode:vertical-rl">ADVISOR</div>
+        </div>
+
+        <!-- AUDIT HANDLE -->
+        <div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);display:flex;align-items:center;gap:8px;font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#aab3bb;background:#15181b;border:1px solid #333a41;border-bottom:none;padding:5px 18px">▲ AUDIT <span style="font:500 9px 'JetBrains Mono',monospace;color:#49525b;border:1px solid #262b30;padding:0 4px">TAB</span></div>
+      </div>
+
+      <!-- STATUS BAR -->
+      <div style="position:absolute;left:0;right:0;bottom:0;height:24px;background:#15181b;border-top:1px solid #262b30;display:flex;align-items:center;gap:18px;padding:0 14px;font:500 10px 'JetBrains Mono',monospace;color:#6c7680;z-index:40">
+        <span style="display:flex;align-items:center;gap:6px;color:#46c07a">PWR 4.2/6.0 GW<span style="display:inline-block;width:50px;height:4px;background:#262b30"><span style="display:block;width:70%;height:4px;background:#46c07a"></span></span></span>
+        <span style="color:#e5a83b">◈ 2 UNDER CONSTRUCTION</span>
+        <span style="color:#ff5d55">⚠ 1 DEFICIT: HMF −4.2/min</span>
+        <span style="color:#ff5d55">⚠ 1 NODE CONFLICT</span>
+        <span style="margin-left:auto">14 FACTORIES · 31 ROUTES · 06 TRAINS</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2b SUMMARY DRAWER ============ -->
+<div class="dv-opt" id="2b" data-screen-label="2b Factory summary drawer">
+  <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Summary drawer — slides over map right edge on pin select · 380w</div>
+  <div class="dv-card" style="width:380px">
+    <div style="background:#15181b">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #262b30;background:#1c2024">
+        <div style="width:36px;height:36px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#15181b 2px 5px)"></div>
+        <div style="flex:1">
+          <div style="font:700 17px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">COASTAL STEEL</div>
+          <div style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">ROCKY BEACH · 42 MACHINES · 2 NODES</div>
+        </div>
+        <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:2px 6px">◆ BUILT</span>
+        <span style="font:400 14px 'JetBrains Mono',monospace;color:#6c7680">×</span>
+      </div>
+
+      <div style="padding:12px 14px;border-bottom:1px solid #262b30">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:8px">OUTPUTS</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div><span style="font:600 12.5px Rajdhani,sans-serif;color:#eceef0;flex:1">Steel Beam</span><span style="font:700 14px 'JetBrains Mono',monospace;color:#eceef0;font-variant-numeric:tabular-nums">96<span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">/min</span></span></div>
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div><span style="font:600 12.5px Rajdhani,sans-serif;color:#eceef0;flex:1">Steel Pipe</span><span style="font:700 14px 'JetBrains Mono',monospace;color:#eceef0;font-variant-numeric:tabular-nums">120<span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">/min</span></span></div>
+        </div>
+      </div>
+
+      <div style="padding:12px 14px;border-bottom:1px solid #262b30">
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:8px">ROUTES — IN</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px;font:500 10.5px 'JetBrains Mono',monospace"><span style="color:#aab3bb;flex:1">⟵ Northern Forge · MK.4</span><span style="display:inline-block;width:44px;height:4px;background:#262b30"><span style="display:block;width:40%;height:4px;background:#46c07a"></span></span><span style="color:#46c07a">312/780</span></div>
+          <div style="display:flex;align-items:center;gap:8px;font:500 10.5px 'JetBrains Mono',monospace"><span style="color:#aab3bb;flex:1">⟵ COAL NODE #12 · MK.3</span><span style="display:inline-block;width:44px;height:4px;background:#262b30"><span style="display:block;width:100%;height:4px;background:#ff5d55"></span></span><span style="color:#ff5d55">270/270⚠</span></div>
+        </div>
+        <div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin:10px 0 8px">ROUTES — OUT</div>
+        <div style="display:flex;align-items:center;gap:8px;font:500 10.5px 'JetBrains Mono',monospace"><span style="color:#aab3bb;flex:1">⟶ Heavy Frame Annex · MK.4</span><span style="display:inline-block;width:44px;height:4px;background:#262b30"><span style="display:block;width:80%;height:4px;background:#e5a83b"></span></span><span style="color:#e5a83b">624/780↗</span></div>
+      </div>
+
+      <div style="padding:12px 14px;border-bottom:1px solid #262b30;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:4px">POWER DRAW</div><div style="font:700 15px 'JetBrains Mono',monospace;color:#eceef0">186 <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">MW · WEST TRUNK</span></div></div>
+        <div><div style="font:600 10px Rajdhani,sans-serif;letter-spacing:.14em;color:#6c7680;margin-bottom:4px">PLAN vs BUILT</div><div style="font:500 11px 'JetBrains Mono',monospace;color:#46c07a">MATCHES PLAN ✓</div></div>
+      </div>
+
+      <div style="padding:12px 14px;display:flex;gap:8px">
+        <div style="flex:1;height:34px;background:#f78b23;display:flex;align-items:center;justify-content:center;gap:8px;font:700 12px Rajdhani,sans-serif;letter-spacing:.12em;color:#141414">OPEN FACTORY <span style="font:500 9.5px 'JetBrains Mono',monospace;opacity:.7">⏎</span></div>
+        <div style="height:34px;padding:0 14px;border:1px solid #333a41;display:flex;align-items:center;font:600 11px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb">HISTORY</div>
+        <div style="height:34px;width:34px;border:1px solid #333a41;display:flex;align-items:center;justify-content:center;font:500 12px 'JetBrains Mono',monospace;color:#aab3bb">⋯</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2c ADVISOR PANEL ============ -->
+<div class="dv-opt" id="2c" data-screen-label="2c Advisor panel expanded">
+  <div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Advisor panel — expanded from right tab · 340w</div>
+  <div class="dv-card" style="width:340px">
+    <div style="background:#15181b">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #262b30;background:#1c2024">
+        <div style="font:700 13px Rajdhani,sans-serif;letter-spacing:.14em;color:#eceef0">ADVISOR</div>
+        <span style="font:600 9px 'JetBrains Mono',monospace;color:#46c07a;border:1px solid #1e4531;padding:1px 5px">AMBIENT · ON</span>
+        <span style="margin-left:auto;font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">EVAL 14:02</span>
+        <span style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">⏸</span>
+        <span style="font:500 11px 'JetBrains Mono',monospace;color:#6c7680">»</span>
+      </div>
+
+      <div style="padding:10px 12px;display:flex;flex-direction:column;gap:10px">
+        <!-- CRIT card -->
+        <div style="background:#1c2024;border:1px solid #7a2622;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)">
+          <div style="padding:9px 11px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font:700 9.5px 'JetBrains Mono',monospace;color:#0e1012;background:#ff5d55;padding:1px 5px">⚠ CONFLICT</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">Node double-booked</span></div>
+            <div style="font:400 11.5px/1.5 Barlow,sans-serif;color:#aab3bb">QZ PURE #04 (Dune Desert) is claimed by both <span style="color:#56a8ff">◇ Quartz Annex</span> and <span style="color:#56a8ff">◇ Glass Works</span>. Combined draw 480/min exceeds node max 240/min.</div>
+            <div style="display:flex;gap:6px;margin-top:2px">
+              <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#f78b23;border:1px solid #f78b23;padding:3px 8px">RESOLVE…</span>
+              <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;border:1px solid #333a41;padding:3px 8px">DISMISS</span>
+            </div>
+            <div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b;border-top:1px solid #262b30;padding-top:5px">SAW: node claims @14:02 · RULE: Σdraw &gt; node max</div>
+          </div>
+        </div>
+
+        <!-- WARN card -->
+        <div style="background:#1c2024;border:1px solid #333a41;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)">
+          <div style="padding:9px 11px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font:700 9.5px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:1px 5px">▲ TREND</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">Belt nearing saturation</span></div>
+            <div style="font:400 11.5px/1.5 Barlow,sans-serif;color:#aab3bb">Coastal Steel → Heavy Frame Annex is at <span style="font:500 11px 'JetBrains Mono',monospace;color:#e5a83b">624/780 (80%)</span> and will hit capacity when Annex reaches 8/8 machines. Mk.5 upgrade or a second belt clears it.</div>
+            <div style="display:flex;gap:6px;margin-top:2px">
+              <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#f78b23;border:1px solid #f78b23;padding:3px 8px">CREATE PROPOSAL</span>
+              <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;border:1px solid #333a41;padding:3px 8px">DISMISS</span>
+            </div>
+            <div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b;border-top:1px solid #262b30;padding-top:5px">SAW: flows, U/C progress @14:02 · RULE: sat &gt;75% + trend ↗</div>
+          </div>
+        </div>
+
+        <!-- TIP card -->
+        <div style="background:#1c2024;border:1px solid #333a41;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)">
+          <div style="padding:9px 11px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font:700 9.5px 'JetBrains Mono',monospace;color:#0e1012;background:#aab3bb;padding:1px 5px">● TIP</span><span style="font:600 13px Rajdhani,sans-serif;color:#eceef0">Alt recipe opportunity</span></div>
+            <div style="font:400 11.5px/1.5 Barlow,sans-serif;color:#aab3bb">You unlocked <span style="color:#eceef0">Solid Steel Ingot</span>. At Coastal Steel it cuts iron ore draw ~25% and frees the saturated coal belt.</div>
+            <div style="display:flex;gap:6px;margin-top:2px">
+              <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#f78b23;border:1px solid #f78b23;padding:3px 8px">PREVIEW IMPACT</span>
+              <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;border:1px solid #333a41;padding:3px 8px">DISMISS</span>
+            </div>
+            <div style="font:500 9px 'JetBrains Mono',monospace;color:#49525b;border-top:1px solid #262b30;padding-top:5px">SAW: milestone unlocks, recipes @14:02 · RULE: new alt beats current on claimed inputs</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:8px 12px;border-top:1px solid #262b30;display:flex;align-items:center;gap:8px">
+        <div style="flex:1;font:400 10.5px/1.4 Barlow,sans-serif;color:#6c7680">The advisor never edits your plan — every suggestion becomes a proposal you review.</div>
+        <span style="font:600 10px Rajdhani,sans-serif;letter-spacing:.1em;color:#aab3bb;border:1px solid #333a41;padding:3px 8px">ASK…</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2d AUDIT DRAWER ============ -->
+<div class="dv-opt" id="2d" data-screen-label="2d Audit drawer">
+  <div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Audit drawer — pulls up over map, half height · pinnable to full · 1920w</div>
+  <div class="dv-card" style="width:1920px">
+    <div style="background:#15181b;border-top:2px solid #333a41">
+      <div style="display:flex;align-items:center;gap:4px;padding:0 14px;height:38px;border-bottom:1px solid #262b30;background:#1c2024">
+        <div style="height:38px;display:flex;align-items:center;gap:6px;padding:0 14px;border-bottom:2px solid #f78b23;font:600 11.5px Rajdhani,sans-serif;letter-spacing:.12em;color:#eceef0">SATURATION <span style="font:600 9px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:0 4px">3</span></div>
+        <div style="height:38px;display:flex;align-items:center;gap:6px;padding:0 14px;font:600 11.5px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">DEFICITS <span style="font:600 9px 'JetBrains Mono',monospace;color:#0e1012;background:#ff5d55;padding:0 4px">1</span></div>
+        <div style="height:38px;display:flex;align-items:center;padding:0 14px;font:600 11.5px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">POWER</div>
+        <div style="height:38px;display:flex;align-items:center;gap:6px;padding:0 14px;font:600 11.5px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">PLAN DRIFT <span style="font:600 9px 'JetBrains Mono',monospace;color:#0e1012;background:#e5a83b;padding:0 4px">2</span></div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:14px;font:500 10px 'JetBrains Mono',monospace;color:#6c7680"><span>LIVE — re-audits on every change</span><span>⇱ PIN FULL</span><span>▼ TAB</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:340px 110px 90px 170px 1fr 110px 220px;font:500 10px 'JetBrains Mono',monospace;color:#6c7680;border-bottom:1px solid #262b30">
+        <div style="padding:7px 14px">ROUTE</div><div style="padding:7px 10px">TYPE·TIER</div><div style="padding:7px 10px;text-align:right">LOAD %</div><div style="padding:7px 10px">THROUGHPUT</div><div style="padding:7px 10px">PROJECTION</div><div style="padding:7px 10px">TREND</div><div style="padding:7px 10px">ACTION</div>
+      </div>
+      <div style="display:grid;grid-template-columns:340px 110px 90px 170px 1fr 110px 220px;align-items:center;height:32px;border-bottom:1px solid #1c2024;background:rgba(255,93,85,.05)">
+        <div style="padding:0 14px;font:600 12px Rajdhani,sans-serif;color:#eceef0">COAL NODE #12 ⟶ Coastal Steel</div>
+        <div style="padding:0 10px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">BELT·MK.3</div>
+        <div style="padding:0 10px;font:700 11px 'JetBrains Mono',monospace;color:#ff5d55;text-align:right">100%</div>
+        <div style="padding:0 10px;display:flex;align-items:center;gap:8px"><span style="display:inline-block;width:70px;height:5px;background:#262b30"><span style="display:block;width:100%;height:5px;background:repeating-linear-gradient(90deg,#ff5d55 0 4px,#7a2622 4px 7px)"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#ff5d55">270/270</span></div>
+        <div style="padding:0 10px;font:400 11px Barlow,sans-serif;color:#aab3bb">starving smelter bank B — cause of HMF deficit</div>
+        <div style="padding:0 10px;font:500 10.5px 'JetBrains Mono',monospace;color:#ff5d55">CAPPED</div>
+        <div style="padding:0 10px;display:flex;gap:6px"><span style="font:600 9.5px Rajdhani,sans-serif;letter-spacing:.1em;color:#f78b23;border:1px solid #f78b23;padding:2px 7px">FIX WITH SOLVER</span><span style="font:600 9.5px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;border:1px solid #333a41;padding:2px 7px">TRACE</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:340px 110px 90px 170px 1fr 110px 220px;align-items:center;height:32px;border-bottom:1px solid #1c2024">
+        <div style="padding:0 14px;font:600 12px Rajdhani,sans-serif;color:#eceef0">Coastal Steel ⟶ Heavy Frame Annex</div>
+        <div style="padding:0 10px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">BELT·MK.4</div>
+        <div style="padding:0 10px;font:700 11px 'JetBrains Mono',monospace;color:#e5a83b;text-align:right">80%</div>
+        <div style="padding:0 10px;display:flex;align-items:center;gap:8px"><span style="display:inline-block;width:70px;height:5px;background:#262b30"><span style="display:block;width:80%;height:5px;background:#e5a83b"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#e5a83b">624/780</span></div>
+        <div style="padding:0 10px;font:400 11px Barlow,sans-serif;color:#aab3bb">hits 100% at Annex 8/8 machines (◈ now 5/8)</div>
+        <div style="padding:0 10px;font:500 10.5px 'JetBrains Mono',monospace;color:#e5a83b">↗ +52/wk</div>
+        <div style="padding:0 10px;display:flex;gap:6px"><span style="font:600 9.5px Rajdhani,sans-serif;letter-spacing:.1em;color:#f78b23;border:1px solid #f78b23;padding:2px 7px">UPGRADE TIER</span><span style="font:600 9.5px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;border:1px solid #333a41;padding:2px 7px">SPLIT ROUTE</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:340px 110px 90px 170px 1fr 110px 220px;align-items:center;height:32px;border-bottom:1px solid #1c2024">
+        <div style="padding:0 14px;font:600 12px Rajdhani,sans-serif;color:#aab3bb">Oil Coast Plastics ⟶ Heavy Frame Annex</div>
+        <div style="padding:0 10px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">RAIL·2×FRT</div>
+        <div style="padding:0 10px;font:700 11px 'JetBrains Mono',monospace;color:#46c07a;text-align:right">70%</div>
+        <div style="padding:0 10px;display:flex;align-items:center;gap:8px"><span style="display:inline-block;width:70px;height:5px;background:#262b30"><span style="display:block;width:70%;height:5px;background:#46c07a"></span></span><span style="font:500 10.5px 'JetBrains Mono',monospace;color:#46c07a">84/120</span></div>
+        <div style="padding:0 10px;font:400 11px Barlow,sans-serif;color:#6c7680">round trip 4:20 incl. load — margin OK</div>
+        <div style="padding:0 10px;font:500 10.5px 'JetBrains Mono',monospace;color:#6c7680">— FLAT</div>
+        <div style="padding:0 10px;display:flex;gap:6px"><span style="font:600 9.5px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;border:1px solid #333a41;padding:2px 7px">ADD CAR</span></div>
+      </div>
+      <div style="padding:8px 14px;font:500 10px 'JetBrains Mono',monospace;color:#49525b">SORTED BY LOAD DESC · CLICK ROW = HIGHLIGHT ROUTE ON MAP BEHIND · ⏎ = JUMP TO IT</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 2e INTERACTION SPEC ============ -->
+<div class="dv-opt" id="2e" data-screen-label="2e Map interaction spec">
+  <div class="dv-olabel"><a class="dv-oid" href="#2e">2e</a>Interaction spec — zoom continuum, pointer, keyboard</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Map interactions</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Zoom continuum (the dive)</div>
+        <div style="display:flex;flex-direction:column;gap:4px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">
+          <div><span style="color:#eceef0">L0 WORLD</span> — pins + routes + nodes (2a)</div>
+          <div><span style="color:#eceef0">L1 REGION ~250%</span> — pins swell into mini-cards: top output rate, worst route load, U/C progress</div>
+          <div><span style="color:#eceef0">L2 FACTORY</span> — zoom past a pin's threshold → 400ms morph: mini-card expands to the factory graph; map fades under</div>
+        </div>
+        <div style="margin-top:6px">Breadcrumb chip appears top-left: <span style="font:500 10px 'JetBrains Mono',monospace;color:#eceef0;background:#1c2024;border:1px solid #333a41;padding:1px 6px">⟵ WORLD · ESC</span>. Scroll out of L2 returns to map at the same spot — position is never lost. Reduced-motion: 150ms crossfade instead.</div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Pointer</div>
+        Hover pin → its routes stay full color, everything else dims to 40%; label brightens. Hover route → tooltip: contents, load, tier, distance. Click = select (drawer <a href="#2b">2b</a>). Double-click or ⏎ = dive. Drag: <span style="color:#56a8ff">planned pins relocate freely</span> (routes re-measure live); built pins are locked — drag shows a LOCKED chip, offer "plan a move" instead. Right-drag from any pin/node = draw a route, snaps to valid targets, ghost-blue until confirmed. Scroll = zoom to cursor; space-drag or middle-drag = pan.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Keyboard</div>
+        <div style="font:500 10.5px/1.7 'JetBrains Mono',monospace;color:#aab3bb">⌘K search · 1–4 overlays · TAB audit drawer · A advisor · N new factory · P plan supply chain · F frame all · ESC deselect / zoom out one level</div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Overlay logic</div>
+        FLOWS, POWER, NODES are additive layers. DIFF is a <span style="color:#eceef0">mode</span>: map desaturates, planned renders blueprint-blue, drift (built ≠ plan) outlines amber with a delta chip; everything matching fades back. Exiting DIFF restores previous layers.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Next: proposal review system (shared by wizard + advisor), then factory graph view. Try: "mock the proposal review" · "show DIFF overlay state of <a class="dv-oid" href="#2a">2a</a>" · "tighten the drawer <a class="dv-oid" href="#2b">2b</a>"</p>
+</section>
+
+<section class="dv-turn" id="t1" data-screen-label="Turn 1 — Foundations">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Foundations — tokens, status system, nav model options</span></div>
+<div class="dv-opts">
+
+<!-- ============ 1a ASSUMPTIONS ============ -->
+<div class="dv-opt" id="1a" data-screen-label="1a Assumptions">
+  <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Assumptions &amp; design reasoning — read first</div>
+  <div class="dv-card" style="width:440px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;display:flex;align-items:center;gap:8px">
+      <div style="width:8px;height:8px;background:#f78b23"></div>
+      <div style="font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Design memo · 001</div>
+    </div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12.5px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Locked by you</div>
+        Real extracted map imagery · continuous-zoom map→graph transition · right-side advisor panel with badge · blueprint-ghost planned encoding · custom titlebar · 1920×1080 floor · redundant (non-color) encodings from day one · restrained copy.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">My calls — veto anytime</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div><span style="color:#eceef0;font-weight:600">Density = node-editor grade.</span> Chrome rows at 24–28px, panels dense like Blender/TradingView; the two canvases (map, graph) stay generous. Breathing room is non-negotiable only on canvases and inside proposal review.</div>
+          <div><span style="color:#eceef0;font-weight:600">Brightness hierarchy: “orange is a verb.”</span> Signal orange only on interactive or attention-demanding elements — never decoration. If everything glows, nothing does.</div>
+          <div><span style="color:#eceef0;font-weight:600">Under-construction bridges the other two states:</span> amber dashed — visually between planned (blue ghost) and built (solid steel). Each state also gets a glyph (◇ ◈ ◆) so no state is color-only.</div>
+          <div><span style="color:#eceef0;font-weight:600">Type trio:</span> Rajdhani (display/labels) · Barlow (body — condensed-adjacent, legible at 12px) · JetBrains Mono (every number, always tabular).</div>
+        </div>
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Placeholders</div>
+        Game icons + map imagery are extracted at runtime from the user's install — every mock uses striped placeholders where they'd appear. No game assets are ever recreated by hand.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23;margin-bottom:6px">Sequence</div>
+        This turn: tokens + status system + nav options (<a href="#1g">1g</a>–<a href="#1i">1i</a>). Once you pick a nav model → screen specs &amp; working mocks: map first, then proposal review.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1b COLOR ============ -->
+<div class="dv-opt" id="1b" data-screen-label="1b Color tokens">
+  <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Color tokens</div>
+  <div class="dv-card" style="width:620px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Palette</div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:16px">
+
+      <div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eceef0">Steel</span><span style="font:400 11px Barlow,sans-serif;color:#6c7680">surfaces — cool near-blacks, one family</span></div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px">
+          <div style="display:flex;flex-direction:column;gap:4px"><div style="height:40px;background:#0e1012;border:1px solid #262b30"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">950 #0E1012</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">canvas</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><div style="height:40px;background:#15181b;border:1px solid #262b30"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">900 #15181B</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">panel</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><div style="height:40px;background:#1c2024;border:1px solid #262b30"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">800 #1C2024</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">card</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><div style="height:40px;background:#262b30"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">700 #262B30</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">raised / hover</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><div style="height:40px;background:#333a41"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">600 #333A41</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">border</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><div style="height:40px;background:#49525b"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">500 #49525B</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">border-strong</div></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eceef0">Ink</span><span style="font:400 11px Barlow,sans-serif;color:#6c7680">text</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#eceef0"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">100 #ECEEF0</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">primary</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#aab3bb"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">300 #AAB3BB</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">secondary</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#6c7680"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">500 #6C7680</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">muted</div></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#f78b23">Signal</span><span style="font:400 11px Barlow,sans-serif;color:#6c7680">accent — interactive &amp; attention only</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#f78b23"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">500 #F78B23</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">primary</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#ffa347"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">400 #FFA347</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">hover</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:rgba(247,139,35,.14);border:1px solid rgba(247,139,35,.35)"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">500 / 14%</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">selected bg</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#56a8ff">Blueprint</span><span style="font:400 11px Barlow,sans-serif;color:#6c7680">the “planned” family — nothing else may be blue</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#56a8ff"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">400 #56A8FF</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">stroke / text</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#2a5f96"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">600 #2A5F96</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">dim stroke</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:rgba(86,168,255,.08);border:1px solid rgba(86,168,255,.3)"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">400 / 8%</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">ghost fill</div></div>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eceef0">Flow</span><span style="font:400 11px Barlow,sans-serif;color:#6c7680">saturation + semantic status</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#46c07a"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">OK #46C07A</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">&lt; 70%</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#e5a83b"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">WARN #E5A83B</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">70–95%</div></div>
+            <div style="display:flex;flex-direction:column;gap:4px"><div style="height:32px;background:#ff5d55"></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#aab3bb">CRIT #FF5D55</div><div style="font:400 10px Barlow,sans-serif;color:#6c7680">≥ 95% / deficit</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid #262b30;padding-top:10px;font:400 11.5px/1.5 Barlow,sans-serif;color:#6c7680">
+        Rules — <span style="color:#aab3bb">Signal orange never encodes status (that's Flow's job) and never decorates. Blueprint blue is exclusively “planned.” Flow colors always ship with a redundant channel (thickness, pattern, glyph, or %-label). Steel steps are the only surfaces; no gradients on chrome.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1c TYPE ============ -->
+<div class="dv-opt" id="1c" data-screen-label="1c Type scale">
+  <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Typography &amp; numeric style</div>
+  <div class="dv-card" style="width:520px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Type system</div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:0">
+      <div style="display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid #1c2024"><div style="font:700 34px/1.05 Rajdhani,sans-serif;color:#eceef0;flex:1">NORTHERN FORGE</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;text-align:right">display-34<br>Rajdhani 700 · caps</div></div>
+      <div style="display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid #1c2024"><div style="font:600 21px/1.1 Rajdhani,sans-serif;color:#eceef0;flex:1">Heavy Modular Frame line</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;text-align:right">title-21<br>Rajdhani 600</div></div>
+      <div style="display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid #1c2024"><div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#aab3bb;flex:1">Section label / panel header</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;text-align:right">label-11<br>Rajdhani 600 · caps · +14%</div></div>
+      <div style="display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid #1c2024"><div style="font:400 13px/1.5 Barlow,sans-serif;color:#aab3bb;flex:1">Body copy for advisor cards, proposal summaries, empty states. Comfortable at 12–13px on steel.</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;text-align:right">body-13<br>Barlow 400</div></div>
+      <div style="display:flex;align-items:baseline;gap:16px;padding:8px 0;border-bottom:1px solid #1c2024"><div style="font:700 22px 'JetBrains Mono',monospace;color:#eceef0;flex:1;font-variant-numeric:tabular-nums">742.5<span style="font:500 12px 'JetBrains Mono',monospace;color:#6c7680">/min</span></div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;text-align:right">data-22<br>JB Mono 700 · tabular</div></div>
+      <div style="display:flex;align-items:baseline;gap:16px;padding:8px 0"><div style="font:500 12px 'JetBrains Mono',monospace;color:#aab3bb;flex:1;font-variant-numeric:tabular-nums">312/780 · 40% · MK.4</div><div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;text-align:right">data-12<br>JB Mono 500 · tabular</div></div>
+      <div style="border-top:1px solid #262b30;margin-top:8px;padding-top:10px;font:400 11.5px/1.5 Barlow,sans-serif;color:#6c7680">
+        Rules — <span style="color:#aab3bb">every number in the app is JetBrains Mono tabular; a rate's unit is always attached and smaller. Rajdhani never below 11px; Barlow carries anything ≥ 2 lines. Floor sizes: 11px labels, 12px body, 10px mono (canvas edge-labels only).</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1d STATUS MATRIX ============ -->
+<div class="dv-opt" id="1d" data-screen-label="1d Status matrix">
+  <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Status system — one encoding, three surfaces (risk #2)</div>
+  <div class="dv-card" style="width:740px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Planned / Under construction / Built</span><span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">◇ PLANNED · ◈ U/C · ◆ BUILT — glyphs make it color-safe</span></div>
+    <div style="display:grid;grid-template-columns:110px 1fr 1fr 1fr;background:#0e1012">
+      <!-- header row -->
+      <div style="padding:8px 12px;border-bottom:1px solid #262b30"></div>
+      <div style="padding:8px 12px;border-bottom:1px solid #262b30;border-left:1px solid #1c2024;font:600 10.5px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6c7680">Map pin</div>
+      <div style="padding:8px 12px;border-bottom:1px solid #262b30;border-left:1px solid #1c2024;font:600 10.5px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6c7680">Graph card</div>
+      <div style="padding:8px 12px;border-bottom:1px solid #262b30;border-left:1px solid #1c2024;font:600 10.5px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#6c7680">Dashboard row</div>
+
+      <!-- PLANNED -->
+      <div style="padding:12px;border-bottom:1px solid #1c2024;display:flex;flex-direction:column;gap:2px"><div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.1em;color:#56a8ff">◇ PLANNED</div><div style="font:400 10.5px Barlow,sans-serif;color:#6c7680">blue ghost, dashed, hatched</div></div>
+      <div style="padding:12px;border-bottom:1px solid #1c2024;border-left:1px solid #1c2024;display:flex;align-items:center;justify-content:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="width:20px;height:20px;transform:rotate(45deg);border:2px dashed #56a8ff;background:repeating-linear-gradient(45deg,rgba(86,168,255,.18) 0 2px,transparent 2px 5px)"></div>
+          <div style="font:500 9.5px 'JetBrains Mono',monospace;color:#56a8ff;background:rgba(86,168,255,.1);border:1px dashed #2a5f96;padding:1px 5px">◇ NORTHERN FORGE</div>
+        </div>
+      </div>
+      <div style="padding:12px;border-bottom:1px solid #1c2024;border-left:1px solid #1c2024;display:flex;align-items:center;justify-content:center">
+        <div style="width:180px;border:1px dashed #56a8ff;background:rgba(86,168,255,.05)">
+          <div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px dashed #2a5f96">
+            <div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#2a5f96 0 2px,#15181b 2px 5px)"></div>
+            <div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.06em;color:#56a8ff">SMELTER ×8</div>
+            <div style="margin-left:auto;font:500 10px 'JetBrains Mono',monospace;color:#56a8ff">◇</div>
+          </div>
+          <div style="padding:6px 9px;font:500 10.5px 'JetBrains Mono',monospace;color:#5a86b3">480/min INGOT</div>
+        </div>
+      </div>
+      <div style="padding:12px;border-bottom:1px solid #1c2024;border-left:1px solid #1c2024;display:flex;align-items:center">
+        <div style="width:100%;display:flex;align-items:center;gap:8px;padding:5px 8px;background:#15181b;border:1px solid #1c2024">
+          <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#56a8ff;border:1px dashed #2a5f96;padding:1px 4px">◇ PLAN</span>
+          <span style="font:600 12px Rajdhani,sans-serif;color:#aab3bb">Northern Forge</span>
+          <span style="margin-left:auto;font:500 10.5px 'JetBrains Mono',monospace;color:#5a86b3;font-style:italic">— projected 480/min</span>
+        </div>
+      </div>
+
+      <!-- UNDER CONSTRUCTION -->
+      <div style="padding:12px;border-bottom:1px solid #1c2024;display:flex;flex-direction:column;gap:2px"><div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.1em;color:#e5a83b">◈ U/C</div><div style="font:400 10.5px Barlow,sans-serif;color:#6c7680">amber dashed, half-fill + progress</div></div>
+      <div style="padding:12px;border-bottom:1px solid #1c2024;border-left:1px solid #1c2024;display:flex;align-items:center;justify-content:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="width:20px;height:20px;transform:rotate(45deg);border:2px dashed #e5a83b;background:linear-gradient(to top,#8a6423 50%,transparent 50%)"></div>
+          <div style="font:500 9.5px 'JetBrains Mono',monospace;color:#e5a83b;background:rgba(229,168,59,.1);border:1px dashed #8a6423;padding:1px 5px">◈ NORTHERN FORGE</div>
+        </div>
+      </div>
+      <div style="padding:12px;border-bottom:1px solid #1c2024;border-left:1px solid #1c2024;display:flex;align-items:center;justify-content:center">
+        <div style="width:180px;border:1px dashed #e5a83b;background:#15181b">
+          <div style="display:flex;align-items:center;gap:8px;padding:7px 9px">
+            <div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#1c2024 2px 5px)"></div>
+            <div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">SMELTER ×8</div>
+            <div style="margin-left:auto;font:500 10px 'JetBrains Mono',monospace;color:#e5a83b">◈ 5/8</div>
+          </div>
+          <div style="height:3px;background:#262b30"><div style="width:62%;height:3px;background:#e5a83b"></div></div>
+          <div style="padding:6px 9px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">300/min INGOT <span style="color:#6c7680">of 480</span></div>
+        </div>
+      </div>
+      <div style="padding:12px;border-bottom:1px solid #1c2024;border-left:1px solid #1c2024;display:flex;align-items:center">
+        <div style="width:100%;display:flex;align-items:center;gap:8px;padding:5px 8px;background:#15181b;border:1px solid #1c2024">
+          <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#e5a83b;border:1px dashed #8a6423;padding:1px 4px">◈ 62%</span>
+          <span style="font:600 12px Rajdhani,sans-serif;color:#eceef0">Northern Forge</span>
+          <span style="margin-left:auto;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">300<span style="color:#6c7680">/480/min</span></span>
+        </div>
+      </div>
+
+      <!-- BUILT -->
+      <div style="padding:12px;display:flex;flex-direction:column;gap:2px"><div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.1em;color:#eceef0">◆ BUILT</div><div style="font:400 10.5px Barlow,sans-serif;color:#6c7680">solid steel, full opacity</div></div>
+      <div style="padding:12px;border-left:1px solid #1c2024;display:flex;align-items:center;justify-content:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="width:20px;height:20px;transform:rotate(45deg);border:2px solid #f78b23;background:#262b30"></div>
+          <div style="font:500 9.5px 'JetBrains Mono',monospace;color:#eceef0;background:#1c2024;border:1px solid #333a41;padding:1px 5px">◆ NORTHERN FORGE</div>
+        </div>
+      </div>
+      <div style="padding:12px;border-left:1px solid #1c2024;display:flex;align-items:center;justify-content:center">
+        <div style="width:180px;border:1px solid #49525b;background:#1c2024">
+          <div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid #333a41;background:#262b30">
+            <div style="width:18px;height:18px;background:repeating-linear-gradient(45deg,#49525b 0 2px,#15181b 2px 5px)"></div>
+            <div style="font:600 12px Rajdhani,sans-serif;letter-spacing:.06em;color:#eceef0">SMELTER ×8</div>
+            <div style="margin-left:auto;font:500 10px 'JetBrains Mono',monospace;color:#6c7680">◆</div>
+          </div>
+          <div style="padding:6px 9px;font:500 10.5px 'JetBrains Mono',monospace;color:#aab3bb">480/min INGOT</div>
+        </div>
+      </div>
+      <div style="padding:12px;border-left:1px solid #1c2024;display:flex;align-items:center">
+        <div style="width:100%;display:flex;align-items:center;gap:8px;padding:5px 8px;background:#15181b;border:1px solid #1c2024">
+          <span style="font:600 9.5px 'JetBrains Mono',monospace;color:#eceef0;background:#262b30;border:1px solid #49525b;padding:1px 4px">◆ BUILT</span>
+          <span style="font:600 12px Rajdhani,sans-serif;color:#eceef0">Northern Forge</span>
+          <span style="margin-left:auto;font:500 10.5px 'JetBrains Mono',monospace;color:#eceef0">480<span style="color:#6c7680">/min</span></span>
+        </div>
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid #262b30;font:400 11.5px/1.5 Barlow,sans-serif;color:#6c7680">
+      Grammar, not palette — <span style="color:#aab3bb">dashed stroke + hatch/half fill + glyph carry the state; color reinforces. Planned numbers render italic (projections, not measurements). The same grammar applies to routes: dashed blue route = planned, solid = built.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1e FLOW ENCODING ============ -->
+<div class="dv-opt" id="1e" data-screen-label="1e Flow saturation">
+  <div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Belt/route saturation — color + thickness + pattern</div>
+  <div class="dv-card" style="width:460px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">Flow edges</div>
+    <div style="padding:16px;background:#0e1012;background-image:radial-gradient(circle,#1c2024 1px,transparent 1px);background-size:16px 16px;display:flex;flex-direction:column;gap:22px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;height:2px;background:#46c07a"></div>
+        <div style="font:500 10px 'JetBrains Mono',monospace;color:#46c07a;background:#0e1012;border:1px solid #1e4531;padding:2px 6px">312/780 · 40%</div>
+        <div style="flex:1;height:2px;background:#46c07a"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;height:4px;background:repeating-linear-gradient(90deg,#e5a83b 0 10px,#8a6423 10px 14px)"></div>
+        <div style="font:500 10px 'JetBrains Mono',monospace;color:#e5a83b;background:#0e1012;border:1px solid #8a6423;padding:2px 6px">624/780 · 80%</div>
+        <div style="flex:1;height:4px;background:repeating-linear-gradient(90deg,#e5a83b 0 10px,#8a6423 10px 14px)"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;height:6px;background:repeating-linear-gradient(90deg,#ff5d55 0 6px,#7a2622 6px 10px)"></div>
+        <div style="font:700 10px 'JetBrains Mono',monospace;color:#0e1012;background:#ff5d55;padding:2px 6px">⚠ 780/780 · 100%</div>
+        <div style="flex:1;height:6px;background:repeating-linear-gradient(90deg,#ff5d55 0 6px,#7a2622 6px 10px)"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;height:2px;background:repeating-linear-gradient(90deg,#56a8ff 0 8px,transparent 8px 14px)"></div>
+        <div style="font:500 10px 'JetBrains Mono',monospace;color:#56a8ff;background:#0e1012;border:1px dashed #2a5f96;padding:2px 6px;font-style:italic">◇ 480/780 · 62%</div>
+        <div style="flex:1;height:2px;background:repeating-linear-gradient(90deg,#56a8ff 0 8px,transparent 8px 14px)"></div>
+      </div>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid #262b30;font:400 11.5px/1.5 Barlow,sans-serif;color:#6c7680">
+      Three channels agree — <span style="color:#aab3bb">2px solid → 4px dashed → 6px hazard-dashed as load rises; label chip always states n/capacity · %. Planned flows use blueprint grammar regardless of load. In-app, built edges animate direction of travel (12s slow drift; off under reduced-motion — pattern + label already carry the data).</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1f SYSTEM RULES ============ -->
+<div class="dv-opt" id="1f" data-screen-label="1f Spacing motion icons">
+  <div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>Spacing · iconography · motion</div>
+  <div class="dv-card" style="width:440px">
+    <div style="padding:10px 16px;border-bottom:1px solid #262b30;font:600 13px Rajdhani,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#eceef0">System rules</div>
+    <div style="padding:14px 16px;display:flex;flex-direction:column;gap:14px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb">
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eceef0;margin-bottom:6px">Spacing — 4px base</div>
+        <div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:6px">
+          <div style="width:4px;height:12px;background:#49525b"></div><div style="width:8px;height:12px;background:#49525b"></div><div style="width:12px;height:12px;background:#49525b"></div><div style="width:16px;height:12px;background:#49525b"></div><div style="width:24px;height:12px;background:#49525b"></div><div style="width:32px;height:12px;background:#49525b"></div>
+          <div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680;margin-left:4px">4·8·12·16·24·32</div>
+        </div>
+        Row heights: 24px dense lists · 28px default · 36px inputs/titlebar. Panel padding 12px; card padding 8–12px. Radius: 3px everywhere; 0 on canvas elements. Corner-cut (6px notch, top-right) reserved for proposal cards and modals — the one FICSIT flourish.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eceef0;margin-bottom:6px">Iconography</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:20px;height:20px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:28px;height:28px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div>
+          <div style="width:40px;height:40px;background:repeating-linear-gradient(45deg,#333a41 0 2px,#1c2024 2px 5px)"></div>
+          <div style="font:500 9.5px 'JetBrains Mono',monospace;color:#6c7680">20 · 28 · 40 — extracted game icons</div>
+        </div>
+        Game icons are the nouns: never recolored, never redrawn, always on a steel-800 chip. UI verbs (pan, filter, settings) are 1.5px-stroke line glyphs, ink-300, one geometric set. An item is never referred to by text alone where an icon can sit first.
+      </div>
+      <div>
+        <div style="font:600 11px Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#eceef0;margin-bottom:6px">Motion</div>
+        Fast and mechanical: 120ms panels/hover, 200ms drawers, cubic-bezier(.2,0,0,1) — nothing bouncy. Live-solve updates numbers in place with a 300ms amber→ink settle flash; <span style="color:#eceef0">layout never shifts during a solve</span>. Continuous zoom map→graph is the one cinematic moment (~400ms). Reduced-motion: crossfades replace zoom/drawers, belt animation off, settle flash becomes instant swap.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1g NAV A ============ -->
+<div class="dv-opt" id="1g" data-screen-label="1g Nav option A">
+  <div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>Nav A — “Map is the app” · my recommendation</div>
+  <div class="dv-card" style="width:480px">
+    <!-- wireframe -->
+    <div style="height:300px;background:#0e1012;position:relative;overflow:hidden">
+      <!-- titlebar -->
+      <div style="height:30px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;padding:0 10px;gap:10px">
+        <div style="width:9px;height:9px;background:#f78b23"></div>
+        <div style="font:700 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#eceef0">FICSIT PLANNER</div>
+        <div style="font:500 9px 'JetBrains Mono',monospace;color:#6c7680;margin-left:8px">save: PHASE-4.sav · synced 2m</div>
+        <div style="margin-left:auto;display:flex;gap:6px"><div style="width:8px;height:8px;border:1px solid #49525b"></div><div style="width:8px;height:8px;border:1px solid #49525b"></div><div style="width:8px;height:8px;border:1px solid #49525b"></div></div>
+      </div>
+      <!-- map area -->
+      <div style="position:absolute;inset:30px 0 22px 0;background:repeating-linear-gradient(45deg,#111417 0 14px,#0e1012 14px 28px)">
+        <div style="position:absolute;top:42%;left:38%;font:500 9px 'JetBrains Mono',monospace;color:#49525b">[ EXTRACTED GAME MAP ]</div>
+        <!-- pins -->
+        <div style="position:absolute;top:30%;left:22%;width:12px;height:12px;transform:rotate(45deg);border:2px solid #f78b23;background:#262b30"></div>
+        <div style="position:absolute;top:55%;left:58%;width:12px;height:12px;transform:rotate(45deg);border:2px dashed #56a8ff;background:rgba(86,168,255,.15)"></div>
+        <div style="position:absolute;top:33%;left:23.5%;width:110px;height:0;border-top:2px solid #46c07a;transform:rotate(18deg);transform-origin:left"></div>
+        <!-- overlay chips top-center -->
+        <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:4px">
+          <div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.1em;color:#141414;background:#f78b23;padding:2px 7px">FLOWS</div>
+          <div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.1em;color:#aab3bb;background:#1c2024;border:1px solid #333a41;padding:2px 7px">POWER</div>
+          <div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.1em;color:#aab3bb;background:#1c2024;border:1px solid #333a41;padding:2px 7px">DIFF</div>
+          <div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.1em;color:#aab3bb;background:#1c2024;border:1px solid #333a41;padding:2px 7px">NODES</div>
+        </div>
+        <!-- audit drawer handle bottom -->
+        <div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);font:600 9px Rajdhani,sans-serif;letter-spacing:.12em;color:#aab3bb;background:#15181b;border:1px solid #333a41;border-bottom:none;padding:3px 14px">▲ AUDIT</div>
+        <!-- advisor tab right -->
+        <div style="position:absolute;right:0;top:20%;width:22px;height:96px;background:#15181b;border:1px solid #333a41;border-right:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:6px">
+          <div style="width:14px;height:14px;border-radius:50%;background:#f78b23;color:#141414;font:700 9px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center">3</div>
+          <div style="font:600 8px Rajdhani,sans-serif;letter-spacing:.1em;color:#6c7680;writing-mode:vertical-rl">ADVISOR</div>
+        </div>
+        <!-- search top-left -->
+        <div style="position:absolute;top:8px;left:8px;font:500 9px 'JetBrains Mono',monospace;color:#6c7680;background:#15181b;border:1px solid #333a41;padding:3px 8px">⌘K search empire…</div>
+      </div>
+      <!-- status bar -->
+      <div style="position:absolute;left:0;right:0;bottom:0;height:22px;background:#15181b;border-top:1px solid #262b30;display:flex;align-items:center;gap:14px;padding:0 10px;font:500 9px 'JetBrains Mono',monospace;color:#6c7680">
+        <span style="color:#46c07a">▲ PWR 4.2/6.0 GW</span><span style="color:#e5a83b">◈ 2 U/C</span><span style="color:#ff5d55">⚠ 1 DEFICIT</span><span style="margin-left:auto">14 FACTORIES · 31 ROUTES</span>
+      </div>
+    </div>
+    <div style="padding:12px 16px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb;border-top:1px solid #262b30">
+      No pages at all. Dashboard = bottom <span style="color:#eceef0">Audit drawer</span> (pull up, half-height, map stays live behind). Advisor = right tab. Factory view = zoom continuation of the map. Wizard = modal. <span style="color:#eceef0">Strongest expression of “map is truth”</span>; everything is a layer, one mental model.<br>
+      <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">RISK: audit work in a drawer can feel cramped for long sessions → drawer is pinnable to full-height.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1h NAV B ============ -->
+<div class="dv-opt" id="1h" data-screen-label="1h Nav option B">
+  <div class="dv-olabel"><a class="dv-oid" href="#1h">1h</a>Nav B — slim rail, sibling surfaces</div>
+  <div class="dv-card" style="width:480px">
+    <div style="height:300px;background:#0e1012;position:relative;overflow:hidden">
+      <div style="height:30px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;padding:0 10px;gap:10px">
+        <div style="width:9px;height:9px;background:#f78b23"></div>
+        <div style="font:700 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#eceef0">FICSIT PLANNER</div>
+        <div style="margin-left:auto;display:flex;gap:6px"><div style="width:8px;height:8px;border:1px solid #49525b"></div><div style="width:8px;height:8px;border:1px solid #49525b"></div><div style="width:8px;height:8px;border:1px solid #49525b"></div></div>
+      </div>
+      <!-- rail -->
+      <div style="position:absolute;left:0;top:30px;bottom:0;width:44px;background:#15181b;border-right:1px solid #262b30;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:8px">
+        <div style="width:32px;height:32px;background:rgba(247,139,35,.14);border:1px solid #f78b23;display:flex;align-items:center;justify-content:center;font:600 8px Rajdhani,sans-serif;color:#f78b23">MAP</div>
+        <div style="width:32px;height:32px;border:1px solid #333a41;display:flex;align-items:center;justify-content:center;font:600 7px Rajdhani,sans-serif;color:#6c7680">AUDIT</div>
+        <div style="width:32px;height:32px;border:1px solid #333a41;display:flex;align-items:center;justify-content:center;font:600 7px Rajdhani,sans-serif;color:#6c7680">PLANS</div>
+        <div style="width:32px;height:32px;border:1px solid #333a41;display:flex;align-items:center;justify-content:center;font:600 7px Rajdhani,sans-serif;color:#6c7680;position:relative">ADV<div style="position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:#f78b23;color:#141414;font:700 8px 'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center">3</div></div>
+      </div>
+      <div style="position:absolute;left:44px;right:0;top:30px;bottom:0;background:repeating-linear-gradient(45deg,#111417 0 14px,#0e1012 14px 28px)">
+        <div style="position:absolute;top:45%;left:40%;font:500 9px 'JetBrains Mono',monospace;color:#49525b">[ EXTRACTED GAME MAP ]</div>
+        <div style="position:absolute;top:28%;left:24%;width:12px;height:12px;transform:rotate(45deg);border:2px solid #f78b23;background:#262b30"></div>
+        <div style="position:absolute;top:56%;left:60%;width:12px;height:12px;transform:rotate(45deg);border:2px dashed #56a8ff;background:rgba(86,168,255,.15)"></div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb;border-top:1px solid #262b30">
+      Map / Audit / Plans / Advisor as sibling pages behind a 44px rail. Familiar, scales to future surfaces, audit gets a full screen. <span style="color:#eceef0">But it demotes the map to “a tab”</span> — contradicting the positioning — and duplicates the layer-toggle mental model with a second navigation system.<br>
+      <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">VERDICT: safest, least aligned. Rejecting unless audit outgrows a drawer.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 1i NAV C ============ -->
+<div class="dv-opt" id="1i" data-screen-label="1i Nav option C">
+  <div class="dv-olabel"><a class="dv-oid" href="#1i">1i</a>Nav C — map home + summonable HUD</div>
+  <div class="dv-card" style="width:480px">
+    <div style="height:300px;background:#0e1012;position:relative;overflow:hidden">
+      <div style="height:30px;background:#15181b;border-bottom:1px solid #262b30;display:flex;align-items:center;padding:0 10px;gap:10px">
+        <div style="width:9px;height:9px;background:#f78b23"></div>
+        <div style="font:700 11px Rajdhani,sans-serif;letter-spacing:.14em;color:#eceef0">FICSIT PLANNER</div>
+        <div style="margin-left:auto;display:flex;gap:6px"><div style="width:8px;height:8px;border:1px solid #49525b"></div><div style="width:8px;height:8px;border:1px solid #49525b"></div><div style="width:8px;height:8px;border:1px solid #49525b"></div></div>
+      </div>
+      <div style="position:absolute;inset:30px 0 0 0;background:repeating-linear-gradient(45deg,#111417 0 14px,#0e1012 14px 28px)">
+        <!-- dimmed map -->
+        <div style="position:absolute;inset:0;background:rgba(10,11,13,.72)"></div>
+        <!-- HUD overlay -->
+        <div style="position:absolute;inset:20px 40px;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:8px">
+          <div style="background:#15181b;border:1px solid #333a41;padding:8px"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">POWER MARGIN</div><div style="font:700 16px 'JetBrains Mono',monospace;color:#46c07a">+1.8 GW</div></div>
+          <div style="background:#15181b;border:1px solid #ff5d55;padding:8px"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">DEFICITS</div><div style="font:700 16px 'JetBrains Mono',monospace;color:#ff5d55">1 ⚠</div></div>
+          <div style="background:#15181b;border:1px solid #333a41;padding:8px"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">PLAN DRIFT</div><div style="font:700 16px 'JetBrains Mono',monospace;color:#e5a83b">◈ 2 SITES</div></div>
+          <div style="grid-column:1/4;background:#15181b;border:1px solid #333a41;padding:8px"><div style="font:600 9px Rajdhani,sans-serif;letter-spacing:.12em;color:#6c7680">ADVISOR — 3 RECOMMENDATIONS</div><div style="font:400 10.5px Barlow,sans-serif;color:#aab3bb;margin-top:4px">Belt saturation rising on Northern Forge → Coastal Steel · alt-recipe opportunity: Solid Steel Ingot · node claim conflict at Dune Desert…</div></div>
+        </div>
+        <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font:500 9px 'JetBrains Mono',monospace;color:#6c7680;background:#15181b;border:1px solid #333a41;padding:2px 8px">TAB to dismiss — map underneath, live</div>
+      </div>
+    </div>
+    <div style="padding:12px 16px;font:400 12px/1.55 Barlow,sans-serif;color:#aab3bb;border-top:1px solid #262b30">
+      Game-literate move: hold/toggle <span style="color:#eceef0">Tab summons the audit HUD</span> over a dimmed live map — like an in-game map screen. Zero navigation cost, high flow-state fit. Weak for long audit sessions (it's a peek, not a workspace) and hides the advisor entirely until summoned.<br>
+      <span style="font:500 10px 'JetBrains Mono',monospace;color:#6c7680">VERDICT: great mechanic, insufficient alone → folded into A as a shortcut.</span>
+    </div>
+  </div>
+</div>
+
+</div>
+<p class="dv-next">My recommendation: <a class="dv-oid" href="#1g">1g</a> (map is the app) with <a class="dv-oid" href="#1i">1i</a>'s Tab-HUD as the audit shortcut. Try next: “commit to <a class="dv-oid" href="#1g">1g</a>, spec + mock the map screen” · “riff the status matrix <a class="dv-oid" href="#1d">1d</a> — I want the ghosts subtler” · “show the titlebar + Audit drawer in detail”</p>
+</section>
+
+</x-dc>
+</body>
+</html>
