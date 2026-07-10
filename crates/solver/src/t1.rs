@@ -6,19 +6,24 @@
 
 use std::collections::BTreeMap;
 
-use good_lp::{constraint, microlp, variable, variables, Expression, Solution, SolverModel, Variable};
+use good_lp::{
+    constraint, microlp, variable, variables, Expression, Solution, SolverModel, Variable,
+};
 
 use crate::model::*;
 
 const EPS: f64 = 1e-6;
 
-struct Lp<'a> {
-    snapshot: &'a FactorySnapshot,
+struct Lp {
     group_vars: Vec<Variable>,
     edge_vars: Vec<Variable>,
 }
 
-fn edges_into<'a>(s: &'a FactorySnapshot, node: &'a NodeRef, item: Option<&'a str>) -> impl Iterator<Item = usize> + 'a {
+fn edges_into<'a>(
+    s: &'a FactorySnapshot,
+    node: &'a NodeRef,
+    item: Option<&'a str>,
+) -> impl Iterator<Item = usize> + 'a {
     s.edges
         .iter()
         .enumerate()
@@ -26,7 +31,11 @@ fn edges_into<'a>(s: &'a FactorySnapshot, node: &'a NodeRef, item: Option<&'a st
         .map(|(i, _)| i)
 }
 
-fn edges_out_of<'a>(s: &'a FactorySnapshot, node: &'a NodeRef, item: Option<&'a str>) -> impl Iterator<Item = usize> + 'a {
+fn edges_out_of<'a>(
+    s: &'a FactorySnapshot,
+    node: &'a NodeRef,
+    item: Option<&'a str>,
+) -> impl Iterator<Item = usize> + 'a {
     s.edges
         .iter()
         .enumerate()
@@ -43,12 +52,22 @@ fn run_lp(
     maximize_port: Option<&str>,
 ) -> Result<(Vec<f64>, Vec<f64>, f64), SolveError> {
     let mut vars = variables!();
-    let group_vars: Vec<Variable> = snapshot.groups.iter().map(|_| vars.add(variable().min(0.0))).collect();
-    let edge_vars: Vec<Variable> =
-        snapshot.edges.iter().map(|e| vars.add(variable().min(0.0).max(e.capacity))).collect();
+    let group_vars: Vec<Variable> = snapshot
+        .groups
+        .iter()
+        .map(|_| vars.add(variable().min(0.0)))
+        .collect();
+    let edge_vars: Vec<Variable> = snapshot
+        .edges
+        .iter()
+        .map(|e| vars.add(variable().min(0.0).max(e.capacity)))
+        .collect();
     let target_var = maximize_port.map(|_| vars.add(variable().min(0.0)));
 
-    let lp = Lp { snapshot, group_vars, edge_vars };
+    let lp = Lp {
+        group_vars,
+        edge_vars,
+    };
 
     // Objective: machines (∝ Σ m_g·duration) with a tiny power tiebreak; or
     // maximize the free target (machines as negative tiebreak).
@@ -71,24 +90,32 @@ fn run_lp(
         let node = NodeRef::Group(g.id.clone());
         let m = lp.group_vars[gi];
         for (item, _) in &g.recipe.inputs {
-            let inflow: Expression = edges_into(snapshot, &node, Some(item)).map(|ei| lp.edge_vars[ei]).sum();
+            let inflow: Expression = edges_into(snapshot, &node, Some(item))
+                .map(|ei| lp.edge_vars[ei])
+                .sum();
             model = model.with(constraint!(inflow == m * g.recipe.in_rate(item)));
         }
         for (item, _) in &g.recipe.outputs {
-            let outflow: Expression = edges_out_of(snapshot, &node, Some(item)).map(|ei| lp.edge_vars[ei]).sum();
+            let outflow: Expression = edges_out_of(snapshot, &node, Some(item))
+                .map(|ei| lp.edge_vars[ei])
+                .sum();
             model = model.with(constraint!(outflow <= m * g.recipe.out_rate(item)));
         }
     }
     for p in &snapshot.inputs {
         if let Some(ceiling) = p.ceiling {
             let node = NodeRef::Input(p.id.clone());
-            let outflow: Expression = edges_out_of(snapshot, &node, None).map(|ei| lp.edge_vars[ei]).sum();
+            let outflow: Expression = edges_out_of(snapshot, &node, None)
+                .map(|ei| lp.edge_vars[ei])
+                .sum();
             model = model.with(constraint!(outflow <= ceiling));
         }
     }
     for p in &snapshot.outputs {
         let node = NodeRef::Output(p.id.clone());
-        let inflow: Expression = edges_into(snapshot, &node, None).map(|ei| lp.edge_vars[ei]).sum();
+        let inflow: Expression = edges_into(snapshot, &node, None)
+            .map(|ei| lp.edge_vars[ei])
+            .sum();
         match (maximize_port, target_var) {
             (Some(mp), Some(t)) if mp == p.id => {
                 model = model.with(constraint!(inflow == t));
@@ -101,8 +128,12 @@ fn run_lp(
     }
 
     let solution = model.solve().map_err(|e| match e {
-        good_lp::ResolutionError::Infeasible => SolveError::Internal { message: "infeasible".into() },
-        other => SolveError::Internal { message: other.to_string() },
+        good_lp::ResolutionError::Infeasible => SolveError::Internal {
+            message: "infeasible".into(),
+        },
+        other => SolveError::Internal {
+            message: other.to_string(),
+        },
     })?;
 
     let cycles: Vec<f64> = lp.group_vars.iter().map(|&v| solution.value(v)).collect();
@@ -115,15 +146,25 @@ fn run_lp(
 fn find_binding(snapshot: &FactorySnapshot, flows: &[f64]) -> Option<Constraint> {
     for (i, e) in snapshot.edges.iter().enumerate() {
         if flows[i] >= e.capacity - EPS * (1.0 + e.capacity) {
-            return Some(Constraint::BeltCapacity { edge: e.id.clone(), item: e.item.clone(), capacity: e.capacity });
+            return Some(Constraint::BeltCapacity {
+                edge: e.id.clone(),
+                item: e.item.clone(),
+                capacity: e.capacity,
+            });
         }
     }
     for p in &snapshot.inputs {
         if let Some(ceiling) = p.ceiling {
             let node = NodeRef::Input(p.id.clone());
-            let used: f64 = edges_out_of(snapshot, &node, None).map(|ei| flows[ei]).sum();
+            let used: f64 = edges_out_of(snapshot, &node, None)
+                .map(|ei| flows[ei])
+                .sum();
             if used >= ceiling - EPS * (1.0 + ceiling) {
-                return Some(Constraint::InputCeiling { port: p.id.clone(), item: p.item.clone(), ceiling });
+                return Some(Constraint::InputCeiling {
+                    port: p.id.clone(),
+                    item: p.item.clone(),
+                    ceiling,
+                });
             }
         }
     }
@@ -133,7 +174,11 @@ fn find_binding(snapshot: &FactorySnapshot, flows: &[f64]) -> Option<Constraint>
 pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, SolveError> {
     let start = std::time::Instant::now();
 
-    let mut targets: BTreeMap<String, f64> = snapshot.outputs.iter().map(|p| (p.id.clone(), p.rate)).collect();
+    let mut targets: BTreeMap<String, f64> = snapshot
+        .outputs
+        .iter()
+        .map(|p| (p.id.clone(), p.rate))
+        .collect();
     let mut clock_override: Option<(String, f64)> = None;
     let mut edited_port: Option<String> = None;
     match edit {
@@ -183,7 +228,13 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
                 }
             }
         };
-        let power = g.recipe.power_mw * count as f64 * if clock > 0.0 { clock.powf(POWER_EXPONENT) } else { 0.0 };
+        let power = g.recipe.power_mw
+            * count as f64
+            * if clock > 0.0 {
+                clock.powf(POWER_EXPONENT)
+            } else {
+                0.0
+            };
         total_power += power;
         let mut in_rates = BTreeMap::new();
         for (item, _) in &g.recipe.inputs {
@@ -193,7 +244,16 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
         for (item, _) in &g.recipe.outputs {
             out_rates.insert(item.clone(), m * g.recipe.out_rate(item));
         }
-        groups.insert(g.id.clone(), GroupResult { count, clock, power_mw: power, in_rates, out_rates });
+        groups.insert(
+            g.id.clone(),
+            GroupResult {
+                count,
+                clock,
+                power_mw: power,
+                in_rates,
+                out_rates,
+            },
+        );
     }
 
     let mut edges = BTreeMap::new();
@@ -202,7 +262,11 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
             e.id.clone(),
             EdgeResult {
                 flow: flows[i],
-                saturation: if e.capacity > 0.0 { flows[i] / e.capacity } else { 0.0 },
+                saturation: if e.capacity > 0.0 {
+                    flows[i] / e.capacity
+                } else {
+                    0.0
+                },
             },
         );
     }
@@ -210,7 +274,9 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
     let mut ports = BTreeMap::new();
     for p in &snapshot.inputs {
         let node = NodeRef::Input(p.id.clone());
-        let used: f64 = edges_out_of(snapshot, &node, None).map(|ei| flows[ei]).sum();
+        let used: f64 = edges_out_of(snapshot, &node, None)
+            .map(|ei| flows[ei])
+            .sum();
         ports.insert(p.id.clone(), used);
     }
     for p in &snapshot.outputs {

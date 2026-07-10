@@ -11,3 +11,8 @@ Everything tempting that isn't Phase 1. Tags: v1 (later phase of this release), 
 - v1: AI layer — advisor gate, chat, proposal_intent, style guides (Phase 5).
 - v1.1: Batteries/storage in circuit math (`⚡ +BUFFER` slot reserved, A2.2).
 - v2: Signal-block rail capacity modeling (A3.1); direct .pak icon/tile extraction (SDD §7).
+- v1: Belt tier picker on connection drop (currently defaults Mk.1, editable via inspector/edge select) — UI spec 4c.
+- v1: Right-drag route drawing from pins/nodes on the map (needs Phase 2 routes).
+- v1: "Plan a move" flow for built factory pins (built layer arrives with import).
+- v1.1: True shared-element map↔factory zoom morph (currently scale+fade).
+- v1.1: Node index numbers on map labels (`FE PURE #08` style) once the full node snapshot lands.

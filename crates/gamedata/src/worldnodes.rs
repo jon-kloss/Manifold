@@ -59,8 +59,16 @@ mod tests {
         assert!(snap.nodes.len() >= 20);
         assert!(snap.regions.iter().any(|r| r.name == "GRASS FIELDS"));
         for n in &snap.nodes {
-            assert!(["pure", "normal", "impure"].contains(&n.purity.as_str()), "{}", n.id);
-            assert!(snap.regions.iter().any(|r| r.id == n.region), "{} region", n.id);
+            assert!(
+                ["pure", "normal", "impure"].contains(&n.purity.as_str()),
+                "{}",
+                n.id
+            );
+            assert!(
+                snap.regions.iter().any(|r| r.id == n.region),
+                "{} region",
+                n.id
+            );
             assert!(n.x >= snap.bounds.min_x && n.x <= snap.bounds.max_x);
             assert!(n.y >= snap.bounds.min_y && n.y <= snap.bounds.max_y);
         }

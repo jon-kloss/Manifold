@@ -45,7 +45,12 @@ impl<'a> Graph<'a> {
             out_edges.entry(e.from.clone()).or_default().push(i);
             in_edges.entry(e.to.clone()).or_default().push(i);
         }
-        Self { snapshot: s, out_edges, in_edges, nodes }
+        Self {
+            snapshot: s,
+            out_edges,
+            in_edges,
+            nodes,
+        }
     }
 
     /// Reverse-topological order (consumers before producers). Err on cycle.
@@ -99,7 +104,12 @@ fn demand_pass(
         let incoming: Vec<usize> = graph
             .in_edges
             .get(node)
-            .map(|v| v.iter().copied().filter(|&ei| s.edges[ei].item == item).collect())
+            .map(|v| {
+                v.iter()
+                    .copied()
+                    .filter(|&ei| s.edges[ei].item == item)
+                    .collect()
+            })
             .unwrap_or_default();
         if incoming.is_empty() {
             return; // starved — shows up as deficit on the group's in_rates
@@ -124,7 +134,11 @@ fn demand_pass(
             .collect();
         let total: f64 = weights.iter().sum();
         for (k, &ei) in incoming.iter().enumerate() {
-            let share = if total > 0.0 { weights[k] / total } else { 1.0 / incoming.len() as f64 };
+            let share = if total > 0.0 {
+                weights[k] / total
+            } else {
+                1.0 / incoming.len() as f64
+            };
             edge_flow[ei] += demand * share;
         }
     };
@@ -176,7 +190,11 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
     let order = graph.reverse_topo()?;
 
     // Assemble targets, applying the edit.
-    let mut targets: BTreeMap<String, f64> = snapshot.outputs.iter().map(|p| (p.id.clone(), p.rate)).collect();
+    let mut targets: BTreeMap<String, f64> = snapshot
+        .outputs
+        .iter()
+        .map(|p| (p.id.clone(), p.rate))
+        .collect();
     let mut clock_override: Option<(String, f64)> = None;
     let mut edited_port: Option<String> = None;
     match edit {
@@ -221,7 +239,11 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
             if let Some(ceiling) = p.ceiling {
                 let node = NodeRef::Input(p.id.clone());
                 let flow_at = |flows: &Vec<f64>| -> f64 {
-                    graph.out_edges.get(&node).map(|v| v.iter().map(|&ei| flows[ei]).sum()).unwrap_or(0.0)
+                    graph
+                        .out_edges
+                        .get(&node)
+                        .map(|v| v.iter().map(|&ei| flows[ei]).sum())
+                        .unwrap_or(0.0)
                 };
                 let (p0, p1) = (flow_at(&f0), flow_at(&f1));
                 let per_unit = p1 - p0;
@@ -244,7 +266,10 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
                 targets.insert(port.clone(), max_rate);
                 clamped = true;
             }
-            target_ceiling = Some(TargetCeiling { max_rate, binding: b });
+            target_ceiling = Some(TargetCeiling {
+                max_rate,
+                binding: b,
+            });
         }
     }
 
@@ -271,7 +296,13 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
                 }
             }
         };
-        let power = g.recipe.power_mw * count as f64 * if clock > 0.0 { clock.powf(POWER_EXPONENT) } else { 0.0 };
+        let power = g.recipe.power_mw
+            * count as f64
+            * if clock > 0.0 {
+                clock.powf(POWER_EXPONENT)
+            } else {
+                0.0
+            };
         total_power += power;
         let mut in_rates = BTreeMap::new();
         for (item, _) in &g.recipe.inputs {
@@ -283,7 +314,13 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
         }
         groups.insert(
             g.id.clone(),
-            GroupResult { count, clock, power_mw: power, in_rates, out_rates },
+            GroupResult {
+                count,
+                clock,
+                power_mw: power,
+                in_rates,
+                out_rates,
+            },
         );
     }
 
@@ -292,14 +329,25 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
         let flow = edge_flow[i];
         edges.insert(
             e.id.clone(),
-            EdgeResult { flow, saturation: if e.capacity > 0.0 { flow / e.capacity } else { 0.0 } },
+            EdgeResult {
+                flow,
+                saturation: if e.capacity > 0.0 {
+                    flow / e.capacity
+                } else {
+                    0.0
+                },
+            },
         );
     }
 
     let mut ports = BTreeMap::new();
     for p in &snapshot.inputs {
         let node = NodeRef::Input(p.id.clone());
-        let flow: f64 = graph.out_edges.get(&node).map(|v| v.iter().map(|&ei| edge_flow[ei]).sum()).unwrap_or(0.0);
+        let flow: f64 = graph
+            .out_edges
+            .get(&node)
+            .map(|v| v.iter().map(|&ei| edge_flow[ei]).sum())
+            .unwrap_or(0.0);
         ports.insert(p.id.clone(), flow);
     }
     for p in &snapshot.outputs {
@@ -320,7 +368,10 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
 #[cfg(not(target_arch = "wasm32"))]
 fn now_us() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
 }
 
 /// On wasm the JS wrapper measures with performance.now(); avoid std::time::Instant

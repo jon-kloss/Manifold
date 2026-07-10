@@ -1,0 +1,452 @@
+/* Factory graph view — mock 4a/4b grammar. */
+
+.graph-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--steel-950);
+  animation: graph-morph var(--dur-morph) var(--ease);
+}
+@keyframes graph-morph {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- context bar ---- */
+.graph-contextbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--contextbar-h);
+  padding: 0 10px;
+  background: var(--steel-900);
+  border-bottom: 1px solid var(--steel-700);
+  flex: none;
+  z-index: 10;
+}
+.ctx-back {
+  cursor: pointer;
+}
+.ctx-back:hover {
+  color: var(--signal-400);
+  border-color: var(--signal-selected-border);
+}
+.ctx-spring {
+  flex: 1;
+}
+
+.graph-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.react-flow {
+  background: var(--steel-950);
+}
+/* our cards own all chrome — kill RF defaults */
+.react-flow__node {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  width: auto;
+  font: inherit;
+  text-align: left;
+}
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ---- machine-group cards (240–270px) ---- */
+.group-card {
+  width: 248px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-500);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.group-card.frame-planned {
+  border: 1px dashed var(--bp-600);
+  background-image: var(--bp-hatch);
+  background-color: var(--steel-800);
+}
+.group-card.selected {
+  border: 2px solid var(--signal-500);
+  clip-path: var(--corner-cut);
+}
+.group-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--steel-700);
+}
+.group-card-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clock-chip.clock-under {
+  color: var(--underclock);
+  border-color: var(--underclock-dark);
+}
+.clock-chip.clock-over {
+  color: var(--signal-400);
+  border-color: var(--signal-selected-border);
+}
+.group-card-recipe {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: var(--ink-100);
+}
+.group-card-foot {
+  display: flex;
+  gap: 12px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--steel-700);
+  font-size: 10px;
+  color: var(--ink-500);
+}
+.group-card-foot span:last-child {
+  margin-left: auto;
+  color: var(--ink-300);
+}
+.belt-handle {
+  width: 8px;
+  height: 8px;
+  background: var(--steel-500);
+  border: 1px solid var(--steel-950);
+}
+.belt-handle:hover {
+  background: var(--signal-500);
+}
+
+/* ---- boundary port cards (slim, 200px) ---- */
+.port-card {
+  width: 200px;
+  padding: 8px 10px;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-left: 3px solid var(--steel-500);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.port-card.frame-planned {
+  border-style: dashed;
+  border-left-style: solid;
+}
+.port-card.in {
+  border-left-color: var(--bp-600);
+}
+.port-card.out {
+  border-left-color: var(--signal-500);
+}
+.port-card.selected {
+  border-color: var(--signal-500);
+}
+.port-card-dir {
+  color: var(--ink-500);
+}
+.port-card-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.port-card-src {
+  font-size: 9px;
+  color: var(--ink-faint);
+}
+.port-ceiling {
+  color: var(--ink-500);
+}
+.port-ceiling.capped {
+  color: var(--flow-crit);
+  font-weight: 700;
+}
+
+/* ---- belt labels ---- */
+.belt-label {
+  position: absolute;
+  padding: 1px 6px;
+  background: var(--steel-950);
+  border: 1px solid var(--steel-600);
+  border-radius: 2px;
+  font-size: 10px;
+  color: var(--ink-300);
+  pointer-events: all;
+  white-space: nowrap;
+}
+.belt-label.crit {
+  background: var(--flow-crit);
+  border-color: var(--flow-crit);
+  color: var(--on-signal);
+  font-weight: 700;
+}
+.belt-label.selected {
+  border-color: var(--signal-500);
+}
+.belt-tier {
+  margin-left: 6px;
+  color: var(--ink-500);
+  font-size: 9px;
+}
+.belt-label.crit .belt-tier {
+  color: var(--on-signal);
+}
+
+/* ---- inspector (360px right) ---- */
+.inspector {
+  position: absolute;
+  top: calc(var(--contextbar-h) + 10px);
+  right: 10px;
+  bottom: 10px;
+  width: var(--panel-inspector);
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  z-index: 15;
+  animation: drawer-in var(--dur-drawer) var(--ease);
+}
+.insp-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--steel-700);
+}
+.insp-section h3 {
+  color: var(--ink-500);
+  margin-bottom: 8px;
+}
+.insp-target-row {
+  margin-bottom: 4px;
+}
+.insp-slider-wrap {
+  position: relative;
+  height: 24px;
+}
+.insp-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  margin-top: 10px;
+  background: var(--steel-700);
+  border: none;
+  border-radius: 2px;
+  accent-color: var(--signal-500);
+}
+.insp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--signal-500);
+  transform: rotate(45deg); /* diamond handle */
+  border-radius: 2px;
+  cursor: ew-resize;
+}
+.insp-tick {
+  position: absolute;
+  top: 6px;
+  width: 2px;
+  height: 12px;
+  background: var(--signal-500);
+}
+.insp-slider-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--ink-faint);
+}
+.insp-ceiling-note {
+  font-size: 9px;
+  color: var(--ink-500);
+  margin-top: 2px;
+}
+.insp-solvenote {
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--ink-faint);
+}
+.insp-binding {
+  margin-top: 8px;
+  padding: 7px 9px;
+  background: rgba(255, 93, 85, 0.05);
+  border: 1px solid var(--flow-crit-dark);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--flow-crit);
+}
+.insp-binding-fix {
+  color: var(--signal-400);
+}
+.insp-clock-row {
+  display: flex;
+  gap: 4px;
+}
+.insp-clock-btn {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  color: var(--ink-300);
+  font-size: 11px;
+}
+.insp-clock-btn.active {
+  background: var(--signal-500);
+  border-color: var(--signal-500);
+  color: var(--on-signal);
+}
+.insp-clock-fine {
+  width: 60px;
+  height: 26px;
+  text-align: right;
+  padding: 0 6px;
+  font-size: 11px;
+}
+.insp-note {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ink-500);
+}
+.insp-footer {
+  margin-top: auto;
+  padding: 12px 14px;
+  font-size: 10px;
+  color: var(--ink-500);
+  border-top: 1px solid var(--steel-700);
+}
+
+/* ---- recipe strip ---- */
+.recipe-strip {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  width: var(--panel-recipe-strip);
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  z-index: 14;
+}
+.recipe-strip-head {
+  padding: 6px 10px;
+  color: var(--ink-500);
+  border-bottom: 1px solid var(--steel-700);
+}
+.recipe-strip-tiles {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+}
+.recipe-tile {
+  flex: none;
+  width: 104px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  color: var(--ink-100);
+  transition: border-color var(--dur-hover) var(--ease);
+}
+.recipe-tile:hover:not(:disabled) {
+  border-color: var(--signal-400);
+}
+.recipe-tile.current {
+  border: 2px solid var(--signal-500);
+}
+.recipe-tile.locked {
+  opacity: 0.5;
+}
+.recipe-tile-name {
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+.recipe-tile-sub {
+  font-size: 8px;
+  color: var(--ink-500);
+}
+
+/* ---- add menus ---- */
+.addgroup-menu {
+  position: absolute;
+  width: 280px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  z-index: 30;
+  overflow: hidden;
+}
+.addgroup-menu input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 1px solid var(--steel-600);
+  border-radius: 0;
+  background: var(--steel-800);
+}
+.addgroup-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--ink-100);
+  font-size: 12px;
+}
+.addgroup-item:hover {
+  background: var(--steel-700);
+}
+.addgroup-sub {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--ink-500);
+}
+
+/* ---- minimap ---- */
+.graph-minimap {
+  width: 170px !important;
+  height: 110px !important;
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+}
+.minimap-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 130px;
+  font-size: 9px;
+  color: var(--ink-faint);
+  z-index: 10;
+}

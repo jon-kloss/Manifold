@@ -19,7 +19,11 @@ pub struct PlanMeta {
 
 impl Default for PlanMeta {
     fn default() -> Self {
-        Self { schema_version: 1, game_build: String::new(), name: "NEW WORLD".into() }
+        Self {
+            schema_version: 1,
+            game_build: String::new(),
+            name: "NEW WORLD".into(),
+        }
     }
 }
 
@@ -94,7 +98,9 @@ impl Entity {
             COLL_GROUPS => Entity::Group(serde_json::from_value(value.clone()).map_err(err)?),
             COLL_PORTS => Entity::Port(serde_json::from_value(value.clone()).map_err(err)?),
             COLL_EDGES => Entity::Edge(serde_json::from_value(value.clone()).map_err(err)?),
-            COLL_NODE_CLAIMS => Entity::NodeClaim(serde_json::from_value(value.clone()).map_err(err)?),
+            COLL_NODE_CLAIMS => {
+                Entity::NodeClaim(serde_json::from_value(value.clone()).map_err(err)?)
+            }
             COLL_ROUTES => Entity::Route(serde_json::from_value(value.clone()).map_err(err)?),
             other => return Err(format!("unknown collection {other}")),
         })
@@ -179,11 +185,20 @@ impl PlanState {
         let path = format!("/{}/{}", e.collection(), e.id());
         let prev = self.get(e.collection(), e.id());
         let forward = match prev {
-            Some(_) => PatchOp::Replace { path: path.clone(), value: e.to_value() },
-            None => PatchOp::Add { path: path.clone(), value: e.to_value() },
+            Some(_) => PatchOp::Replace {
+                path: path.clone(),
+                value: e.to_value(),
+            },
+            None => PatchOp::Add {
+                path: path.clone(),
+                value: e.to_value(),
+            },
         };
         let inverse = match &prev {
-            Some(old) => PatchOp::Replace { path: path.clone(), value: old.to_value() },
+            Some(old) => PatchOp::Replace {
+                path: path.clone(),
+                value: old.to_value(),
+            },
             None => PatchOp::Remove { path },
         };
         self.insert(e);
@@ -197,7 +212,10 @@ impl PlanState {
         self.delete(collection, id);
         Some((
             PatchOp::Remove { path: path.clone() },
-            PatchOp::Add { path, value: old.to_value() },
+            PatchOp::Add {
+                path,
+                value: old.to_value(),
+            },
         ))
     }
 
@@ -205,7 +223,9 @@ impl PlanState {
     pub fn apply_batch(&mut self, batch: &PatchBatch) -> Result<(), String> {
         for op in batch {
             let path = op.path().trim_start_matches('/');
-            let (coll, id) = path.split_once('/').ok_or_else(|| format!("bad path {path}"))?;
+            let (coll, id) = path
+                .split_once('/')
+                .ok_or_else(|| format!("bad path {path}"))?;
             match op {
                 PatchOp::Add { value, .. } | PatchOp::Replace { value, .. } => {
                     if coll == "meta" {

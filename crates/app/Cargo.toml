@@ -16,6 +16,10 @@ path = "src/main.rs"
 required-features = ["shell"]
 
 [[bin]]
+name = "gen-tokens"
+path = "src/bin/gen_tokens.rs"
+
+[[bin]]
 name = "dev-bridge"
 path = "src/bin/dev_bridge.rs"
 

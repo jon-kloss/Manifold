@@ -3,7 +3,6 @@
 //! abstraction talks to this exactly like it talks to Tauri commands; state
 //! stays canonical in Rust either way.
 
-use std::io::Read as _;
 use std::sync::Mutex;
 
 use app::Session;
@@ -28,17 +27,26 @@ fn ok<T: serde::Serialize>(value: &T) -> Response<std::io::Cursor<Vec<u8>>> {
 }
 
 fn err(status: u16, message: impl std::fmt::Display) -> Response<std::io::Cursor<Vec<u8>>> {
-    json_response(status, serde_json::json!({ "error": message.to_string() }).to_string())
+    json_response(
+        status,
+        serde_json::json!({ "error": message.to_string() }).to_string(),
+    )
 }
 
 fn main() -> anyhow::Result<()> {
     let plan_path = std::env::var("FICSIT_PLAN").unwrap_or_else(|_| "dev-world.ficsit".into());
-    let docs = std::env::var("FICSIT_DOCS_JSON").ok().and_then(|p| std::fs::read(p).ok());
+    let docs = std::env::var("FICSIT_DOCS_JSON")
+        .ok()
+        .and_then(|p| std::fs::read(p).ok());
     let build = std::env::var("FICSIT_GAME_BUILD").unwrap_or_else(|_| "fixture".into());
-    let port: u16 = std::env::var("FICSIT_BRIDGE_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8791);
+    let port: u16 = std::env::var("FICSIT_BRIDGE_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8791);
 
     let session = Mutex::new(Session::open(&plan_path, docs, &build)?);
-    let server = Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("bind failed: {e}"))?;
+    let server =
+        Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("bind failed: {e}"))?;
     eprintln!("dev-bridge listening on http://127.0.0.1:{port} (plan: {plan_path})");
 
     for mut request in server.incoming_requests() {

@@ -17,7 +17,9 @@ pub enum PatchOp {
 impl PatchOp {
     pub fn path(&self) -> &str {
         match self {
-            PatchOp::Add { path, .. } | PatchOp::Replace { path, .. } | PatchOp::Remove { path } => path,
+            PatchOp::Add { path, .. }
+            | PatchOp::Replace { path, .. }
+            | PatchOp::Remove { path } => path,
         }
     }
 }

@@ -40,7 +40,11 @@ pub struct Recipe {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum MachineKind {
     Manufacturer,
     Extractor {
@@ -99,7 +103,9 @@ fn parse_item_amounts(raw: &str) -> Vec<(String, f64)> {
     for chunk in raw.split("ItemClass=").skip(1) {
         // The class path ends right before `",Amount` (or `,Amount` in unquoted
         // variants); the class name is the token after the last '.' or '/'.
-        let Some(end) = chunk.find(",Amount") else { continue };
+        let Some(end) = chunk.find(",Amount") else {
+            continue;
+        };
         let path = chunk[..end].trim_matches(['"', '\'', ')', '(']);
         let class = path
             .trim_end_matches(['\'', '"'])
@@ -136,7 +142,10 @@ fn parse_class_list(raw: &str) -> Vec<String> {
 }
 
 fn s(v: &Value, key: &str) -> String {
-    v.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn f(v: &Value, key: &str) -> f64 {
@@ -159,18 +168,37 @@ const BELT_TIERS: [(&str, u8); 6] = [
 /// Parse decoded Docs.json text into normalized game data.
 pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError> {
     let root: Value = serde_json::from_str(text)?;
-    let sections = root.as_array().ok_or_else(|| DocsError::Shape("top level is not an array".into()))?;
+    let sections = root
+        .as_array()
+        .ok_or_else(|| DocsError::Shape("top level is not an array".into()))?;
 
-    let mut gd = GameData { build_version: build_version.to_string(), ..Default::default() };
+    let mut gd = GameData {
+        build_version: build_version.to_string(),
+        ..Default::default()
+    };
 
     for section in sections {
-        let native = section.get("NativeClass").and_then(Value::as_str).unwrap_or_default();
-        let classes = section.get("Classes").and_then(Value::as_array).cloned().unwrap_or_default();
+        let native = section
+            .get("NativeClass")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let classes = section
+            .get("Classes")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
         // Match on the FG class name at the end of the native-class path.
-        let fg = native.rsplit('.').next().unwrap_or_default().trim_end_matches('\'');
+        let fg = native
+            .rsplit('.')
+            .next()
+            .unwrap_or_default()
+            .trim_end_matches('\'');
         match fg {
-            "FGItemDescriptor" | "FGResourceDescriptor" | "FGItemDescriptorBiomass"
-            | "FGItemDescriptorNuclearFuel" | "FGEquipmentDescriptor" => {
+            "FGItemDescriptor"
+            | "FGResourceDescriptor"
+            | "FGItemDescriptorBiomass"
+            | "FGItemDescriptorNuclearFuel"
+            | "FGEquipmentDescriptor" => {
                 for c in &classes {
                     let item = Item {
                         class_name: s(c, "ClassName"),
@@ -233,7 +261,10 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
             "FGBuildableConveyorBelt" => {
                 for c in &classes {
                     let class_name = s(c, "ClassName");
-                    let tier = BELT_TIERS.iter().find(|(n, _)| *n == class_name).map(|(_, t)| *t);
+                    let tier = BELT_TIERS
+                        .iter()
+                        .find(|(n, _)| *n == class_name)
+                        .map(|(_, t)| *t);
                     if let Some(tier) = tier {
                         gd.belts.insert(
                             class_name.clone(),
@@ -272,7 +303,11 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
 
 /// Extraction ceiling for a claim: items/min for a miner class on a node purity.
 pub fn extraction_rate(machine: &Machine, purity: &str, clock: f64) -> f64 {
-    let MachineKind::Extractor { items_per_cycle, cycle_time_s } = &machine.kind else {
+    let MachineKind::Extractor {
+        items_per_cycle,
+        cycle_time_s,
+    } = &machine.kind
+    else {
         return 0.0;
     };
     let base = items_per_cycle / cycle_time_s * 60.0;
@@ -292,7 +327,13 @@ mod tests {
     fn parses_item_amount_strings() {
         let raw = r#"((ItemClass="/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'",Amount=6),(ItemClass="/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'",Amount=12))"#;
         let parsed = parse_item_amounts(raw);
-        assert_eq!(parsed, vec![("Desc_IronPlate_C".to_string(), 6.0), ("Desc_IronScrew_C".to_string(), 12.0)]);
+        assert_eq!(
+            parsed,
+            vec![
+                ("Desc_IronPlate_C".to_string(), 6.0),
+                ("Desc_IronScrew_C".to_string(), 12.0)
+            ]
+        );
     }
 
     #[test]
@@ -310,7 +351,13 @@ mod tests {
         let gd = parse_docs(include_str!("../assets/docs-fixture.json"), "test").unwrap();
         let mf = &gd.recipes["Recipe_ModularFrame_C"];
         assert_eq!(mf.duration_s, 60.0);
-        assert_eq!(mf.ingredients, vec![("Desc_IronPlateReinforced_C".into(), 3.0), ("Desc_IronRod_C".into(), 12.0)]);
+        assert_eq!(
+            mf.ingredients,
+            vec![
+                ("Desc_IronPlateReinforced_C".into(), 3.0),
+                ("Desc_IronRod_C".into(), 12.0)
+            ]
+        );
         assert_eq!(mf.products, vec![("Desc_ModularFrame_C".into(), 2.0)]);
         assert_eq!(mf.produced_in, vec!["Build_AssemblerMk1_C".to_string()]);
         assert!(!mf.alternate);

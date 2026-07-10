@@ -28,7 +28,10 @@ fn plan_edit(
 }
 
 #[tauri::command]
-fn plan_undo(window: tauri::Window, state: State<AppState>) -> Result<Option<EditResponse>, SessionError> {
+fn plan_undo(
+    window: tauri::Window,
+    state: State<AppState>,
+) -> Result<Option<EditResponse>, SessionError> {
     let resp = state.0.lock().unwrap().undo()?;
     if let Some(r) = &resp {
         let _ = window.emit("state://patch", r);
@@ -37,7 +40,10 @@ fn plan_undo(window: tauri::Window, state: State<AppState>) -> Result<Option<Edi
 }
 
 #[tauri::command]
-fn plan_redo(window: tauri::Window, state: State<AppState>) -> Result<Option<EditResponse>, SessionError> {
+fn plan_redo(
+    window: tauri::Window,
+    state: State<AppState>,
+) -> Result<Option<EditResponse>, SessionError> {
     let resp = state.0.lock().unwrap().redo()?;
     if let Some(r) = &resp {
         let _ = window.emit("state://patch", r);
@@ -59,13 +65,21 @@ fn main() {
             let plan_path = dir.join("world.ficsit");
             // Real installs point FICSIT_DOCS_JSON at <install>/CommunityResources/Docs/Docs.json;
             // without it the bundled fixture keeps the app fully functional offline.
-            let docs = std::env::var("FICSIT_DOCS_JSON").ok().and_then(|p| std::fs::read(p).ok());
+            let docs = std::env::var("FICSIT_DOCS_JSON")
+                .ok()
+                .and_then(|p| std::fs::read(p).ok());
             let build = std::env::var("FICSIT_GAME_BUILD").unwrap_or_else(|_| "fixture".into());
             let session = Session::open(&plan_path, docs, &build).expect("session open");
             app.manage(AppState(Mutex::new(session)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![hydrate, plan_edit, plan_undo, plan_redo, set_view_state])
+        .invoke_handler(tauri::generate_handler![
+            hydrate,
+            plan_edit,
+            plan_undo,
+            plan_redo,
+            set_view_state
+        ])
         .run(tauri::generate_context!())
         .expect("error while running FICSIT Planner");
 }

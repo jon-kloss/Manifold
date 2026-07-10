@@ -50,7 +50,9 @@ impl UndoLog {
     }
 
     pub fn undo_label(&self) -> Option<&str> {
-        self.cursor.checked_sub(1).map(|i| self.entries[i].label.as_str())
+        self.cursor
+            .checked_sub(1)
+            .map(|i| self.entries[i].label.as_str())
     }
 
     pub fn entries(&self) -> &[UndoEntry] {
@@ -62,7 +64,11 @@ impl UndoLog {
     pub fn commit(&mut self, tx: Transaction) -> UndoEntry {
         let mut inverse = tx.inverse;
         inverse.reverse();
-        let entry = UndoEntry { label: tx.label, forward: tx.forward, inverse };
+        let entry = UndoEntry {
+            label: tx.label,
+            forward: tx.forward,
+            inverse,
+        };
         self.entries.truncate(self.cursor);
         self.entries.push(entry.clone());
         self.cursor = self.entries.len();
@@ -125,7 +131,14 @@ mod tests {
         let fid = create_factory(&mut state, &mut log);
         assert!(state.factories.contains_key(&fid));
 
-        let tx = apply(&mut state, &Command::RenameFactory { id: fid.clone(), name: "IRON WORKS".into() }).unwrap();
+        let tx = apply(
+            &mut state,
+            &Command::RenameFactory {
+                id: fid.clone(),
+                name: "IRON WORKS".into(),
+            },
+        )
+        .unwrap();
         log.commit(tx);
         assert_eq!(state.factories[&fid].name, "IRON WORKS");
 
@@ -147,10 +160,24 @@ mod tests {
         let mut state = PlanState::default();
         let mut log = UndoLog::new();
         let fid = create_factory(&mut state, &mut log);
-        let tx = apply(&mut state, &Command::RenameFactory { id: fid.clone(), name: "A".into() }).unwrap();
+        let tx = apply(
+            &mut state,
+            &Command::RenameFactory {
+                id: fid.clone(),
+                name: "A".into(),
+            },
+        )
+        .unwrap();
         log.commit(tx);
         log.undo(&mut state).unwrap();
-        let tx = apply(&mut state, &Command::RenameFactory { id: fid.clone(), name: "B".into() }).unwrap();
+        let tx = apply(
+            &mut state,
+            &Command::RenameFactory {
+                id: fid.clone(),
+                name: "B".into(),
+            },
+        )
+        .unwrap();
         log.commit(tx);
         assert!(!log.can_redo());
         assert_eq!(state.factories[&fid].name, "B");
@@ -193,10 +220,22 @@ mod tests {
         let mut log = UndoLog::new();
         let fid = create_factory(&mut state, &mut log);
         state.factories.get_mut(&fid).unwrap().status = Status::Built;
-        let err = apply(&mut state, &Command::MoveFactoryPin { id: fid.clone(), position: MapPos { x: 0.0, y: 0.0 } });
-        assert!(matches!(err, Err(crate::commands::DomainError::BuiltImmutable { .. })));
+        let err = apply(
+            &mut state,
+            &Command::MoveFactoryPin {
+                id: fid.clone(),
+                position: MapPos { x: 0.0, y: 0.0 },
+            },
+        );
+        assert!(matches!(
+            err,
+            Err(crate::commands::DomainError::BuiltImmutable { .. })
+        ));
         let err = apply(&mut state, &Command::DeleteFactory { id: fid });
-        assert!(matches!(err, Err(crate::commands::DomainError::BuiltImmutable { .. })));
+        assert!(matches!(
+            err,
+            Err(crate::commands::DomainError::BuiltImmutable { .. })
+        ));
     }
 
     #[test]

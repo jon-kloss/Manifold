@@ -134,8 +134,16 @@ pub struct EdgeResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Constraint {
-    BeltCapacity { edge: String, item: ItemId, capacity: f64 },
-    InputCeiling { port: String, item: ItemId, ceiling: f64 },
+    BeltCapacity {
+        edge: String,
+        item: ItemId,
+        capacity: f64,
+    },
+    InputCeiling {
+        port: String,
+        item: ItemId,
+        ceiling: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

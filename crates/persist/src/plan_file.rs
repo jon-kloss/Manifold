@@ -55,7 +55,10 @@ impl PlanFile {
     pub fn in_memory() -> Result<Self, PersistError> {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self { conn, path: PathBuf::from(":memory:") })
+        Ok(Self {
+            conn,
+            path: PathBuf::from(":memory:"),
+        })
     }
 
     /// Hydrate canonical state + the applied undo journal.
@@ -65,22 +68,37 @@ impl PlanFile {
             state.meta = serde_json::from_str::<PlanMeta>(&json)?;
         }
         {
-            let mut stmt = self.conn.prepare("SELECT collection, id, json FROM entities")?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT collection, id, json FROM entities")?;
             let rows = stmt.query_map([], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
             })?;
             for row in rows {
                 let (collection, id, json) = row?;
                 let value: serde_json::Value = serde_json::from_str(&json)?;
-                let batch = vec![PatchOp::Add { path: format!("/{collection}/{id}"), value }];
+                let batch = vec![PatchOp::Add {
+                    path: format!("/{collection}/{id}"),
+                    value,
+                }];
                 state.apply_batch(&batch).map_err(PersistError::Corrupt)?;
             }
         }
         let mut entries = Vec::new();
         {
-            let mut stmt = self.conn.prepare("SELECT label, forward, inverse FROM undo_log ORDER BY seq")?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT label, forward, inverse FROM undo_log ORDER BY seq")?;
             let rows = stmt.query_map([], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
             })?;
             for row in rows {
                 let (label, forward, inverse) = row?;
@@ -101,11 +119,15 @@ impl PlanFile {
     }
 
     fn get_meta(&self, key: &str) -> Result<String, rusqlite::Error> {
-        self.conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
+        self.conn
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
     }
 
     fn set_meta(&self, key: &str, value: &str) -> Result<(), rusqlite::Error> {
-        self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", (key, value))?;
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+            (key, value),
+        )?;
         Ok(())
     }
 
@@ -127,7 +149,8 @@ impl PlanFile {
                     )?;
                 }
                 PatchOp::Remove { .. } => {
-                    self.conn.execute("DELETE FROM entities WHERE id = ?1", [id])?;
+                    self.conn
+                        .execute("DELETE FROM entities WHERE id = ?1", [id])?;
                 }
             }
         }
@@ -136,7 +159,12 @@ impl PlanFile {
 
     /// Persist one committed command: entity rows + undo entry + cursor, atomically.
     /// `applied` is how many undo entries are applied after this commit.
-    pub fn commit(&mut self, entry: &UndoEntry, meta: &PlanMeta, applied: usize) -> Result<(), PersistError> {
+    pub fn commit(
+        &mut self,
+        entry: &UndoEntry,
+        meta: &PlanMeta,
+        applied: usize,
+    ) -> Result<(), PersistError> {
         let tx_guard = self.conn.unchecked_transaction()?;
         // A new commit truncates any redo tail: keep only the entries that were
         // applied before this one (applied - 1), drop the rest.
@@ -146,7 +174,11 @@ impl PlanFile {
         )?;
         self.conn.execute(
             "INSERT INTO undo_log (label, forward, inverse) VALUES (?1, ?2, ?3)",
-            (&entry.label, serde_json::to_string(&entry.forward)?, serde_json::to_string(&entry.inverse)?),
+            (
+                &entry.label,
+                serde_json::to_string(&entry.forward)?,
+                serde_json::to_string(&entry.inverse)?,
+            ),
         )?;
         self.apply_rows(&entry.forward)?;
         self.set_meta("plan_meta", &serde_json::to_string(meta)?)?;
@@ -156,7 +188,12 @@ impl PlanFile {
     }
 
     /// Persist an undo/redo move: entity rows + cursor, atomically.
-    pub fn checkpoint(&mut self, batch: &PatchBatch, meta: &PlanMeta, applied: usize) -> Result<(), PersistError> {
+    pub fn checkpoint(
+        &mut self,
+        batch: &PatchBatch,
+        meta: &PlanMeta,
+        applied: usize,
+    ) -> Result<(), PersistError> {
         let tx_guard = self.conn.unchecked_transaction()?;
         self.apply_rows(batch)?;
         self.set_meta("plan_meta", &serde_json::to_string(meta)?)?;
@@ -204,10 +241,19 @@ mod tests {
             let tx = apply(&mut state, &cmd_create("NORTHERN FORGE")).unwrap();
             fid = tx.created[0].clone();
             let entry = log.commit(tx);
-            file.commit(&entry, &state.meta, log.entries().len()).unwrap();
-            let tx = apply(&mut state, &Command::RenameFactory { id: fid.clone(), name: "IRON WORKS".into() }).unwrap();
+            file.commit(&entry, &state.meta, log.entries().len())
+                .unwrap();
+            let tx = apply(
+                &mut state,
+                &Command::RenameFactory {
+                    id: fid.clone(),
+                    name: "IRON WORKS".into(),
+                },
+            )
+            .unwrap();
             let entry = log.commit(tx);
-            file.commit(&entry, &state.meta, log.entries().len()).unwrap();
+            file.commit(&entry, &state.meta, log.entries().len())
+                .unwrap();
         }
 
         // Reopen: state, undo depth, and undo behavior must survive.

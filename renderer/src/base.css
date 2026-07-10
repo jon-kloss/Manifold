@@ -1,0 +1,253 @@
+/* Base chrome + shared grammar. Every color comes from tokens.css — no hex here
+   beyond var() references. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  background: var(--steel-950);
+  color: var(--ink-100);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: none;
+}
+
+/* ---- type scale (UI spec) ---- */
+.t-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 34px;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+.t-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 21px;
+  line-height: 1.1;
+}
+.t-panel-header {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.t-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.mono,
+.t-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.t-data-22 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.t-data-12 {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.t-data-10 {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* planned/projected numbers render italic — the grammar means "projected" */
+.projected {
+  font-style: italic;
+}
+
+/* rate unit attached and smaller */
+.unit {
+  font-size: 0.78em;
+  color: var(--ink-500);
+  font-style: inherit;
+}
+
+/* ---- status glyphs (◇ ◈ ◆) ---- */
+.status-glyph {
+  font-style: normal;
+}
+.status-planned {
+  color: var(--bp-400);
+}
+.status-under_construction {
+  color: var(--flow-warn);
+}
+.status-built {
+  color: var(--ink-300);
+}
+
+/* ---- chips ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-300);
+  white-space: nowrap;
+}
+.chip.warn {
+  color: var(--flow-warn);
+  border-color: var(--flow-warn-dark);
+}
+.chip.crit {
+  color: var(--on-signal);
+  background: var(--flow-crit);
+  border-color: var(--flow-crit);
+  font-weight: 700;
+}
+.chip.planned {
+  color: var(--bp-400);
+  border-color: var(--bp-600);
+  border-style: dashed;
+  font-style: italic;
+}
+
+/* ---- buttons: orange is a verb ---- */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: background var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+.btn-primary {
+  background: var(--signal-500);
+  color: var(--on-signal);
+}
+.btn-primary:hover {
+  background: var(--signal-400);
+}
+.btn-primary:active {
+  background: var(--signal-pressed);
+}
+.btn-ghost {
+  border: 1px solid var(--steel-600);
+  color: var(--ink-300);
+  background: transparent;
+}
+.btn-ghost:hover {
+  background: var(--steel-700);
+  color: var(--ink-100);
+}
+.btn-ghost.active {
+  background: var(--signal-500);
+  border-color: var(--signal-500);
+  color: var(--on-signal);
+}
+.btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+.corner-cut {
+  clip-path: var(--corner-cut);
+}
+
+/* ---- settle flash: changed numbers flash amber → ink over 300ms ---- */
+@keyframes settle-flash {
+  0% {
+    color: var(--flow-warn);
+  }
+  100% {
+    color: inherit;
+  }
+}
+.settle {
+  animation: settle-flash var(--dur-settle) var(--ease);
+}
+
+/* ---- icon placeholder: 45° diagonal stripes (runtime-asset grammar) ---- */
+.icon-ph {
+  flex: none;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--steel-600) 0 3px,
+    var(--steel-800) 3px 6px
+  );
+  border: 1px solid var(--steel-600);
+  border-radius: 2px;
+}
+.icon-ph.s20 { width: 20px; height: 20px; }
+.icon-ph.s28 { width: 28px; height: 28px; }
+.icon-ph.s40 { width: 40px; height: 40px; }
+
+/* ---- scrollbars, node-editor grade ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--steel-600);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- reduced motion: crossfades, instant settle, no belt drift ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* input reset */
+input,
+select {
+  font: inherit;
+  color: var(--ink-100);
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  outline: none;
+}
+input:focus,
+select:focus {
+  border-color: var(--signal-500);
+}
