@@ -291,6 +291,7 @@ impl Session {
                 Command::SetGroupRecipe { id, .. }
                 | Command::SetGroupCount { id, .. }
                 | Command::SetGroupClock { id, .. }
+                | Command::SetGroupFloor { id, .. }
                 | Command::DeleteGroup { id } => {
                     push(self.state.groups.get(id).map(|g| g.factory.clone()))
                 }

@@ -8,10 +8,12 @@ import type { Id } from "../state/types";
 export default function AddGroupMenu({
   at,
   factoryId,
+  floor,
   onClose,
 }: {
   at: { x: number; y: number; flowX: number; flowY: number };
   factoryId: Id;
+  floor: number;
   onClose: () => void;
   flowRef: RefObject<HTMLDivElement | null>;
 }) {
@@ -55,6 +57,7 @@ export default function AddGroupMenu({
           count: 1,
           clock: 1.0,
           graphPos: { x: Math.round(pos.x / 16) * 16, y: Math.round(pos.y / 16) * 16 },
+          floor,
         },
       ],
       { select: true },

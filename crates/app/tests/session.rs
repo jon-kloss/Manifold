@@ -19,6 +19,7 @@ fn add_group(s: &mut Session, fid: &str, machine: &str, recipe: &str, pos: Graph
             count: 1,
             clock: 1.0,
             graph_pos: pos,
+            floor: 0,
         }])
         .unwrap();
     r.created[0].clone()
@@ -292,6 +293,29 @@ fn infeasible_target_clamps_and_names_constraint() {
         solver::model::Constraint::InputCeiling { item, .. } => assert_eq!(item, "Desc_OreIron_C"),
         other => panic!("expected input ceiling, got {other:?}"),
     }
+}
+
+#[test]
+fn floor_assignment_is_undoable_and_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("world.ficsit");
+    let gid;
+    {
+        let mut s = Session::open(&path, None, "fixture").unwrap();
+        let (fid, _, _) = build_modular_frame_factory(&mut s);
+        gid = s.state.factories[&fid].groups[0].clone();
+        s.edit(vec![Command::SetGroupFloor {
+            id: gid.clone(),
+            floor: 2,
+        }])
+        .unwrap();
+        assert_eq!(s.state.groups[&gid].floor, 2);
+        s.undo().unwrap().unwrap();
+        assert_eq!(s.state.groups[&gid].floor, 0);
+        s.redo().unwrap().unwrap();
+    }
+    let s = Session::open(&path, None, "fixture").unwrap();
+    assert_eq!(s.state.groups[&gid].floor, 2, "floor survives reopen");
 }
 
 #[test]

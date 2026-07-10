@@ -28,6 +28,7 @@ import RecipeStrip from "./RecipeStrip";
 import AddGroupMenu from "./AddGroupMenu";
 import AddPortMenu from "./AddPortMenu";
 import { fmtPower } from "../lib/format";
+import { computeEdgeLayout, type NodeGeom } from "./edgeLayout";
 import "./graph.css";
 
 const nodeTypes = { group: MachineGroupNode, boundaryPort: BoundaryPortNode };
@@ -48,6 +49,20 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const factory = plan.factories[factoryId];
   const { fitView } = useReactFlow();
   const [flowOverlay, setFlowOverlay] = useState(true);
+  // Floor filter: 'all' or a specific floor. Chips appear once floors exist.
+  const [floorFilter, setFloorFilter] = useState<"all" | number>("all");
+  const floors = useMemo(() => {
+    const set = new Set<number>([0]);
+    for (const gid of factory?.groups ?? []) {
+      const g = plan.groups[gid];
+      if (g) set.add(g.floor);
+    }
+    return [...set].sort((a, b) => a - b);
+  }, [factory, plan.groups]);
+  const groupFloor = useCallback(
+    (id: string): number => useStore.getState().plan.groups[id]?.floor ?? 0,
+    [],
+  );
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; flowX: number; flowY: number } | null>(null);
   const [portMenu, setPortMenu] = useState<"in" | "out" | null>(null);
 
@@ -63,12 +78,14 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     for (const gid of factory.groups) {
       const g = plan.groups[gid];
       if (!g) continue;
+      const dimmed = floorFilter !== "all" && g.floor !== floorFilter;
       out.push({
         id: gid,
         type: "group",
         position: { x: g.graphPos.x, y: g.graphPos.y },
-        data: { group: g, factoryId } satisfies GroupNodeData as unknown as Record<string, unknown>,
+        data: { group: g, factoryId, showFloorBadge: floors.length > 1 } satisfies GroupNodeData as unknown as Record<string, unknown>,
         selected: selection?.kind === "group" && selection.id === gid,
+        style: dimmed ? { opacity: 0.22 } : undefined,
       });
     }
     for (const pid of factory.ports) {
@@ -83,7 +100,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       });
     }
     return out;
-  }, [factory, plan.groups, plan.ports, selection, factoryId]);
+  }, [factory, plan.groups, plan.ports, selection, factoryId, floorFilter, floors.length]);
 
   const [nodes, setNodes] = useState<Node[]>(buildNodes);
   useEffect(() => setNodes(buildNodes()), [buildNodes]);
@@ -115,30 +132,50 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     [dispatch, setSelection, nodes],
   );
 
-  // ---- edges ----
+  // ---- edges (belt-style layout: shared anchors, orthogonal runs, hops) ----
   const edges: Edge[] = useMemo(() => {
     if (!factory) return [];
-    return Object.values(plan.edges)
-      .filter((e) => e.factory === factoryId)
-      .map((e) => {
-        const d = df?.edges[e.id];
-        return {
-          id: e.id,
-          source: e.from.id,
-          target: e.to.id,
-          type: "belt",
-          selected: selection?.kind === "edge" && selection.id === e.id,
-          data: {
-            edge: e,
-            flow: d?.flow ?? 0,
-            saturation: d?.saturation ?? 0,
-            projected: isProjected || e.status === "planned",
-            flowOverlay,
-            settled: settled.has(`/edges/${e.id}`),
-          } satisfies BeltEdgeData as unknown as Record<string, unknown>,
-        };
-      });
-  }, [factory, plan.edges, factoryId, df, selection, isProjected, flowOverlay, settled]);
+    const beltEdges = Object.values(plan.edges).filter((e) => e.factory === factoryId);
+    const geoms: Record<string, NodeGeom> = {};
+    for (const n of nodes) {
+      const m = (n as { measured?: { width?: number; height?: number } }).measured;
+      geoms[n.id] = {
+        x: n.position.x,
+        y: n.position.y,
+        w: m?.width ?? (n.type === "group" ? 248 : 200),
+        h: m?.height ?? (n.type === "group" ? 150 : 96),
+      };
+    }
+    const layout = computeEdgeLayout(
+      geoms,
+      beltEdges.map((e) => ({ id: e.id, source: e.from.id, target: e.to.id })),
+    );
+    return beltEdges.map((e) => {
+      const d = df?.edges[e.id];
+      const srcFloor = e.from.kind === "group" ? groupFloor(e.from.id) : 0;
+      const dstFloor = e.to.kind === "group" ? groupFloor(e.to.id) : 0;
+      const lift = srcFloor !== dstFloor;
+      const dimmed = floorFilter !== "all" && srcFloor !== floorFilter && dstFloor !== floorFilter;
+      return {
+        id: e.id,
+        source: e.from.id,
+        target: e.to.id,
+        type: "belt",
+        selected: selection?.kind === "edge" && selection.id === e.id,
+        data: {
+          edge: e,
+          flow: d?.flow ?? 0,
+          saturation: d?.saturation ?? 0,
+          projected: isProjected || e.status === "planned",
+          flowOverlay,
+          settled: settled.has(`/edges/${e.id}`),
+          geom: layout[e.id] ?? null,
+          lift,
+          dimmed,
+        } satisfies BeltEdgeData as unknown as Record<string, unknown>,
+      };
+    });
+  }, [factory, plan.edges, factoryId, df, selection, isProjected, flowOverlay, settled, nodes, floorFilter, groupFloor]);
 
   const onConnect = useCallback(
     (conn: Connection) => {
@@ -223,6 +260,25 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         <span className={`chip ${chip.over ? "warn" : ""}`}>{chip.text}</span>
         {df?.solveOnRelease && <span className="chip warn">LIVE → ON RELEASE</span>}
         <span className="ctx-spring" />
+        {floors.length > 1 && (
+          <div className="floor-chips" data-testid="floor-chips">
+            <button
+              className={`btn btn-ghost overlay-chip ${floorFilter === "all" ? "active" : ""}`}
+              onClick={() => setFloorFilter("all")}
+            >
+              ALL
+            </button>
+            {floors.map((f) => (
+              <button
+                key={f}
+                className={`btn btn-ghost overlay-chip ${floorFilter === f ? "active" : ""}`}
+                onClick={() => setFloorFilter(floorFilter === f ? "all" : f)}
+              >
+                F{f}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           className={`btn btn-ghost overlay-chip ${flowOverlay ? "active" : ""}`}
           onClick={() => setFlowOverlay(!flowOverlay)}
@@ -287,6 +343,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         <AddGroupMenu
           at={addMenu}
           factoryId={factoryId}
+          floor={floorFilter === "all" ? 0 : floorFilter}
           onClose={() => setAddMenu(null)}
           flowRef={flowRef}
         />

@@ -142,10 +142,34 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
   // belt saturation coloring: labels show n/cap · %
   await expect(page.locator(".belt-label").first()).toContainText("%");
 
+  // belts are orthogonal runs (edgeLayout), not beziers: no cubic segments
+  const edgePath = await page.locator(".react-flow__edge path").first().getAttribute("d");
+  expect(edgePath).not.toContain("C");
+  expect(edgePath).toMatch(/L /);
+
+  // ---- floors: move the RIP assembler to F1 → chips + lift glyph appear ----
+  await page.getByTestId("group-Recipe_IronPlateReinforced_C").click();
+  await page.getByTestId("floor-stepper").getByRole("button", { name: "+" }).click();
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId("floor-chips")).toBeVisible();
+  await expect(page.locator(".belt-lift").first()).toBeVisible();
+  // floor filter dims off-floor cards
+  await page.getByTestId("floor-chips").getByRole("button", { name: "F1" }).click();
+  await expect(page.locator('.react-flow__node[style*="opacity: 0.22"]').first()).toBeVisible();
+  await page.getByTestId("floor-chips").getByRole("button", { name: "ALL" }).click();
+  // put it back on F0 (undoable command like any other)
+  await page.getByTestId("floor-stepper").getByRole("button", { name: "−" }).click();
+  await page.waitForTimeout(300);
+  await page.keyboard.press("Escape");
+
   // ---- hard stop: drag past the ceiling clamps at max and names the constraint ----
-  await page.mouse.move(box.x + 2, box.y + box.height / 2);
+  // (re-open the inspector — the floors interlude deselected everything)
+  await page.getByTestId("port-out-Desc_ModularFrame_C").click();
+  await expect(page.getByTestId("target-slider")).toBeVisible();
+  const box2 = (await page.getByTestId("target-slider").boundingBox())!;
+  await page.mouse.move(box2.x + 2, box2.y + box2.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 1.05, box.y + box.height / 2, { steps: 10 });
+  await page.mouse.move(box2.x + box2.width * 1.05, box2.y + box2.height / 2, { steps: 10 });
   await page.mouse.up();
   await page.waitForTimeout(400);
   await expect(page.getByTestId("binding-strip")).toBeVisible();
@@ -171,15 +195,13 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
   expect(Math.abs(persisted - rate)).toBeLessThan(0.05);
   await expect(page.locator(".belt-label")).toHaveCount(9);
 
-  // undo still works after reopen — the journal lives in the plan file.
-  // The applied stack ends at the first drag (the second was undone pre-reload),
-  // so undo reverts it (→ 0) and redo restores it.
+  // undo still works after reopen — the journal lives in the plan file. The
+  // last applied edit was the floor reset, so undo resurrects the F1 floor
+  // (chips reappear) and redo clears it again; the target rate is untouched.
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(300);
-  const afterReopenUndo = parseFloat(await page.getByTestId("target-value").innerText());
-  expect(Math.abs(afterReopenUndo)).toBeLessThan(0.05);
+  await expect(page.getByTestId("floor-chips")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+Shift+z");
-  await page.waitForTimeout(300);
+  await expect(page.getByTestId("floor-chips")).not.toBeVisible();
   const afterReopenRedo = parseFloat(await page.getByTestId("target-value").innerText());
   expect(Math.abs(afterReopenRedo - rate)).toBeLessThan(0.05);
 

@@ -70,6 +70,10 @@ pub struct MachineGroup {
     pub somersloops: u8,
     pub planned_delta: Option<Id>,
     pub graph_pos: GraphPos,
+    /// Vertical factory floor (0 = ground). Display + planning aid; belts
+    /// crossing floors render as lifts.
+    #[serde(default)]
+    pub floor: u32,
     pub status: Status,
     pub created_by: CreatedBy,
 }

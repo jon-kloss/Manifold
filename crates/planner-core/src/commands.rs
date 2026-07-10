@@ -77,6 +77,8 @@ pub enum Command {
         count: u32,
         clock: f64,
         graph_pos: GraphPos,
+        #[serde(default)]
+        floor: u32,
     },
     SetGroupRecipe {
         id: Id,
@@ -90,6 +92,10 @@ pub enum Command {
     SetGroupClock {
         id: Id,
         clock: f64,
+    },
+    SetGroupFloor {
+        id: Id,
+        floor: u32,
     },
     MoveGroupCard {
         id: Id,
@@ -160,6 +166,7 @@ impl Command {
             Command::SetGroupRecipe { .. } => "set recipe",
             Command::SetGroupCount { .. } => "set count",
             Command::SetGroupClock { .. } => "set clock",
+            Command::SetGroupFloor { .. } => "set floor",
             Command::MoveGroupCard { .. } => "move card",
             Command::DeleteGroup { .. } => "delete group",
             Command::AddPort { .. } => "add port",
@@ -314,6 +321,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             count,
             clock,
             graph_pos,
+            floor,
         } => {
             let mut f = state
                 .factories
@@ -332,6 +340,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 somersloops: 0,
                 planned_delta: None,
                 graph_pos: *graph_pos,
+                floor: *floor,
                 status: Status::Planned,
                 created_by: CreatedBy::Manual,
             };
@@ -373,6 +382,16 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             require_planned(g.status, id, "set clock")?;
             g.clock = clamp_clock(*clock)?;
+            tx.record(state.upsert(Entity::Group(g)));
+        }
+        Command::SetGroupFloor { id, floor } => {
+            let mut g = state
+                .groups
+                .get(id)
+                .cloned()
+                .ok_or(DomainError::NotFound { id: id.clone() })?;
+            require_planned(g.status, id, "set floor")?;
+            g.floor = *floor;
             tx.record(state.upsert(Entity::Group(g)));
         }
         Command::MoveGroupCard { id, graph_pos } => {

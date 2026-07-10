@@ -16,3 +16,6 @@ Everything tempting that isn't Phase 1. Tags: v1 (later phase of this release), 
 - v1: "Plan a move" flow for built factory pins (built layer arrives with import).
 - v1.1: True shared-element map↔factory zoom morph (currently scale+fade).
 - v1.1: Node index numbers on map labels (`FE PURE #08` style) once the full node snapshot lands.
+- v1.1: Belt corridor bundling (shared-lane routing when many belts run parallel) and manual waypoint pins on belts.
+- v1.1: Per-floor canvas offset view (stacked axonometric floors) — floors currently filter/dim in one plane.
+- v2: Machine footprint dimensions from pak extraction replacing the community table in `footprints.ts`.

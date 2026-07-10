@@ -29,7 +29,7 @@ const outP = (
 const group = async (machine, recipe, x, y) =>
   (
     await edit([
-      { type: "add_group", factory: fid, machine, recipe, count: 1, clock: 1.0, graphPos: { x, y } },
+      { type: "add_group", factory: fid, machine, recipe, count: 1, clock: 1.0, graphPos: { x, y }, floor: 0 },
     ])
   ).created[0];
 
@@ -58,6 +58,10 @@ await belt(G(mf), P(outP), "Desc_ModularFrame_C", 1);
 await edit([
   { type: "create_factory", name: "COPPER BASIN", position: { x: -900, y: 1150 }, region: "GRASS FIELDS" },
 ]);
+
+// vertical factory: screws + RIP on floor 1 (belts to them become lifts)
+await edit([{ type: "set_group_floor", id: screws, floor: 1 }]);
+await edit([{ type: "set_group_floor", id: rip, floor: 1 }]);
 
 // target: 2 modular frames/min → screw belt Mk.1 runs at 36/60 = 60%
 const r = await edit([{ type: "set_port_rate", id: outP, rate: 2.0 }]);

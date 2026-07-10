@@ -31,6 +31,8 @@ export interface MachineGroup {
   somersloops: number;
   plannedDelta: Id | null;
   graphPos: GraphPos;
+  /** Vertical factory floor (0 = ground). */
+  floor: number;
   status: Status;
   createdBy: CreatedBy;
 }
@@ -191,10 +193,11 @@ export type Command =
   | { type: "rename_factory"; id: Id; name: string }
   | { type: "move_factory_pin"; id: Id; position: MapPos }
   | { type: "delete_factory"; id: Id }
-  | { type: "add_group"; factory: Id; machine: string; recipe: string; count: number; clock: number; graphPos: GraphPos }
+  | { type: "add_group"; factory: Id; machine: string; recipe: string; count: number; clock: number; graphPos: GraphPos; floor: number }
   | { type: "set_group_recipe"; id: Id; machine: string; recipe: string }
   | { type: "set_group_count"; id: Id; count: number }
   | { type: "set_group_clock"; id: Id; clock: number }
+  | { type: "set_group_floor"; id: Id; floor: number }
   | { type: "move_group_card"; id: Id; graphPos: GraphPos }
   | { type: "delete_group"; id: Id }
   | { type: "add_port"; factory: Id; direction: PortDirection; item: string; rate: number; rateCeiling: number | null; graphPos: GraphPos }

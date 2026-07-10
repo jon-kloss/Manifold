@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore, solveChip } from "../state/store";
 import { buildSnapshot, ensureT0, t0SetTarget } from "../solver/t0";
+import { footprintOf, footprintArea } from "./footprints";
 import { fmtClock, fmtRate } from "../lib/format";
 import { beltCapacity, type DerivedFactory, type Id } from "../state/types";
 
@@ -179,6 +180,43 @@ export default function Inspector({
               />
             </div>
             <div className="insp-note">Above 100% needs power shards in-game — the plan records intent.</div>
+          </section>
+
+          <section className="insp-section">
+            <h3 className="t-label">PLACEMENT</h3>
+            <div className="drawer-row">
+              <span className="drawer-row-name">Floor</span>
+              <div className="floor-stepper" data-testid="floor-stepper">
+                <button
+                  className="insp-clock-btn mono"
+                  disabled={selectedGroup.floor === 0}
+                  onClick={() =>
+                    void dispatch([{ type: "set_group_floor", id: selectedGroup.id, floor: selectedGroup.floor - 1 }])
+                  }
+                >
+                  −
+                </button>
+                <span className="t-data-12 floor-value">F{selectedGroup.floor}</span>
+                <button
+                  className="insp-clock-btn mono"
+                  onClick={() =>
+                    void dispatch([{ type: "set_group_floor", id: selectedGroup.id, floor: selectedGroup.floor + 1 }])
+                  }
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="drawer-row">
+              <span className="drawer-row-name">Footprint</span>
+              <span className="t-data-12">
+                {footprintOf(selectedGroup.machine).w}×{footprintOf(selectedGroup.machine).l} m · ×
+                {selectedGroup.count} → {fmtRate(footprintArea(selectedGroup.machine, selectedGroup.count))} m²
+              </span>
+            </div>
+            <div className="insp-note">
+              Belts to other floors render as lifts (⇅). Footprints are per machine, top-down.
+            </div>
           </section>
 
           <section className="insp-section">

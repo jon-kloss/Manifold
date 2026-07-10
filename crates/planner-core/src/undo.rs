@@ -197,6 +197,7 @@ mod tests {
                 count: 4,
                 clock: 1.0,
                 graph_pos: GraphPos { x: 0.0, y: 0.0 },
+                floor: 0,
             },
         )
         .unwrap();

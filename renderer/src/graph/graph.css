@@ -129,6 +129,65 @@
   margin-left: auto;
   color: var(--ink-300);
 }
+.fp-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 6px 10px 4px;
+  border-top: 1px solid var(--steel-700);
+}
+.fp-outlines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px;
+  max-width: 176px;
+}
+.fp-box {
+  /* top-down machine outline — placeholder grammar, never invented art */
+  border: 1px solid var(--ink-500);
+  border-radius: 1px;
+  background: repeating-linear-gradient(45deg, rgba(108, 118, 128, 0.25) 0 2px, transparent 2px 4px);
+}
+.fp-more {
+  font-size: 9px;
+  color: var(--ink-500);
+  align-self: center;
+}
+.fp-dims {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--ink-faint);
+}
+.floor-badge-foot {
+  color: var(--bp-400);
+  font-weight: 700;
+}
+.floor-chips {
+  display: flex;
+  gap: 4px;
+}
+.floor-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.floor-value {
+  min-width: 28px;
+  text-align: center;
+}
+.belt-lift {
+  font-weight: 700;
+}
+.belt-label.dimmed {
+  opacity: 0.25;
+}
+.react-flow__connectionline path {
+  stroke: var(--bp-400);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
 .belt-handle {
   width: 8px;
   height: 8px;

@@ -5,12 +5,36 @@
 import { Handle, Position } from "@xyflow/react";
 import { useStore } from "../state/store";
 import { fmtClock, fmtPower, fmtRate } from "../lib/format";
+import { footprintOf, FOOTPRINT_SCALE } from "./footprints";
 import type { MachineGroup } from "../state/types";
 
 export interface GroupNodeData {
   group: MachineGroup;
   factoryId: string;
+  showFloorBadge?: boolean;
   [key: string]: unknown;
+}
+
+/** Top-down outlines at one shared px-per-meter scale — relative machine size
+ *  reads truthfully across cards. Capped at 12 outlines with a +n overflow. */
+function FootprintStrip({ machine, count }: { machine: string; count: number }) {
+  const f = footprintOf(machine);
+  const w = Math.max(5, Math.round(f.w * FOOTPRINT_SCALE));
+  const l = Math.max(5, Math.round(f.l * FOOTPRINT_SCALE));
+  const shown = Math.min(count, 12);
+  return (
+    <div className="fp-strip" title={`${f.w}×${f.l} m each — top-down footprint`}>
+      <div className="fp-outlines">
+        {Array.from({ length: shown }, (_, i) => (
+          <span key={i} className="fp-box" style={{ width: w, height: l }} />
+        ))}
+        {count > shown && <span className="fp-more mono">+{count - shown}</span>}
+      </div>
+      <span className="fp-dims mono">
+        {f.w}×{f.l}M
+      </span>
+    </div>
+  );
 }
 
 export default function MachineGroupNode({ data, selected }: { data: GroupNodeData; selected?: boolean }) {
@@ -54,9 +78,11 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
           <span className="unit">/min</span>
         </span>
       </div>
+      <FootprintStrip machine={group.machine} count={group.count} />
       <footer className="group-card-foot mono">
         <span>IN {recipe?.ingredients.length ?? 0}</span>
         <span>OUT {recipe?.products.length ?? 0}</span>
+        {data.showFloorBadge && <span className="floor-badge-foot">F{group.floor}</span>}
         <span className={numCls}>{fmtPower(dg?.powerMw ?? 0)}</span>
       </footer>
       <Handle type="source" position={Position.Right} className="belt-handle" />

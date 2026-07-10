@@ -1,11 +1,13 @@
-// Belt edge with the flow encoding (mock 1e): three channels agree — color +
-// thickness + pattern — plus the always-present mono label chip `n/cap · %`.
-// Planned numbers italic; CRIT chip inverts with ⚠.
+// Belt edge with the flow encoding (mock 1e): color + thickness + pattern agree,
+// plus the always-present mono label chip `n/cap · %`. Paths are belt-style
+// orthogonal runs from edgeLayout (consistent anchors, rounded corners, hop
+// arcs over crossed belts). Cross-floor belts are lifts (⇅).
 
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
 import { flowLevel } from "../lib/format";
 import { fmtRate, fmtPercent } from "../lib/format";
 import { beltCapacity, type BeltEdge } from "../state/types";
+import type { EdgeGeom } from "./edgeLayout";
 
 export interface BeltEdgeData {
   edge: BeltEdge;
@@ -14,6 +16,9 @@ export interface BeltEdgeData {
   projected: boolean;
   flowOverlay: boolean;
   settled: boolean;
+  geom: EdgeGeom | null;
+  lift: boolean;
+  dimmed: boolean;
   [key: string]: unknown;
 }
 
@@ -25,14 +30,24 @@ const STROKE = {
 
 export default function BeltEdgeView(props: EdgeProps) {
   const data = props.data as BeltEdgeData;
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX: props.sourceX,
-    sourceY: props.sourceY,
-    targetX: props.targetX,
-    targetY: props.targetY,
-    sourcePosition: props.sourcePosition,
-    targetPosition: props.targetPosition,
-  });
+
+  let path: string;
+  let labelX: number;
+  let labelY: number;
+  if (data.geom) {
+    path = data.geom.path;
+    labelX = data.geom.labelX;
+    labelY = data.geom.labelY;
+  } else {
+    [path, labelX, labelY] = getBezierPath({
+      sourceX: props.sourceX,
+      sourceY: props.sourceY,
+      targetX: props.targetX,
+      targetY: props.targetY,
+      sourcePosition: props.sourcePosition,
+      targetPosition: props.targetPosition,
+    });
+  }
 
   const level = flowLevel(data.saturation);
   const capacity = beltCapacity(data.edge.tier);
@@ -48,17 +63,22 @@ export default function BeltEdgeView(props: EdgeProps) {
           stroke: props.selected ? "var(--signal-500)" : s.color,
           strokeWidth: s.width,
           strokeDasharray: s.dash,
+          strokeLinejoin: "round",
+          strokeLinecap: "round",
+          fill: "none",
+          opacity: data.dimmed ? 0.15 : 1,
         }}
       />
       <EdgeLabelRenderer>
         <div
           className={`belt-label mono ${isCrit ? "crit" : ""} ${data.projected ? "projected" : ""} ${
             data.settled ? "settle" : ""
-          } ${props.selected ? "selected" : ""}`}
+          } ${props.selected ? "selected" : ""} ${data.dimmed ? "dimmed" : ""}`}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           data-testid={`belt-label-${data.edge.id}`}
         >
           {isCrit && "⚠ "}
+          {data.lift && <span className="belt-lift">⇅ </span>}
           {fmtRate(data.flow)}/{fmtRate(capacity)} · {fmtPercent(data.saturation)}
           <span className="belt-tier">MK.{data.edge.tier}</span>
         </div>
