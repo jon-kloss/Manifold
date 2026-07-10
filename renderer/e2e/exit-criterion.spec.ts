@@ -158,6 +158,17 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
   await expect(page.locator('.react-flow__node[style*="opacity: 0.22"]').first()).toBeVisible();
   await page.getByTestId("floor-chips").getByRole("button", { name: "ALL" }).click();
 
+  // ---- AUTO-FLOOR: stages the chain (smelt F0 … final assembly F4), one undo ----
+  await page.getByTestId("btn-auto-floor").click();
+  await page.waitForTimeout(700);
+  await expect(page.getByTestId("floor-chips")).toContainText("F4");
+  // smelter is stage 0, final assembler stage 4 — check the card badges
+  await expect(page.getByTestId("group-Recipe_IngotIron_C")).toContainText("F0");
+  await expect(page.getByTestId("group-Recipe_ModularFrame_C")).toContainText("F4");
+  await page.keyboard.press("ControlOrMeta+z"); // one step back to the F1 experiment
+  await page.waitForTimeout(400);
+  await expect(page.getByTestId("floor-chips")).not.toContainText("F4");
+
   // ---- STACK FLOORS: cutaway elevation, one undo step ----
   await page.getByTestId("btn-stack-floors").click();
   await page.waitForTimeout(700);

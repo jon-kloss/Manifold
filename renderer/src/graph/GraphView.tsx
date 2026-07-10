@@ -74,48 +74,107 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     [setSelection],
   );
 
-  /** Cutaway elevation: stack each floor's cards into their own horizontal
-   *  band, highest floor on top, preserving intra-floor layout. One undo step. */
+  /** Band-stacking core: move each floor's cards into its own horizontal band
+   *  (highest floor on top), preserving intra-floor layout. `floorOf` lets
+   *  AUTO-FLOOR stack against floors it is about to assign. */
+  const bandMoves = useCallback(
+    (groups: { id: string; graphPos: { x: number; y: number } }[], floorOf: (id: string) => number): Command[] => {
+      const byFloor = new Map<number, typeof groups>();
+      for (const g of groups) {
+        const fl = floorOf(g.id);
+        byFloor.set(fl, [...(byFloor.get(fl) ?? []), g]);
+      }
+      if (byFloor.size < 2) return [];
+      const measured: Record<string, { y: number; h: number }> = {};
+      for (const n of getNodes()) {
+        const m = (n as { measured?: { height?: number } }).measured;
+        measured[n.id] = { y: n.position.y, h: m?.height ?? 150 };
+      }
+      const GAP = 96;
+      const snap16 = (v: number) => Math.round(v / 16) * 16;
+      const floorsDesc = [...byFloor.keys()].sort((a, b) => b - a);
+      // anchor the stack where the plan already lives
+      let cursorY = Math.min(...groups.map((g) => measured[g.id]?.y ?? g.graphPos.y));
+      const cmds: Command[] = [];
+      for (const floor of floorsDesc) {
+        const members = byFloor.get(floor)!;
+        const tops = members.map((g) => measured[g.id]?.y ?? g.graphPos.y);
+        const bottoms = members.map((g) => (measured[g.id]?.y ?? g.graphPos.y) + (measured[g.id]?.h ?? 150));
+        const minY = Math.min(...tops);
+        const bandH = Math.max(...bottoms) - minY;
+        for (const g of members) {
+          const newY = snap16(cursorY + ((measured[g.id]?.y ?? g.graphPos.y) - minY));
+          if (Math.abs(newY - g.graphPos.y) > 0.5) {
+            cmds.push({ type: "move_group_card", id: g.id, graphPos: { x: g.graphPos.x, y: newY } });
+          }
+        }
+        cursorY += bandH + GAP;
+      }
+      return cmds;
+    },
+    [getNodes],
+  );
+
+  const commitArrange = useCallback(
+    (cmds: Command[]) => {
+      if (cmds.length === 0) return;
+      void dispatch(cmds).then(() => {
+        window.setTimeout(() => void fitView({ padding: 0.15, duration: 300 }), 60);
+      });
+    },
+    [dispatch, fitView],
+  );
+
+  /** Cutaway elevation from the floors as they stand. One undo step. */
   const stackFloors = useCallback(() => {
     const state = useStore.getState();
     const f = state.plan.factories[factoryId];
     if (!f) return;
     const groups = f.groups.map((gid) => state.plan.groups[gid]).filter(Boolean);
-    const byFloor = new Map<number, typeof groups>();
-    for (const g of groups) byFloor.set(g.floor, [...(byFloor.get(g.floor) ?? []), g]);
-    if (byFloor.size < 2) return;
+    commitArrange(bandMoves(groups, (id) => state.plan.groups[id]?.floor ?? 0));
+  }, [factoryId, bandMoves, commitArrange]);
 
-    const measured: Record<string, { y: number; h: number }> = {};
-    for (const n of getNodes()) {
-      const m = (n as { measured?: { height?: number } }).measured;
-      measured[n.id] = { y: n.position.y, h: m?.height ?? 150 };
-    }
-
-    const GAP = 96;
-    const snap16 = (v: number) => Math.round(v / 16) * 16;
-    const floorsDesc = [...byFloor.keys()].sort((a, b) => b - a);
-    // anchor the stack where the plan already lives
-    let cursorY = Math.min(...groups.map((g) => measured[g.id]?.y ?? g.graphPos.y));
-    const cmds: Command[] = [];
-    for (const floor of floorsDesc) {
-      const members = byFloor.get(floor)!;
-      const tops = members.map((g) => measured[g.id]?.y ?? g.graphPos.y);
-      const bottoms = members.map((g) => (measured[g.id]?.y ?? g.graphPos.y) + (measured[g.id]?.h ?? 150));
-      const minY = Math.min(...tops);
-      const bandH = Math.max(...bottoms) - minY;
-      for (const g of members) {
-        const newY = snap16(cursorY + ((measured[g.id]?.y ?? g.graphPos.y) - minY));
-        if (Math.abs(newY - g.graphPos.y) > 0.5) {
-          cmds.push({ type: "move_group_card", id: g.id, graphPos: { x: g.graphPos.x, y: newY } });
-        }
+  /** Assign floors by production stage — topological depth from the input
+   *  side (smelting low, final assembly high) — then band-stack. One undo step. */
+  const autoFloor = useCallback(() => {
+    const state = useStore.getState();
+    const f = state.plan.factories[factoryId];
+    if (!f) return;
+    const groups = f.groups.map((gid) => state.plan.groups[gid]).filter(Boolean);
+    if (groups.length < 2) return;
+    const preds = new Map<string, string[]>();
+    for (const e of Object.values(state.plan.edges)) {
+      if (e.factory === factoryId && e.from.kind === "group" && e.to.kind === "group") {
+        preds.set(e.to.id, [...(preds.get(e.to.id) ?? []), e.from.id]);
       }
-      cursorY += bandH + GAP;
     }
-    if (cmds.length === 0) return;
-    void dispatch(cmds).then(() => {
-      window.setTimeout(() => void fitView({ padding: 0.15, duration: 300 }), 60);
-    });
-  }, [factoryId, getNodes, dispatch, fitView]);
+    const stage = new Map<string, number>();
+    const visiting = new Set<string>();
+    let cyclic = false;
+    const depth = (id: string): number => {
+      if (stage.has(id)) return stage.get(id)!;
+      if (visiting.has(id)) {
+        cyclic = true;
+        return 0;
+      }
+      visiting.add(id);
+      const ps = preds.get(id) ?? [];
+      const d = ps.length ? Math.max(...ps.map(depth)) + 1 : 0;
+      visiting.delete(id);
+      stage.set(id, d);
+      return d;
+    };
+    groups.forEach((g) => depth(g.id));
+    if (cyclic) return; // loops have no stages — leave the plan alone
+
+    const cmds: Command[] = [];
+    for (const g of groups) {
+      const fl = stage.get(g.id) ?? 0;
+      if (fl !== g.floor) cmds.push({ type: "set_group_floor", id: g.id, floor: fl });
+    }
+    cmds.push(...bandMoves(groups, (id) => stage.get(id) ?? 0));
+    commitArrange(cmds);
+  }, [factoryId, bandMoves, commitArrange]);
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; flowX: number; flowY: number } | null>(null);
   const [portMenu, setPortMenu] = useState<"in" | "out" | null>(null);
 
@@ -377,6 +436,14 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         <span className={`chip ${chip.over ? "warn" : ""}`}>{chip.text}</span>
         {df?.solveOnRelease && <span className="chip warn">LIVE → ON RELEASE</span>}
         <span className="ctx-spring" />
+        <button
+          className="btn btn-ghost overlay-chip"
+          onClick={autoFloor}
+          title="Assign floors by production stage (inputs low, assembly high) and stack — one undo step"
+          data-testid="btn-auto-floor"
+        >
+          AUTO-FLOOR
+        </button>
         {floors.length > 1 && (
           <button
             className="btn btn-ghost overlay-chip"
