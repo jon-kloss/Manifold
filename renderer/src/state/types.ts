@@ -88,13 +88,37 @@ export interface BeltEdge {
   createdBy: CreatedBy;
 }
 
+export interface StationSpec { name: string; platforms: number; dwellS: number }
+export interface RailSpec {
+  consists: number;
+  locos: number;
+  cars: number;
+  stations: StationSpec[];
+  headwayPenalty: number;
+}
+export interface TruckSpec { trucks: number; fuelItem: string }
+export interface DroneSpec { batteriesPerTrip: number }
+
+export const DEFAULT_RAIL_SPEC: RailSpec = {
+  consists: 1,
+  locos: 1,
+  cars: 4,
+  stations: [
+    { name: "LOAD", platforms: 1, dwellS: 25 },
+    { name: "UNLOAD", platforms: 1, dwellS: 25 },
+  ],
+  headwayPenalty: 0.15,
+};
+export const DEFAULT_TRUCK_SPEC: TruckSpec = { trucks: 1, fuelItem: "Desc_Coal_C" };
+export const DEFAULT_DRONE_SPEC: DroneSpec = { batteriesPerTrip: 4 };
+
 export type RouteKind =
   | { kind: "belt"; tier: number }
   | { kind: "pipe"; tier: number }
   | { kind: "power" }
-  | { kind: "rail"; spec: unknown }
-  | { kind: "truck"; spec: unknown }
-  | { kind: "drone"; spec: unknown };
+  | { kind: "rail"; spec: RailSpec }
+  | { kind: "truck"; spec: TruckSpec }
+  | { kind: "drone"; spec: DroneSpec };
 
 export interface Route {
   id: Id;
@@ -217,6 +241,19 @@ export interface DerivedFactory {
   solveError: string | null;
 }
 
+/** A3 math block — every line the rail/truck/drone inspector renders. */
+export interface TransportMath {
+  effectiveLengthM: number;
+  roundTripS: number;
+  loadUnloadS: number;
+  headwayS: number | null;
+  rttS: number;
+  perTripItems: number;
+  throughputPerMin: number;
+  batteriesPerMin: number | null;
+  fuelItem: string | null;
+}
+
 export interface DerivedRoute {
   flow: number;
   supplied: number;
@@ -227,6 +264,8 @@ export interface DerivedRoute {
   climbUpM: number;
   climbDownM: number;
   item: string | null;
+  /** rail/truck/drone only */
+  transport: TransportMath | null;
 }
 
 export interface DeficitRow {
@@ -292,6 +331,8 @@ export interface ProposalItem {
   commands: Command[];
   aliases: (string | null)[];
   dependsOn: Id[];
+  /** SaveReimport drift payload — accept syncs the ◆ Built layer */
+  sync?: unknown;
 }
 
 export interface Proposal {
@@ -402,6 +443,7 @@ export type Command =
   | { type: "delete_junction"; id: Id }
   | { type: "add_route"; kind: RouteKind; from: Id; to: Id; path: MapPos[] }
   | { type: "set_route_tier"; id: Id; tier: number }
+  | { type: "set_route_spec"; id: Id; kind: RouteKind }
   | { type: "delete_route"; id: Id }
   | { type: "set_edge_tier"; id: Id; tier: number }
   | { type: "delete_edge"; id: Id }
@@ -421,3 +463,33 @@ export const beltCapacity = (tier: number) => BELT_CAPACITY[Math.min(6, Math.max
 
 /** Pseudo-item for generator output: 1 "item/min" = 1 MW (Addendum A2). */
 export const POWER_ITEM = "__PowerMW";
+
+// ---- save import (SDD §8) ----
+
+export interface ImportMachine {
+  class: string;
+  recipe?: string | null;
+  clock?: number;
+  x: number;
+  y: number;
+  z?: number;
+}
+
+export interface ImportSnapshot {
+  saveName: string;
+  buildVersion?: string;
+  machines: ImportMachine[];
+  extractors?: ImportMachine[];
+  belts?: Record<string, number>;
+  rails?: number;
+  powerLines?: number;
+  locomotives?: number;
+  wagons?: number;
+  trainStations?: number;
+  quarantined?: Record<string, number>;
+}
+
+export type ImportOutcome =
+  | { outcome: "imported"; response: EditResponse; factories: number; machines: number; quarantined: number }
+  | { outcome: "drift"; response: EditResponse; proposal: Id }
+  | { outcome: "in_sync" };

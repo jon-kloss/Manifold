@@ -410,3 +410,36 @@
 .minibar > span.crit {
   background: var(--flow-crit);
 }
+
+/* ---- transport math block (A3.1: render it, don't hide it) ---- */
+.math-block {
+  border: 1px solid var(--steel-700);
+  background: var(--steel-950);
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.math-row {
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  height: 24px;
+  color: var(--ink-300);
+}
+.math-row .math-note {
+  color: var(--ink-faint);
+  font-size: 9.5px;
+}
+.math-row.math-total {
+  border-top: 1px solid var(--steel-700);
+  color: var(--ink-100);
+  font-weight: 700;
+}
+.math-row.warn { color: var(--flow-warn); }
+.math-row.crit { color: var(--flow-crit); }
+.math-edit {
+  width: 44px;
+  height: 18px;
+  text-align: right;
+  font-size: 10px;
+}

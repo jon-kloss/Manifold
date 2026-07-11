@@ -142,6 +142,8 @@ test("empire: belt route, power grid, audit drawer", async ({ page, request }) =
   await rightDrag(page, await pinCenter(page, "INGOT POINT"), await pinCenter(page, "ROD CITY"));
   await expect(page.getByTestId("route-popover")).toBeVisible();
   await expect(page.locator(".route-cand").first()).toContainText("Iron Ingot");
+  // 1.6 km apart: the picker suggests RAIL (A3.3) — this test wants a belt
+  await page.selectOption('[data-testid="popover-transport"]', "belt");
   await page.getByTestId("btn-route-confirm").click();
 
   // the created route selects itself → belt route inspector with live load

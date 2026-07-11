@@ -21,6 +21,58 @@ interface SatRow {
   upgrade: (() => void) | null;
 }
 
+// PLAN DRIFT (mock 2d + SDD §8): ◇ planned entities awaiting build, plus the
+// open SaveReimport proposal's drift rows (game changed since last import).
+function DriftTab() {
+  const plan = useStore((s) => s.plan);
+  const setReviewing = useStore((s) => s.setReviewing);
+  const planned = Object.values(plan.factories).filter((f) => f.status === "planned").length;
+  const plannedGroups = Object.values(plan.groups).filter((g) => g.status === "planned").length;
+  const reimport = Object.values(plan.proposals).find(
+    (p) => p.source === "save_reimport" && (p.status === "draft" || p.status === "reviewing"),
+  );
+  const hasBuilt = Object.values(plan.factories).some((f) => f.status === "built");
+  if (!hasBuilt && planned + plannedGroups === 0) {
+    return <div className="drawer-empty">Nothing planned, nothing built — the map is clean.</div>;
+  }
+  return (
+    <>
+      {reimport &&
+        reimport.items.map((i) => (
+          <div className="audit-row" key={i.id} data-testid="drift-row">
+            <span className="audit-name">{i.label}</span>
+            <span className="mono audit-tier">GAME DRIFT</span>
+            <span className="mono audit-load warn">{i.detail}</span>
+            <span className="audit-bar" />
+            <span className="mono audit-proj">{reimport.title}</span>
+            <span className="mono audit-trend">—</span>
+            <span className="audit-actions">
+              <button className="chip warn" onClick={() => setReviewing(reimport.id)}>
+                REVIEW
+              </button>
+            </span>
+          </div>
+        ))}
+      {planned + plannedGroups > 0 && (
+        <div className="audit-row" data-testid="plan-drift-row">
+          <span className="audit-name">Plan ahead of the build</span>
+          <span className="mono audit-tier">PLAN DRIFT</span>
+          <span className="mono audit-load">◇ {planned + plannedGroups}</span>
+          <span className="audit-bar" />
+          <span className="mono audit-proj">
+            {planned} factories · {plannedGroups} machine groups planned, not yet built in-game
+          </span>
+          <span className="mono audit-trend">—</span>
+          <span className="audit-actions" />
+        </div>
+      )}
+      {hasBuilt && !reimport && planned + plannedGroups === 0 && (
+        <div className="drawer-empty">Built layer in sync — re-import a save to check for game drift.</div>
+      )}
+    </>
+  );
+}
+
 export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const plan = useStore((s) => s.plan);
   const derived = useStore((s) => s.derived);
@@ -373,11 +425,7 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
           </>
         )}
 
-        {tab === "drift" && (
-          <div className="drawer-empty">
-            Everything is ◇ planned — plan-vs-built drift arrives with save import (Phase 4).
-          </div>
-        )}
+        {tab === "drift" && <DriftTab />}
       </div>
       <footer className="audit-foot mono">sorted by severity · rows re-audit live</footer>
     </div>

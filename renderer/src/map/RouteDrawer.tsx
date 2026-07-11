@@ -4,7 +4,14 @@
 
 import { useStore } from "../state/store";
 import { fmtKm, fmtPercent, fmtPower, fmtRate } from "../lib/format";
-import type { Route } from "../state/types";
+import { DEFAULT_DRONE_SPEC, DEFAULT_RAIL_SPEC, DEFAULT_TRUCK_SPEC } from "../state/types";
+import type { RailSpec, Route, RouteKind } from "../state/types";
+
+const fmtClockS = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
 
 export default function RouteDrawer({ route }: { route: Route }) {
   const plan = useStore((s) => s.plan);
@@ -14,6 +21,9 @@ export default function RouteDrawer({ route }: { route: Route }) {
   const dispatch = useStore((s) => s.dispatch);
 
   if (route.kind.kind === "power") return <PowerLineDrawer route={route} />;
+  if (route.kind.kind === "rail" || route.kind.kind === "truck" || route.kind.kind === "drone") {
+    return <TransportDrawer route={route} />;
+  }
 
   const dr = derived.routes[route.id];
   const srcPort = plan.ports[route.endpoints[0]];
@@ -77,6 +87,7 @@ export default function RouteDrawer({ route }: { route: Route }) {
 
       <section className="drawer-section">
         <h3 className="t-label">LOAD</h3>
+        <KindSwitcher route={route} />
         <div className="drawer-row">
           <span className="drawer-row-name">Belt tier</span>
           <select
@@ -223,6 +234,292 @@ function PowerLineDrawer({ route }: { route: Route }) {
           }}
         >
           DELETE LINE
+        </button>
+      </footer>
+    </aside>
+  );
+}
+
+// Cargo kind switcher — belt↔rail↔truck↔drone keep the same port binding.
+function KindSwitcher({ route }: { route: Route }) {
+  const dispatch = useStore((s) => s.dispatch);
+  const swap = (kind: string) => {
+    const next: RouteKind =
+      kind === "belt"
+        ? { kind: "belt", tier: 3 }
+        : kind === "rail"
+          ? { kind: "rail", spec: { ...DEFAULT_RAIL_SPEC } }
+          : kind === "truck"
+            ? { kind: "truck", spec: { ...DEFAULT_TRUCK_SPEC } }
+            : { kind: "drone", spec: { ...DEFAULT_DRONE_SPEC } };
+    void dispatch([{ type: "set_route_spec", id: route.id, kind: next }]);
+  };
+  return (
+    <div className="drawer-row">
+      <span className="drawer-row-name">Transport</span>
+      <select
+        className="mono"
+        style={{ height: 24 }}
+        value={route.kind.kind}
+        onChange={(e) => swap(e.target.value)}
+        data-testid="route-kind-select"
+      >
+        <option value="belt">BELT</option>
+        <option value="rail">RAIL</option>
+        <option value="truck">TRUCK</option>
+        <option value="drone">DRONE</option>
+      </select>
+    </div>
+  );
+}
+
+// Rail/truck/drone inspector (A3.1/A3.2): manifest, consists steppers, and
+// THE MATH BLOCK — render it, don't hide it. Throughput vs demand carries the
+// flow color and drives the route's map encoding.
+function TransportDrawer({ route }: { route: Route }) {
+  const plan = useStore((s) => s.plan);
+  const derived = useStore((s) => s.derived);
+  const gamedata = useStore((s) => s.gamedata);
+  const setSelection = useStore((s) => s.setSelection);
+  const dispatch = useStore((s) => s.dispatch);
+
+  const dr = derived.routes[route.id];
+  const t = dr?.transport ?? null;
+  const srcPort = plan.ports[route.endpoints[0]];
+  const dstPort = plan.ports[route.endpoints[1]];
+  const srcFactory = srcPort ? plan.factories[srcPort.factory] : null;
+  const dstFactory = dstPort ? plan.factories[dstPort.factory] : null;
+  const kind = route.kind.kind as "rail" | "truck" | "drone";
+  const title = kind === "rail" ? "RAIL ROUTE" : kind === "truck" ? "TRUCK ROUTE" : "DRONE ROUTE";
+  const demand = dr?.flow ?? 0;
+  const throughput = t?.throughputPerMin ?? 0;
+  const ratio = demand / Math.max(1e-9, throughput);
+  const level = ratio >= 0.95 ? "crit" : ratio >= 0.7 ? "warn" : "ok";
+
+  const respec = (patch: Record<string, unknown>) => {
+    if (route.kind.kind === "rail") {
+      void dispatch([
+        { type: "set_route_spec", id: route.id, kind: { kind: "rail", spec: { ...route.kind.spec, ...patch } } },
+      ]);
+    } else if (route.kind.kind === "truck") {
+      void dispatch([
+        { type: "set_route_spec", id: route.id, kind: { kind: "truck", spec: { ...route.kind.spec, ...patch } } },
+      ]);
+    } else if (route.kind.kind === "drone") {
+      void dispatch([
+        { type: "set_route_spec", id: route.id, kind: { kind: "drone", spec: { ...route.kind.spec, ...patch } } },
+      ]);
+    }
+  };
+
+  const rail: RailSpec | null = route.kind.kind === "rail" ? route.kind.spec : null;
+  const truck = route.kind.kind === "truck" ? route.kind.spec : null;
+  const drone = route.kind.kind === "drone" ? route.kind.spec : null;
+  const short = throughput > 0 && demand > throughput + 1e-6;
+
+  return (
+    <aside className="drawer summary-drawer" data-testid="route-drawer">
+      <header className="drawer-header">
+        <div className="icon-ph s40" />
+        <div className="drawer-title-block">
+          <div className="t-title">{title}</div>
+          <div className="mono drawer-sub">
+            {t ? fmtKm(t.effectiveLengthM) : "—"}
+            {kind !== "drone" && " · ×1.12 TERRAIN"}
+          </div>
+        </div>
+        <span className="chip planned">◇ PLANNED</span>
+        <button className="drawer-close" onClick={() => setSelection(null)} aria-label="Close">
+          ×
+        </button>
+      </header>
+
+      <section className="drawer-section">
+        <h3 className="t-label">ENDPOINTS</h3>
+        <div className="drawer-row">
+          <button className="chip" onClick={() => srcFactory && setSelection({ kind: "factory", id: srcFactory.id })}>
+            ◇ {srcFactory?.name.toUpperCase() ?? "?"}
+          </button>
+          <span className="mono" style={{ color: "var(--ink-500)" }}>
+            ⟶
+          </span>
+          <button className="chip" onClick={() => dstFactory && setSelection({ kind: "factory", id: dstFactory.id })}>
+            ◇ {dstFactory?.name.toUpperCase() ?? "?"}
+          </button>
+        </div>
+        <KindSwitcher route={route} />
+      </section>
+
+      <section className="drawer-section">
+        <h3 className="t-label">MANIFEST</h3>
+        {route.manifest.map(([item, rate]) => (
+          <div className="drawer-row" key={item}>
+            <div className="icon-ph s20" />
+            <span className="drawer-row-name">{gamedata.items[item]?.displayName ?? item}</span>
+            <span className="t-data-12 projected">
+              {fmtRate(rate)}
+              <span className="unit">/min</span>
+            </span>
+          </div>
+        ))}
+      </section>
+
+      {rail && (
+        <section className="drawer-section">
+          <h3 className="t-label">CONSISTS</h3>
+          <div className="drawer-row mono" data-testid="consist-row">
+            <span className="drawer-row-name">
+              {rail.consists}× ({rail.locos}× LOCO + {rail.cars}× FREIGHT)
+            </span>
+            <button className="chip" onClick={() => respec({ consists: Math.max(1, rail.consists - 1) })}>
+              −
+            </button>
+            <button className="chip" onClick={() => respec({ consists: rail.consists + 1 })} data-testid="btn-add-consist">
+              +
+            </button>
+            <span className="mono" style={{ fontSize: 10, color: "var(--ink-500)" }}>
+              CARS
+            </span>
+            <button className="chip" onClick={() => respec({ cars: Math.max(1, rail.cars - 1) })}>
+              −
+            </button>
+            <button className="chip" onClick={() => respec({ cars: rail.cars + 1 })}>
+              +
+            </button>
+          </div>
+        </section>
+      )}
+      {truck && (
+        <section className="drawer-section">
+          <h3 className="t-label">FLEET</h3>
+          <div className="drawer-row mono">
+            <span className="drawer-row-name">{truck.trucks}× TRUCK</span>
+            <button className="chip" onClick={() => respec({ trucks: Math.max(1, truck.trucks - 1) })}>
+              −
+            </button>
+            <button className="chip" onClick={() => respec({ trucks: truck.trucks + 1 })}>
+              +
+            </button>
+          </div>
+        </section>
+      )}
+
+      {t && (
+        <section className="drawer-section">
+          <h3 className="t-label">THE MATH</h3>
+          <div className="math-block mono" data-testid="math-block">
+            <div className="math-row">
+              <span>ROUND TRIP</span>
+              <span className="math-note">2×{fmtKm(t.effectiveLengthM)}</span>
+              <span>{fmtClockS(t.roundTripS)}</span>
+            </div>
+            <div className="math-row">
+              <span>LOAD/UNLOAD</span>
+              <span className="math-note">
+                {rail ? `${rail.stations.length} stations` : kind === "truck" ? "2 stops" : "takeoff+landing"}
+              </span>
+              <span>{fmtClockS(t.loadUnloadS)}</span>
+            </div>
+            {t.headwayS != null && rail && (
+              <div className="math-row">
+                <span>HEADWAY</span>
+                <span className="math-note">
+                  penalty{" "}
+                  <input
+                    type="number"
+                    className="mono math-edit"
+                    min={0}
+                    max={60}
+                    value={Math.round(rail.headwayPenalty * 100)}
+                    onChange={(e) => respec({ headwayPenalty: Number(e.target.value) / 100 })}
+                  />
+                  %
+                </span>
+                <span>{fmtClockS(t.headwayS)}</span>
+              </div>
+            )}
+            <div className="math-row math-total">
+              <span>RTT</span>
+              <span className="math-note" />
+              <span>{fmtClockS(t.rttS)}</span>
+            </div>
+            <div className="math-row">
+              <span>THROUGHPUT</span>
+              <span className="math-note">{fmtRate(t.perTripItems)}/trip</span>
+              <span className="projected">{fmtRate(t.throughputPerMin)}/min</span>
+            </div>
+            <div className={`math-row ${level !== "ok" ? level : ""}`} data-testid="demand-row">
+              <span>DEMAND</span>
+              <span className="math-note" />
+              <span className="projected">
+                {fmtRate(demand)}/min {level === "crit" ? "⚠ CRIT" : level === "warn" ? "⚠" : "✓"}
+              </span>
+            </div>
+            {t.batteriesPerMin != null && (
+              <div className="math-row">
+                <span>BATTERIES</span>
+                <span className="math-note">{drone?.batteriesPerTrip ?? 0}/trip</span>
+                <span className="projected">{fmtRate(t.batteriesPerMin)}/min</span>
+              </div>
+            )}
+            {t.fuelItem && (
+              <div className="math-row">
+                <span>FUEL</span>
+                <span className="math-note">{gamedata.items[t.fuelItem]?.displayName ?? t.fuelItem}</span>
+                <span className="math-note">solver-sourced later</span>
+              </div>
+            )}
+          </div>
+          {short && rail && (
+            <button
+              className="chip warn"
+              style={{ marginTop: 8 }}
+              onClick={() => respec({ consists: rail.consists + 1 })}
+              data-testid="btn-suggestion"
+            >
+              +1 CONSIST → {fmtRate((t.throughputPerMin / rail.consists) * (rail.consists + 1))}/min ✓
+            </button>
+          )}
+        </section>
+      )}
+
+      {rail && (
+        <section className="drawer-section">
+          <h3 className="t-label">STATIONS</h3>
+          {rail.stations.map((st, i) => (
+            <div className="drawer-row" key={i}>
+              <span className="drawer-row-name mono">{st.name}</span>
+              <span className="mono" style={{ fontSize: 11 }}>
+                dwell{" "}
+                <input
+                  type="number"
+                  className="mono math-edit"
+                  min={5}
+                  max={120}
+                  value={st.dwellS}
+                  onChange={(e) => {
+                    const stations = rail.stations.map((x, j) =>
+                      j === i ? { ...x, dwellS: Number(e.target.value) } : x,
+                    );
+                    respec({ stations });
+                  }}
+                />
+                s
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <footer className="drawer-footer">
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            setSelection(null);
+            void dispatch([{ type: "delete_route", id: route.id }]);
+          }}
+        >
+          DELETE ROUTE
         </button>
       </footer>
     </aside>

@@ -5,6 +5,8 @@
 import type {
   Command,
   EditResponse,
+  ImportOutcome,
+  ImportSnapshot,
   InitPayload,
   JobProgress,
   Proposal,
@@ -25,6 +27,7 @@ export interface Backend {
   t2Optimize(factory: string): Promise<Proposal | null>;
   proposalAccept(id: string): Promise<EditResponse>;
   proposalEval(id: string): Promise<ProposalConsequence>;
+  importRun(snapshot: ImportSnapshot): Promise<ImportOutcome>;
 }
 
 const isTauri = () => "__TAURI_INTERNALS__" in window;
@@ -68,6 +71,9 @@ class TauriBackend implements Backend {
   }
   proposalEval(id: string) {
     return this.invoke<ProposalConsequence>("proposal_eval", { id });
+  }
+  importRun(snapshot: ImportSnapshot) {
+    return this.invoke<ImportOutcome>("import_run", { snapshot });
   }
 }
 
@@ -123,6 +129,9 @@ class BridgeBackend implements Backend {
   }
   proposalEval(id: string) {
     return this.call<ProposalConsequence>("proposal/eval", { method: "POST", body: JSON.stringify({ id }) });
+  }
+  importRun(snapshot: ImportSnapshot) {
+    return this.call<ImportOutcome>("import/run", { method: "POST", body: JSON.stringify(snapshot) });
   }
 }
 

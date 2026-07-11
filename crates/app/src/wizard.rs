@@ -598,11 +598,30 @@ pub fn global_solve(
             y: 0.0,
             z: 0.0,
         });
+        // A3.3: pick the transport by distance/rate thresholds
+        let dist = ((dst_pos.x - site_pos.x).powi(2) + (dst_pos.y - site_pos.y).powi(2)).sqrt();
+        let picked = planner_core::transport::pick_transport(dist, goal_rate);
+        let route_kind = match picked {
+            "rail" => RouteKind::Rail {
+                spec: RailSpec::default(),
+            },
+            "drone" => RouteKind::Drone {
+                spec: DroneSpec::default(),
+            },
+            _ => RouteKind::Belt {
+                tier: tier_for(goal_rate),
+            },
+        };
         log(
             phase,
             &format!(
-                "route: {} ⟶ {} ({} {:.1}/min)",
-                site_name, dst_name, goal_name, goal_rate
+                "route: {} ⟶ {} ({} {:.1}/min · {} — {:.1} km)",
+                site_name,
+                dst_name,
+                goal_name,
+                goal_rate,
+                picked.to_uppercase(),
+                dist / 1000.0
             ),
         );
         items.push(ProposalItem {
@@ -621,9 +640,7 @@ pub fn global_solve(
                 100.0 * goal_rate / belt_capacity(tier_for(goal_rate))
             ),
             commands: vec![Command::AddRoute {
-                kind: RouteKind::Belt {
-                    tier: tier_for(goal_rate),
-                },
+                kind: route_kind,
                 from: "$site.out".into(),
                 to: consumer.id.clone(),
                 path: vec![site_pos, dst_pos],

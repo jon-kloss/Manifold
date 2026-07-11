@@ -18,6 +18,7 @@ import SwitchDrawer from "./SwitchDrawer";
 import RoutePopover from "./RoutePopover";
 import Legend from "./Legend";
 import SearchBox from "./SearchBox";
+import ImportModal from "../import/ImportModal";
 import { fmtPower } from "../lib/format";
 import "./map.css";
 
@@ -74,6 +75,8 @@ export default function MapView() {
   const [zoomPct, setZoomPct] = useState(100);
   const [routeDraft, setRouteDraft] = useState<{ from: string; cursor: { x: number; y: number } } | null>(null);
   const [routePopover, setRoutePopover] = useState<{ from: string; to: string } | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const routeDraftRef = useRef<typeof routeDraft>(null);
   routeDraftRef.current = routeDraft;
 
@@ -443,6 +446,21 @@ export default function MapView() {
           >
             + FACTORY <span className="key-hint">N</span>
           </button>
+          <button className="btn btn-ghost" onClick={() => fileRef.current?.click()} data-testid="btn-import">
+            IMPORT SAVE
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".sav"
+            style={{ display: "none" }}
+            data-testid="import-file-input"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) setImportFile(f);
+              e.currentTarget.value = "";
+            }}
+          />
           <button className="btn btn-primary" onClick={() => setWizard({ open: true })} data-testid="btn-wizard">
             PLAN SUPPLY CHAIN <span className="key-hint">P</span>
           </button>
@@ -482,6 +500,7 @@ export default function MapView() {
         />
       )}
       {routeDraft && <div className="map-placing-hint mono">RELEASE OVER A FACTORY TO BIND THE ROUTE</div>}
+      {importFile && <ImportModal file={importFile} onClose={() => setImportFile(null)} />}
     </div>
   );
 }

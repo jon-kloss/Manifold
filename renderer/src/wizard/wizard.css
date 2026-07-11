@@ -194,3 +194,18 @@
   border-color: var(--flow-warn);
   color: var(--flow-warn);
 }
+
+/* ---- import preview (SDD 8, onboarding step-3 grammar) ---- */
+.import-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 16px;
+  font-size: 11.5px;
+  color: var(--ink-300);
+  margin-bottom: 14px;
+}
+.import-grid > span:nth-child(odd) {
+  color: var(--ink-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+}

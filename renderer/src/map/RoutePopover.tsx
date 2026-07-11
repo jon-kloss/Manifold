@@ -4,7 +4,16 @@
 
 import { useMemo, useState } from "react";
 import { useStore } from "../state/store";
-import { beltCapacity, POWER_ITEM, type Command, type Id } from "../state/types";
+import {
+  beltCapacity,
+  DEFAULT_DRONE_SPEC,
+  DEFAULT_RAIL_SPEC,
+  DEFAULT_TRUCK_SPEC,
+  POWER_ITEM,
+  type Command,
+  type Id,
+  type RouteKind,
+} from "../state/types";
 import { fmtRate } from "../lib/format";
 
 interface Candidate {
@@ -30,6 +39,22 @@ export default function RoutePopover({
   const dispatch = useStore((s) => s.dispatch);
   const setSelection = useStore((s) => s.setSelection);
   const [tier, setTier] = useState(3);
+  // A3.3 default: belt under 800m, rail beyond (drone for trickles is a
+  // manual pick — the popover can't know the rate before the route exists)
+  const dist = (() => {
+    const a = plan.factories[fromFactory]?.position;
+    const b = plan.factories[toFactory]?.position;
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  })();
+  const [transport, setTransport] = useState<"belt" | "rail" | "truck" | "drone">(dist >= 800 ? "rail" : "belt");
+  const kindFor = (): RouteKind =>
+    transport === "belt"
+      ? { kind: "belt", tier }
+      : transport === "rail"
+        ? { kind: "rail", spec: { ...DEFAULT_RAIL_SPEC } }
+        : transport === "truck"
+          ? { kind: "truck", spec: { ...DEFAULT_TRUCK_SPEC } }
+          : { kind: "drone", spec: { ...DEFAULT_DRONE_SPEC } };
 
   const candidates: Candidate[] = useMemo(() => {
     const src = plan.factories[fromFactory];
@@ -87,7 +112,7 @@ export default function RoutePopover({
     }
     if (c.inPort) {
       const created = await dispatch([
-        { type: "add_route", kind: { kind: "belt", tier }, from: c.outPort, to: c.inPort, path },
+        { type: "add_route", kind: kindFor(), from: c.outPort, to: c.inPort, path },
       ]);
       if (created[0]) setSelection({ kind: "route", id: created[0] });
     } else {
@@ -108,7 +133,7 @@ export default function RoutePopover({
       const newPort = created[0];
       if (newPort) {
         const routeIds = await dispatch([
-          { type: "add_route", kind: { kind: "belt", tier }, from: c.outPort, to: newPort, path },
+          { type: "add_route", kind: kindFor(), from: c.outPort, to: newPort, path },
         ]);
         if (routeIds[0]) setSelection({ kind: "route", id: routeIds[0] });
       }
@@ -135,6 +160,23 @@ export default function RoutePopover({
             </label>
           ))}
           {!candidates[picked]?.power && (
+            <div className="drawer-row" style={{ marginTop: 8 }}>
+              <span className="drawer-row-name">Transport</span>
+              <select
+                className="mono"
+                style={{ height: 24 }}
+                value={transport}
+                onChange={(e) => setTransport(e.target.value as typeof transport)}
+                data-testid="popover-transport"
+              >
+                <option value="belt">BELT{dist < 800 ? " — suggested" : ""}</option>
+                <option value="rail">RAIL{dist >= 800 ? " — suggested" : ""}</option>
+                <option value="truck">TRUCK</option>
+                <option value="drone">DRONE</option>
+              </select>
+            </div>
+          )}
+          {!candidates[picked]?.power && transport === "belt" && (
             <div className="drawer-row" style={{ marginTop: 8 }}>
               <span className="drawer-row-name">Belt tier</span>
               <select className="mono" style={{ height: 24 }} value={tier} onChange={(e) => setTier(Number(e.target.value))}>
