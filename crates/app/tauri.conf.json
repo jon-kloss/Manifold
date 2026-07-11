@@ -1,0 +1,37 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FICSIT Planner",
+  "version": "0.1.0",
+  "identifier": "dev.ficsit.planner",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../../renderer dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm --dir ../../renderer build",
+    "frontendDist": "../../renderer/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "FICSIT PLANNER",
+        "width": 1920,
+        "height": 1080,
+        "minWidth": 1100,
+        "minHeight": 700,
+        "decorations": false,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": [],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+[package]
+name = "solver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["lp"]
+# T1/T2 LP support. Off for the wasm T0 build so good_lp never enters the wasm graph.
+lp = ["dep:good_lp"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+good_lp = { workspace = true, optional = true }

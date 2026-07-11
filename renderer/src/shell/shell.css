@@ -1,0 +1,254 @@
+/* Titlebar (36px), status bar (24px), refuse card, app frame. */
+
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- titlebar ---- */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--titlebar-h);
+  padding: 0 0 0 10px;
+  background: var(--steel-900);
+  border-bottom: 1px solid var(--steel-700);
+  flex: none;
+}
+.titlebar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--signal-500);
+  color: var(--on-signal);
+  border-radius: 2px;
+  font-size: 11px;
+}
+.titlebar-app {
+  color: var(--ink-300);
+}
+.titlebar-crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-500);
+  min-width: 0;
+}
+.titlebar-crumb.truncate .crumb-here {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumb-link {
+  font: inherit;
+  color: var(--ink-500);
+  letter-spacing: 0.06em;
+}
+.crumb-link:hover {
+  color: var(--signal-400);
+}
+.crumb-here {
+  color: var(--signal-400);
+  letter-spacing: 0.06em;
+}
+.crumb-sep {
+  color: var(--steel-600);
+}
+.titlebar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+}
+.win-controls {
+  display: flex;
+  height: 100%;
+}
+.win-controls button {
+  width: 40px;
+  height: 100%;
+  color: var(--ink-300);
+  font-size: 13px;
+}
+.win-controls button:hover {
+  background: var(--steel-700);
+}
+.win-controls .win-close:hover {
+  background: var(--flow-crit);
+  color: var(--on-signal);
+}
+
+/* ---- status bar ---- */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: var(--statusbar-h);
+  padding: 0 10px;
+  background: var(--steel-900);
+  border-top: 1px solid var(--steel-700);
+  flex: none;
+  font-size: 10.5px;
+  color: var(--ink-300);
+}
+.sb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--ink-300);
+}
+.sb-item[disabled] {
+  color: var(--ink-faint);
+}
+.sb-crit {
+  color: var(--flow-crit);
+}
+.sb-gen {
+  color: var(--ink-500);
+}
+.sb-powerbar {
+  display: inline-block;
+  width: 44px;
+  height: 4px;
+  background: var(--steel-700);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sb-powerbar > span {
+  display: block;
+  height: 100%;
+  background: var(--flow-ok);
+}
+.sb-spring {
+  flex: 1;
+}
+.sb-popover {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  z-index: 40;
+}
+
+/* ---- refuse card (< 1366×768) ---- */
+.refuse-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--steel-950);
+}
+.refuse-card {
+  padding: 28px 36px;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  text-align: center;
+  clip-path: var(--corner-cut);
+}
+.refuse-card h1 {
+  margin-bottom: 10px;
+}
+.refuse-card .mono {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+
+/* ---- overlay scrim (A1: 1366–1599 panels slide over the canvas) ---- */
+.overlay-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 18;
+}
+
+/* panel width variables per layout mode */
+[data-layout="reference"] {
+  --panel-inspector: var(--w-inspector);
+  --panel-summary: var(--w-summary);
+  --panel-recipe-strip: var(--w-recipe-strip);
+}
+[data-layout="compact"] {
+  --panel-inspector: var(--w-inspector-compact);
+  --panel-summary: var(--w-summary-compact);
+  --panel-recipe-strip: var(--w-recipe-strip-compact);
+}
+[data-layout="overlay"] {
+  --panel-inspector: var(--w-inspector-compact);
+  --panel-summary: var(--w-summary-compact);
+  --panel-recipe-strip: var(--w-recipe-strip-overlay);
+}
+
+/* ---- first-run card (mock 7c step 4: three doors, no tour) ---- */
+.onboard-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 24px;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+  z-index: 26;
+}
+.onboard-source {
+  font-size: 9.5px;
+  color: var(--ink-faint);
+}
+.onboard-doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.onboard-door {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 10px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  color: var(--ink-100);
+  font-size: 12px;
+  text-align: center;
+}
+.onboard-door:hover {
+  border-color: var(--signal-500);
+  color: var(--signal-400);
+}
+.onboard-key {
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 2px 8px;
+}
+.onboard-foot {
+  font-size: 9px;
+  color: var(--ink-faint);
+  text-align: center;
+}

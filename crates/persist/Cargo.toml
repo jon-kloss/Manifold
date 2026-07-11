@@ -1,0 +1,15 @@
+[package]
+name = "persist"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+planner-core = { path = "../planner-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

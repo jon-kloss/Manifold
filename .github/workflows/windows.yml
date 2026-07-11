@@ -1,0 +1,81 @@
+# Windows build: a portable FICSIT-Planner.exe you download from the run's
+# Artifacts and double-click. The release binary embeds the renderer's
+# production bundle (Tauri asset resolver), so it's a single file — the only
+# runtime dependency is Microsoft's WebView2, preinstalled on Windows 10/11.
+#
+# Every push to main publishes a GitHub Release (auto-tagged v0.1.<run#>);
+# pushing a v* tag by hand releases under that exact version instead. Branch
+# pushes still upload the exe as a run artifact.
+
+name: windows-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "claude/**"]
+    tags: ["v*"]
+
+permissions:
+  contents: write # create releases + their tags
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: renderer/pnpm-lock.yaml
+
+      - name: renderer production bundle (embedded into the exe)
+        working-directory: renderer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: build the shell (release)
+        run: cargo build -p app --features shell --release
+
+      - name: package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-win | Out-Null
+          Copy-Item target/release/app.exe dist-win/FICSIT-Planner.exe
+          @"
+          FICSIT Planner — portable Windows build
+
+          Run FICSIT-Planner.exe. Requires Microsoft Edge WebView2
+          (preinstalled on Windows 10/11; otherwise:
+          https://developer.microsoft.com/microsoft-edge/webview2/).
+
+          The plan file lives in %APPDATA%\dev.ficsit.planner\world.ficsit.
+          Optional environment variables:
+            FICSIT_DOCS_JSON  path to <install>\CommunityResources\Docs\Docs.json
+                              (full game catalog; bundled fixture otherwise)
+            FICSIT_AI_KEY     model key for the AI layer (offline without it)
+          "@ | Set-Content dist-win/README.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FICSIT-Planner-windows-x64
+          path: dist-win/
+          if-no-files-found: error
+
+      - name: release (main merges auto-tag; v* tags use their own version)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v0.1.{0}', github.run_number) }}
+          name: FICSIT Planner ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v0.1.{0}', github.run_number) }}
+          files: dist-win/FICSIT-Planner.exe
+          generate_release_notes: true

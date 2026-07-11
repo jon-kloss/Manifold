@@ -1,0 +1,445 @@
+/* Map home — mock 2a grammar. */
+
+.map-root {
+  position: absolute;
+  inset: 0;
+  background: var(--map-canvas);
+}
+.map-leaflet {
+  position: absolute;
+  inset: 0;
+  background: var(--map-canvas);
+  outline: none;
+  /* trap Leaflet's internal pane z-indexes (200–700) in their own stacking
+     context so app chrome (drawers, audit HUD) always layers above the map */
+  z-index: 0;
+}
+.leaflet-container {
+  font: inherit;
+}
+
+/* ---- top chrome ---- */
+.map-chrome-top {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  z-index: 20;
+  pointer-events: none;
+}
+.map-chrome-top > * {
+  pointer-events: auto;
+}
+.map-overlay-chips {
+  display: flex;
+  gap: 6px;
+  margin: 0 auto;
+}
+.overlay-chip {
+  height: 30px;
+}
+.key-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  opacity: 0.6;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 0 3px;
+  margin-left: 2px;
+}
+.map-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.zoom-ctl {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--ink-300);
+}
+.zoom-ctl button {
+  width: 28px;
+  height: 100%;
+  color: var(--ink-300);
+  font-size: 14px;
+}
+.zoom-ctl button:hover {
+  color: var(--ink-100);
+  background: var(--steel-700);
+}
+.zoom-ctl span {
+  min-width: 44px;
+  text-align: center;
+}
+
+.map-placing-hint {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  background: var(--signal-selected-bg);
+  border: 1px dashed var(--signal-selected-border);
+  border-radius: var(--radius);
+  color: var(--signal-400);
+  font-size: 10.5px;
+  z-index: 20;
+}
+
+/* ---- search ---- */
+.searchbox {
+  position: relative;
+  width: 280px;
+}
+.searchbox input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: var(--steel-800);
+}
+.search-results {
+  position: absolute;
+  top: 34px;
+  left: 0;
+  right: 0;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  overflow: hidden;
+  z-index: 30;
+}
+.search-hit {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink-100);
+  letter-spacing: 0.04em;
+}
+.search-hit:hover {
+  background: var(--steel-700);
+}
+.search-sub {
+  font-size: 9px;
+  color: var(--ink-500);
+}
+
+/* ---- factory pins: 22px rotated-square diamonds + mono label chip ---- */
+.pin-icon {
+  background: none;
+  border: none;
+}
+.pin-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(0, 0);
+}
+.pin-svg {
+  /* 4px canvas-colored halo so pins read over anything */
+  filter: drop-shadow(0 0 0 rgba(13, 16, 19, 0.85));
+  border-radius: 50%;
+}
+.pin-svg.selected rect {
+  stroke: var(--signal-500);
+  stroke-width: 2.5;
+}
+.pin-chip {
+  margin-top: 2px;
+  padding: 1px 6px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: 2px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--ink-300);
+}
+.pin-chip.planned {
+  color: var(--bp-400);
+  border-color: var(--bp-600);
+  font-style: italic;
+}
+
+.node-tooltip {
+  position: absolute;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+}
+
+/* ---- legend ---- */
+.map-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: 230px;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  z-index: 20;
+}
+.legend-toggle {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--ink-300);
+}
+.legend-body {
+  padding: 0 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-300);
+}
+.legend-node {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-500);
+  display: inline-block;
+}
+.legend-node.normal {
+  border-style: dashed;
+}
+.legend-node.impure {
+  border-style: dotted;
+}
+.legend-node.claimed {
+  position: relative;
+}
+.legend-node.claimed::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--signal-500);
+}
+.legend-node.conflict {
+  border-color: var(--flow-crit);
+}
+.legend-load {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--flow-ok);
+}
+.legend-load.warn {
+  border-top: 3px dashed var(--flow-warn);
+}
+.legend-load.crit {
+  border-top: 4px dashed var(--flow-crit);
+}
+
+/* ---- drawers (summary/node), 200ms slide per motion spec ---- */
+@keyframes drawer-in {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.drawer {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  width: var(--panel-summary);
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  z-index: 22;
+  animation: drawer-in var(--dur-drawer) var(--ease);
+  overflow-y: auto;
+}
+.drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--steel-700);
+}
+.drawer-title-block {
+  flex: 1;
+  min-width: 0;
+}
+.drawer-name,
+.drawer-name-input {
+  font-size: 17px;
+  text-align: left;
+  color: var(--ink-100);
+  text-transform: uppercase;
+}
+.drawer-name:hover {
+  color: var(--signal-400);
+}
+.drawer-name-input {
+  background: var(--steel-800);
+  border: 1px solid var(--signal-500);
+  padding: 0 6px;
+  width: 100%;
+}
+.drawer-sub {
+  font-size: 10px;
+  color: var(--ink-500);
+  margin-top: 2px;
+}
+.drawer-close {
+  align-self: flex-start;
+  color: var(--ink-500);
+  font-size: 16px;
+  padding: 2px 6px;
+}
+.drawer-close:hover {
+  color: var(--ink-100);
+}
+.drawer-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--steel-700);
+}
+.drawer-section h3 {
+  color: var(--ink-500);
+  margin-bottom: 8px;
+}
+.drawer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+.drawer-row-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-100);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawer-empty {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.drawer-warn {
+  margin-top: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  color: var(--flow-crit);
+  background: rgba(255, 93, 85, 0.05);
+  border: 1px solid var(--flow-crit-dark);
+  border-radius: var(--radius);
+}
+.minibar {
+  width: 44px;
+  height: 5px;
+  background: var(--steel-700);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.minibar > span {
+  display: block;
+  height: 100%;
+  background: var(--flow-ok);
+}
+.minibar > span.warn {
+  background: var(--flow-warn);
+}
+.minibar > span.crit {
+  background: var(--flow-crit);
+}
+.drawer-footer {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  padding: 14px;
+}
+
+/* overlay mode: drawers slide over with scrim (A1) — handled by width vars */
+
+/* ---- route creation popover ---- */
+.route-popover {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  padding: 12px 14px;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  clip-path: var(--corner-cut);
+  z-index: 26;
+}
+.route-cand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.route-cand input {
+  accent-color: var(--signal-500);
+}
+.minibar > span.crit {
+  background: var(--flow-crit);
+}
+
+/* ---- transport math block (A3.1: render it, don't hide it) ---- */
+.math-block {
+  border: 1px solid var(--steel-700);
+  background: var(--steel-950);
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.math-row {
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  height: 24px;
+  color: var(--ink-300);
+}
+.math-row .math-note {
+  color: var(--ink-faint);
+  font-size: 9.5px;
+}
+.math-row.math-total {
+  border-top: 1px solid var(--steel-700);
+  color: var(--ink-100);
+  font-weight: 700;
+}
+.math-row.warn { color: var(--flow-warn); }
+.math-row.crit { color: var(--flow-crit); }
+.math-edit {
+  width: 44px;
+  height: 18px;
+  text-align: right;
+  font-size: 10px;
+}

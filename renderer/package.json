@@ -1,0 +1,35 @@
+{
+  "name": "ficsit-planner-renderer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@etothepii/satisfactory-file-parser": "^4.1.1",
+    "@fontsource/barlow": "^5.2.5",
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "@fontsource/rajdhani": "^5.2.5",
+    "@tauri-apps/api": "^2.9.0",
+    "@xyflow/react": "^12.8.4",
+    "leaflet": "^1.9.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/leaflet": "^1.9.20",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.0"
+  }
+}

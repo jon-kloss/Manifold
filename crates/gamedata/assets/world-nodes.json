@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "source": "Hand-assembled Phase 1 subset — approximate positions/purities/elevations for the starting areas. Full community snapshot pending licensing review (see DECISIONS.md / BACKLOG.md).",
+  "bounds": {"minX": -3350, "minY": -3750, "maxX": 4200, "maxY": 3550},
+  "regions": [
+    {"id": "grass-fields", "name": "GRASS FIELDS", "labelX": -1200, "labelY": 1800},
+    {"id": "rocky-desert", "name": "ROCKY DESERT", "labelX": -2400, "labelY": -600},
+    {"id": "northern-forest", "name": "NORTHERN FOREST", "labelX": 900, "labelY": -1500},
+    {"id": "dune-desert", "name": "DUNE DESERT", "labelX": 3100, "labelY": -2400}
+  ],
+  "nodes": [
+    {"id": "iron-gf-01", "item": "Desc_OreIron_C", "purity": "normal", "x": -1490, "y": 2470, "region": "grass-fields", "z": 40},
+    {"id": "iron-gf-02", "item": "Desc_OreIron_C", "purity": "normal", "x": -1310, "y": 2540, "region": "grass-fields", "z": 70},
+    {"id": "iron-gf-03", "item": "Desc_OreIron_C", "purity": "pure", "x": -680, "y": 1890, "region": "grass-fields", "z": 30},
+    {"id": "iron-gf-04", "item": "Desc_OreIron_C", "purity": "impure", "x": -1720, "y": 1350, "region": "grass-fields", "z": 30},
+    {"id": "copper-gf-01", "item": "Desc_OreCopper_C", "purity": "normal", "x": -940, "y": 1230, "region": "grass-fields", "z": 30},
+    {"id": "copper-gf-02", "item": "Desc_OreCopper_C", "purity": "pure", "x": -350, "y": 2620, "region": "grass-fields", "z": 30},
+    {"id": "limestone-gf-01", "item": "Desc_Stone_C", "purity": "normal", "x": -1150, "y": 2050, "region": "grass-fields", "z": 60},
+    {"id": "limestone-gf-02", "item": "Desc_Stone_C", "purity": "pure", "x": -530, "y": 1520, "region": "grass-fields", "z": 30},
+    {"id": "coal-gf-01", "item": "Desc_Coal_C", "purity": "normal", "x": 120, "y": 980, "region": "grass-fields", "z": 20},
+    {"id": "iron-rd-01", "item": "Desc_OreIron_C", "purity": "pure", "x": -2610, "y": -180, "region": "rocky-desert", "z": 140},
+    {"id": "iron-rd-02", "item": "Desc_OreIron_C", "purity": "normal", "x": -2350, "y": -420, "region": "rocky-desert", "z": 120},
+    {"id": "iron-rd-03", "item": "Desc_OreIron_C", "purity": "normal", "x": -2870, "y": -760, "region": "rocky-desert", "z": 160},
+    {"id": "copper-rd-01", "item": "Desc_OreCopper_C", "purity": "impure", "x": -2150, "y": -950, "region": "rocky-desert", "z": 130},
+    {"id": "limestone-rd-01", "item": "Desc_Stone_C", "purity": "pure", "x": -2540, "y": -1240, "region": "rocky-desert", "z": 130},
+    {"id": "limestone-rd-02", "item": "Desc_Stone_C", "purity": "normal", "x": -1980, "y": -300, "region": "rocky-desert", "z": 110},
+    {"id": "coal-rd-01", "item": "Desc_Coal_C", "purity": "pure", "x": -3020, "y": -1580, "region": "rocky-desert", "z": 130},
+    {"id": "iron-nf-01", "item": "Desc_OreIron_C", "purity": "pure", "x": 1340, "y": -890, "region": "northern-forest", "z": 240},
+    {"id": "iron-nf-02", "item": "Desc_OreIron_C", "purity": "pure", "x": 1520, "y": -1060, "region": "northern-forest", "z": 210},
+    {"id": "copper-nf-01", "item": "Desc_OreCopper_C", "purity": "normal", "x": 780, "y": -1310, "region": "northern-forest", "z": 220},
+    {"id": "coal-nf-01", "item": "Desc_Coal_C", "purity": "normal", "x": 1130, "y": -1870, "region": "northern-forest", "z": 210},
+    {"id": "coal-nf-02", "item": "Desc_Coal_C", "purity": "normal", "x": 1290, "y": -1940, "region": "northern-forest", "z": 220},
+    {"id": "limestone-nf-01", "item": "Desc_Stone_C", "purity": "impure", "x": 620, "y": -820, "region": "northern-forest", "z": 210},
+    {"id": "iron-dd-01", "item": "Desc_OreIron_C", "purity": "impure", "x": 3240, "y": -2780, "region": "dune-desert", "z": 90},
+    {"id": "iron-dd-02", "item": "Desc_OreIron_C", "purity": "normal", "x": 3560, "y": -2410, "region": "dune-desert", "z": 140},
+    {"id": "copper-dd-01", "item": "Desc_OreCopper_C", "purity": "normal", "x": 2980, "y": -2150, "region": "dune-desert", "z": 100},
+    {"id": "coal-dd-01", "item": "Desc_Coal_C", "purity": "impure", "x": 3810, "y": -2950, "region": "dune-desert", "z": 90},
+    {"id": "coal-nf-cave-01", "item": "Desc_Coal_C", "purity": "pure", "x": 1480, "y": -2210, "z": -35, "zone": "cave", "entrance": {"x": 1610, "y": -2050, "z": 205}, "region": "northern-forest"},
+    {"id": "iron-rd-cave-01", "item": "Desc_OreIron_C", "purity": "pure", "x": -2870, "y": -910, "z": -20, "zone": "cave", "entrance": {"x": -2690, "y": -1020, "z": 95}, "region": "rocky-desert"}
+  ]
+}

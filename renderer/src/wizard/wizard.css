@@ -1,0 +1,211 @@
+/* Supply-chain wizard (mocks 5a/5b): 880px corner-cut modal over dimmed map. */
+
+.wizard-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 12, 14, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.wizard-modal {
+  width: 880px;
+  max-height: 82%;
+  display: flex;
+  flex-direction: column;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+}
+
+.wizard-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 14px;
+  border-bottom: 2px solid var(--signal-500);
+  flex: none;
+}
+.wizard-stamp {
+  padding: 2px 8px;
+  background: var(--signal-500);
+  color: var(--on-signal);
+  font-size: 10px;
+  font-weight: 700;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+}
+.wizard-steps {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  font-size: 10px;
+}
+.wizard-step {
+  padding: 3px 10px;
+  border: 1px solid var(--steel-600);
+  color: var(--ink-500);
+}
+.wizard-step.active {
+  background: var(--signal-500);
+  border-color: var(--signal-500);
+  color: var(--on-signal);
+  font-weight: 700;
+}
+.wizard-step.done {
+  border-color: var(--flow-ok);
+  color: var(--flow-ok);
+}
+
+.wizard-body {
+  padding: 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+
+.wizard-goal-sentence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.wizard-item-select {
+  height: 32px;
+  min-width: 220px;
+  font-size: 13px;
+}
+.wizard-rate {
+  width: 88px;
+  height: 32px;
+  font-size: 16px;
+  text-align: right;
+}
+
+.wizard-quickfill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.chip.crit {
+  border-color: var(--flow-crit);
+  color: var(--flow-crit);
+}
+
+.wizard-constraints {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 24px;
+  margin-top: 8px;
+}
+.wc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 32px;
+  font-size: 12px;
+  color: var(--ink-300);
+  border-bottom: 1px solid var(--steel-800);
+}
+.wc-row input[type="number"] {
+  width: 64px;
+  height: 24px;
+  text-align: right;
+}
+.wc-row select {
+  height: 24px;
+}
+
+.wizard-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+.wizard-foot-note {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.wizard-phases {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.wizard-phase {
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+.wizard-phase.done {
+  color: var(--flow-ok);
+}
+.wizard-phase.active {
+  color: var(--signal-400);
+}
+
+.wizard-log {
+  flex: 1;
+  min-height: 220px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--steel-950);
+  border: 1px solid var(--steel-700);
+  padding: 8px 10px;
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--ink-300);
+}
+.wl-phase {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+.wl-cursor {
+  animation: wl-blink 1s steps(1) infinite;
+  color: var(--signal-400);
+}
+@keyframes wl-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.wizard-infeasible {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--flow-warn);
+  background: rgba(229, 168, 59, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-relaxations {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip.warn {
+  border-color: var(--flow-warn);
+  color: var(--flow-warn);
+}
+
+/* ---- import preview (SDD 8, onboarding step-3 grammar) ---- */
+.import-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 16px;
+  font-size: 11.5px;
+  color: var(--ink-300);
+  margin-bottom: 14px;
+}
+.import-grid > span:nth-child(odd) {
+  color: var(--ink-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+}

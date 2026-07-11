@@ -1,0 +1,201 @@
+/* Proposal review (mocks 3a–3c): banner + left change panel over dimmed map. */
+
+.prop-review {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  pointer-events: none; /* the map stays pannable behind the panel */
+}
+
+/* the canvas layer draws the 42% dim itself (ghosts stay full-strength);
+   DOM factory pins live in the marker pane above it, so dim those via CSS */
+.map-root.reviewing .leaflet-marker-pane {
+  opacity: 0.42;
+}
+
+.prop-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--steel-900);
+  border-bottom: 2px solid var(--signal-500);
+  pointer-events: auto;
+}
+.prop-stamp {
+  padding: 3px 10px;
+  background: var(--signal-500);
+  color: var(--on-signal);
+  font-size: 10.5px;
+  font-weight: 700;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+}
+.prop-stale {
+  padding: 2px 8px;
+  border: 1px solid var(--flow-warn);
+  color: var(--flow-warn);
+  font-size: 10px;
+  font-weight: 700;
+}
+.prop-provenance {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: var(--ink-faint);
+}
+
+.prop-panel {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  bottom: 0;
+  width: 470px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(21, 24, 27, 0.97);
+  border-right: 1px solid var(--steel-600);
+  pointer-events: auto;
+}
+[data-layout="compact"] .prop-panel {
+  width: 420px;
+}
+
+.prop-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.prop-group-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px 4px;
+  border-bottom: 1px solid var(--steel-700);
+}
+.prop-group-head.create {
+  color: var(--bp-400);
+}
+.prop-group-head.modify {
+  color: var(--flow-warn);
+}
+.prop-group-head.claim,
+.prop-group-head.route {
+  color: var(--ink-500);
+}
+
+.prop-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--steel-800);
+  cursor: pointer;
+}
+.prop-row.cursor {
+  background: rgba(255, 122, 26, 0.06);
+  box-shadow: inset 2px 0 0 var(--signal-500);
+}
+.prop-row input[type="checkbox"] {
+  accent-color: var(--signal-500);
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.prop-glyph {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  flex: none;
+}
+.prop-glyph.create {
+  color: var(--bp-400);
+}
+.prop-glyph.modify {
+  color: var(--flow-warn);
+}
+.prop-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.prop-row-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prop-row-detail {
+  font-size: 11px;
+  color: var(--ink-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prop-row-impact {
+  font-size: 11px;
+  color: var(--ink-300);
+  flex: none;
+}
+.prop-row.excluded {
+  opacity: 0.55;
+}
+.prop-row.excluded .prop-row-label {
+  text-decoration: line-through;
+}
+
+.prop-warnings {
+  flex: none;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--flow-warn);
+  background: rgba(229, 168, 59, 0.08);
+  border-top: 1px solid var(--flow-warn);
+}
+
+.prop-footer {
+  flex: none;
+  border-top: 1px solid var(--steel-600);
+  padding: 10px 14px 12px;
+}
+.prop-impact-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1.3fr 0.8fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.prop-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+}
+.prop-cell.crit {
+  color: var(--flow-crit);
+}
+.prop-cell-label {
+  font-size: 8.5px;
+  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+}
+.prop-actions {
+  display: flex;
+  gap: 8px;
+}
+.prop-actions .btn-primary {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+.prop-reject {
+  color: var(--flow-crit);
+}
+.prop-microcopy {
+  margin-top: 8px;
+  font-size: 9.5px;
+  color: var(--ink-faint);
+}
