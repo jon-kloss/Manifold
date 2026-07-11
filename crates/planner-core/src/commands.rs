@@ -353,6 +353,90 @@ fn remove_route_cascading(state: &mut PlanState, tx: &mut Transaction, route_id:
     }
 }
 
+/// Remove a factory and everything belonging to it, recording each op into
+/// `tx`: routes touching its ports (each via `remove_route_cascading`), then
+/// edges, groups, ports, node claims, junctions, and finally the factory
+/// itself. Every factory-removal path (DeleteFactory, re-import drift sync)
+/// goes through here so no path can forget the cascade. Deliberately carries
+/// no status check — drift sync removes ◆ Built factories legally (the one
+/// documented exception); DeleteFactory checks `require_planned` first.
+pub fn remove_factory_cascading(state: &mut PlanState, tx: &mut Transaction, id: &Id) {
+    // Cascade: groups, ports, edges, claims belonging to this factory.
+    let group_ids: Vec<Id> = state
+        .groups
+        .values()
+        .filter(|g| &g.factory == id)
+        .map(|g| g.id.clone())
+        .collect();
+    let port_ids: Vec<Id> = state
+        .ports
+        .values()
+        .filter(|p| &p.factory == id)
+        .map(|p| p.id.clone())
+        .collect();
+    let edge_ids: Vec<Id> = state
+        .edges
+        .values()
+        .filter(|e| &e.factory == id)
+        .map(|e| e.id.clone())
+        .collect();
+    let claim_ids: Vec<Id> = state
+        .node_claims
+        .values()
+        .filter(|c| &c.factory == id)
+        .map(|c| c.id.clone())
+        .collect();
+    let junction_ids: Vec<Id> = state
+        .junctions
+        .values()
+        .filter(|j| &j.factory == id)
+        .map(|j| j.id.clone())
+        .collect();
+    let port_set: std::collections::BTreeSet<Id> = port_ids.iter().cloned().collect();
+    let route_ids: Vec<Id> = state
+        .routes
+        .values()
+        .filter(|r| {
+            port_set.contains(&r.endpoints.0)
+                || port_set.contains(&r.endpoints.1)
+                || r.endpoints.0 == *id
+                || r.endpoints.1 == *id
+        })
+        .map(|r| r.id.clone())
+        .collect();
+    for rid in route_ids {
+        remove_route_cascading(state, tx, &rid);
+    }
+    for eid in edge_ids {
+        if let Some(ops) = state.remove(COLL_EDGES, &eid) {
+            tx.record(ops);
+        }
+    }
+    for gid in group_ids {
+        if let Some(ops) = state.remove(COLL_GROUPS, &gid) {
+            tx.record(ops);
+        }
+    }
+    for pid in port_ids {
+        if let Some(ops) = state.remove(COLL_PORTS, &pid) {
+            tx.record(ops);
+        }
+    }
+    for cid in claim_ids {
+        if let Some(ops) = state.remove(COLL_NODE_CLAIMS, &cid) {
+            tx.record(ops);
+        }
+    }
+    for jid in junction_ids {
+        if let Some(ops) = state.remove(COLL_JUNCTIONS, &jid) {
+            tx.record(ops);
+        }
+    }
+    if let Some(ops) = state.remove(COLL_FACTORIES, id) {
+        tx.record(ops);
+    }
+}
+
 /// Apply a command to canonical state. Returns an open `Transaction`.
 pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, DomainError> {
     let mut tx = Transaction::new(cmd.label());
@@ -432,80 +516,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             require_planned(f.status, id, "delete")?;
-            // Cascade: groups, ports, edges, claims belonging to this factory.
-            let group_ids: Vec<Id> = state
-                .groups
-                .values()
-                .filter(|g| &g.factory == id)
-                .map(|g| g.id.clone())
-                .collect();
-            let port_ids: Vec<Id> = state
-                .ports
-                .values()
-                .filter(|p| &p.factory == id)
-                .map(|p| p.id.clone())
-                .collect();
-            let edge_ids: Vec<Id> = state
-                .edges
-                .values()
-                .filter(|e| &e.factory == id)
-                .map(|e| e.id.clone())
-                .collect();
-            let claim_ids: Vec<Id> = state
-                .node_claims
-                .values()
-                .filter(|c| &c.factory == id)
-                .map(|c| c.id.clone())
-                .collect();
-            let junction_ids: Vec<Id> = state
-                .junctions
-                .values()
-                .filter(|j| &j.factory == id)
-                .map(|j| j.id.clone())
-                .collect();
-            let port_set: std::collections::BTreeSet<Id> = port_ids.iter().cloned().collect();
-            let route_ids: Vec<Id> = state
-                .routes
-                .values()
-                .filter(|r| {
-                    port_set.contains(&r.endpoints.0)
-                        || port_set.contains(&r.endpoints.1)
-                        || r.endpoints.0 == *id
-                        || r.endpoints.1 == *id
-                })
-                .map(|r| r.id.clone())
-                .collect();
-            for rid in route_ids {
-                remove_route_cascading(state, &mut tx, &rid);
-            }
-            for eid in edge_ids {
-                if let Some(ops) = state.remove(COLL_EDGES, &eid) {
-                    tx.record(ops);
-                }
-            }
-            for gid in group_ids {
-                if let Some(ops) = state.remove(COLL_GROUPS, &gid) {
-                    tx.record(ops);
-                }
-            }
-            for pid in port_ids {
-                if let Some(ops) = state.remove(COLL_PORTS, &pid) {
-                    tx.record(ops);
-                }
-            }
-            for cid in claim_ids {
-                if let Some(ops) = state.remove(COLL_NODE_CLAIMS, &cid) {
-                    tx.record(ops);
-                }
-            }
-            for jid in junction_ids {
-                if let Some(ops) = state.remove(COLL_JUNCTIONS, &jid) {
-                    tx.record(ops);
-                }
-            }
-            if let Some(ops) = state.remove(COLL_FACTORIES, id) {
-                tx.record(ops);
-            }
+            remove_factory_cascading(state, &mut tx, id);
         }
         Command::AddGroup {
             factory,

@@ -83,6 +83,10 @@ pub struct ClusterGroup {
 const DBSCAN_EPS_M: f64 = 120.0;
 /// Clusters match an existing Built factory within this range on re-import.
 const REMATCH_M: f64 = 250.0;
+/// Clock drift below this (absolute, on the 0–2.5 scale) is rounding noise,
+/// not player intent: cluster mean clocks are rounded to 3 decimals (≤ 5e-4
+/// error), while deliberate in-game reclocks move in ≥ 1% steps.
+const CLOCK_EPS: f64 = 0.005;
 
 /// DBSCAN (min_pts 1 ⇒ every machine belongs somewhere) over machine XY.
 pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<Cluster> {
@@ -419,6 +423,10 @@ pub enum SyncOp {
         count: u32,
         clock: f64,
     },
+    /// The whole factory vanished in game — remove it and everything it owns.
+    RemoveFactory {
+        factory: Id,
+    },
 }
 
 /// Re-import: diff clusters against the current Built layer → drift items.
@@ -444,20 +452,41 @@ pub fn diff_against_built(
         .filter(|f| f.status == Status::Built)
         .collect();
     let mut items = Vec::new();
-    let mut matched: std::collections::BTreeSet<&str> = Default::default();
 
-    for c in clusters {
-        let nearest = built
-            .iter()
-            .filter(|f| !matched.contains(f.id.as_str()))
-            .map(|f| {
-                let d = (f.position.x - c.position.x).hypot(f.position.y - c.position.y);
-                (*f, d)
-            })
-            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        match nearest {
-            Some((f, d)) if d <= REMATCH_M => {
-                matched.insert(f.id.as_str());
+    // Global assignment: every (cluster, factory) pair within REMATCH_M,
+    // taken greedily by ascending distance so the globally closest surviving
+    // pair always wins. A new nearby cluster can therefore never steal an
+    // existing factory's identity from its genuinely nearest cluster, no
+    // matter what order DBSCAN emits clusters in. (Hungarian would minimize
+    // the distance *sum* and could hand a factory a farther cluster —
+    // semantically worse for identity matching, and overkill here.)
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::new(); // (distance, built idx, cluster idx)
+    for (ci, c) in clusters.iter().enumerate() {
+        for (fi, f) in built.iter().enumerate() {
+            let d = (f.position.x - c.position.x).hypot(f.position.y - c.position.y);
+            if d <= REMATCH_M {
+                pairs.push((d, fi, ci));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| built[a.1].id.cmp(&built[b.1].id))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+    let mut assigned: Vec<Option<usize>> = vec![None; clusters.len()]; // cluster idx → built idx
+    let mut matched: Vec<bool> = vec![false; built.len()];
+    for (_, fi, ci) in pairs {
+        if assigned[ci].is_none() && !matched[fi] {
+            assigned[ci] = Some(fi);
+            matched[fi] = true;
+        }
+    }
+
+    for (ci, c) in clusters.iter().enumerate() {
+        match assigned[ci].map(|fi| built[fi]) {
+            Some(f) => {
                 // group-level diff
                 let existing: BTreeMap<(String, String), (u32, f64, Id)> = f
                     .groups
@@ -473,7 +502,33 @@ pub fn diff_against_built(
                 for g in &c.groups {
                     let key = (g.machine.clone(), g.recipe.clone());
                     match existing.get(&key) {
-                        Some((count, _, _)) if *count == g.count => {}
+                        Some((count, clock, _)) if *count == g.count => {
+                            // Compare against the clamped save clock — the
+                            // value apply_sync will actually store — so an
+                            // accepted item converges to InSync on re-import.
+                            let target = g.clock.clamp(0.01, 2.5);
+                            if (clock - target).abs() > CLOCK_EPS {
+                                items.push(drift_item(
+                                    format!(
+                                        "Δ {} — {} reclocked in game",
+                                        f.name,
+                                        item_name(&g.recipe)
+                                    ),
+                                    format!(
+                                        "{:.1}% built → {:.1}% in save",
+                                        clock * 100.0,
+                                        target * 100.0
+                                    ),
+                                    SyncOp::UpdateGroup {
+                                        factory: f.id.clone(),
+                                        machine: g.machine.clone(),
+                                        recipe: g.recipe.clone(),
+                                        count: g.count,
+                                        clock: g.clock,
+                                    },
+                                ));
+                            }
+                        }
                         Some((count, _, _)) => items.push(drift_item(
                             format!("Δ {} — {}", f.name, item_name(&g.recipe)),
                             format!("×{count} built → ×{} in save", g.count),
@@ -518,7 +573,7 @@ pub fn diff_against_built(
                     }
                 }
             }
-            _ => {
+            None => {
                 let machines: u32 = c.groups.iter().map(|g| g.count).sum();
                 items.push(ProposalItem {
                     id: new_id(),
@@ -539,6 +594,27 @@ pub fn diff_against_built(
                 });
             }
         }
+    }
+
+    // Built factories with no surviving cluster were demolished in game —
+    // silence here would report IN SYNC over a missing factory.
+    for (fi, f) in built.iter().enumerate() {
+        if matched[fi] {
+            continue;
+        }
+        let groups: Vec<&MachineGroup> = f
+            .groups
+            .iter()
+            .filter_map(|gid| state.groups.get(gid))
+            .collect();
+        let machines: u32 = groups.iter().map(|g| g.count).sum();
+        items.push(drift_item(
+            format!("Δ {} — factory demolished in game", f.name),
+            format!("×{machines} machines · {} groups → gone", groups.len()),
+            SyncOp::RemoveFactory {
+                factory: f.id.clone(),
+            },
+        ));
     }
     items
 }
@@ -634,6 +710,12 @@ pub fn apply_sync(
                     tx.record(state.upsert(Entity::Factory(f)));
                 }
                 None => {}
+            }
+        }
+        SyncOp::RemoveFactory { factory } => {
+            // Tolerate stale ops (factory already gone), like the arms above.
+            if state.factories.contains_key(factory) {
+                planner_core::commands::remove_factory_cascading(state, tx, factory);
             }
         }
     }

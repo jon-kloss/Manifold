@@ -17,6 +17,13 @@ fn m(class: &str, recipe: &str, x: f64, y: f64) -> ImportMachine {
     }
 }
 
+fn mc(class: &str, recipe: &str, x: f64, y: f64, clock: f64) -> ImportMachine {
+    ImportMachine {
+        clock,
+        ..m(class, recipe, x, y)
+    }
+}
+
 fn snapshot(machines: Vec<ImportMachine>) -> ImportSnapshot {
     ImportSnapshot {
         save_name: "TEST-01".into(),
@@ -291,4 +298,211 @@ fn import_auto_wires_groups_ports_and_preserves_built_counts() {
     assert!(ore.graph_pos.x < smelters.graph_pos.x);
     assert!(smelters.graph_pos.x < rodmakers.graph_pos.x);
     assert!(rodmakers.graph_pos.x < rods.graph_pos.x);
+}
+
+#[test]
+fn reimport_new_nearby_cluster_cannot_steal_identity() {
+    let mut s = Session::in_memory(None).unwrap();
+
+    // Built factory F: 3 smelters, centroid ≈ (56.7, 40).
+    let smelters = vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 60.0, 40.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 110.0, 80.0),
+    ];
+    s.import_save(snapshot(smelters.clone())).unwrap();
+    assert_eq!(s.state.factories.len(), 1);
+
+    // Re-import: a new 2-constructor outpost ~195 m from F's centroid,
+    // emitted FIRST by DBSCAN (listed first), plus F's unchanged smelters.
+    // Greedy-in-iteration-order matching would let the outpost steal F.
+    let mut machines = vec![
+        m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 250.0, 40.0),
+        m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 250.0, 90.0),
+    ];
+    machines.extend(smelters);
+    let ImportOutcome::Drift { proposal, .. } = s.import_save(snapshot(machines)).unwrap() else {
+        panic!("expected drift (new outpost)");
+    };
+    let p = &s.state.proposals[&proposal];
+    assert_eq!(
+        p.items.len(),
+        1,
+        "only the new outpost drifts: {:?}",
+        p.items
+            .iter()
+            .map(|i| (&i.label, &i.detail))
+            .collect::<Vec<_>>()
+    );
+    assert!(p.items[0].label.contains("NEW IN GAME"));
+    assert!(!p
+        .items
+        .iter()
+        .any(|i| i.label.contains("demolished") || i.label.contains("reclocked")));
+
+    // Accept: F keeps its identity (smelter bank untouched), outpost is new.
+    s.accept_proposal(&proposal).unwrap();
+    let smelter_bank = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_SmelterMk1_C")
+        .unwrap();
+    assert_eq!(smelter_bank.count, 3, "F's bank not corrupted by the steal");
+    assert_eq!(s.state.factories.len(), 2);
+}
+
+#[test]
+fn demolished_factory_emits_drift_and_accept_removes_cleanly() {
+    let mut s = Session::in_memory(None).unwrap();
+
+    // Two factories far apart: A (smelters) and B (constructors).
+    s.import_save(snapshot(vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 60.0, 40.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 110.0, 80.0),
+        m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 5000.0, 5000.0),
+        m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 5050.0, 5000.0),
+    ]))
+    .unwrap();
+    let b = s
+        .state
+        .factories
+        .values()
+        .find(|f| f.name.starts_with("IRON ROD"))
+        .unwrap()
+        .clone();
+    let count_owned = |s: &Session| {
+        (
+            s.state
+                .groups
+                .values()
+                .filter(|g| g.factory == b.id)
+                .count(),
+            s.state.ports.values().filter(|p| p.factory == b.id).count(),
+            s.state.edges.values().filter(|e| e.factory == b.id).count(),
+        )
+    };
+    let before = count_owned(&s);
+    assert!(before.0 > 0 && before.1 > 0 && before.2 > 0, "B is wired");
+
+    // Re-import with B fully demolished in game.
+    let ImportOutcome::Drift { proposal, .. } = s
+        .import_save(snapshot(vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 60.0, 40.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 110.0, 80.0),
+        ]))
+        .unwrap()
+    else {
+        panic!("expected drift (demolished factory)");
+    };
+    let p = &s.state.proposals[&proposal];
+    assert!(
+        p.items
+            .iter()
+            .any(|i| i.label.contains("demolished in game") && i.label.contains(&b.name)),
+        "honest drift item: {:?}",
+        p.items
+            .iter()
+            .map(|i| (&i.label, &i.detail))
+            .collect::<Vec<_>>()
+    );
+
+    // Accept: B and everything it owns is gone — no orphans.
+    s.accept_proposal(&proposal).unwrap();
+    assert!(!s.state.factories.contains_key(&b.id));
+    assert_eq!(count_owned(&s), (0, 0, 0), "no orphaned groups/ports/edges");
+    // A untouched.
+    assert_eq!(
+        s.state
+            .groups
+            .values()
+            .find(|g| g.machine == "Build_SmelterMk1_C")
+            .unwrap()
+            .count,
+        3
+    );
+
+    // One undo restores B with identical entity counts.
+    s.undo().unwrap().unwrap();
+    assert!(s.state.factories.contains_key(&b.id));
+    assert_eq!(count_owned(&s), before, "undo restores the full cascade");
+}
+
+#[test]
+fn clock_only_drift_emits_honest_item() {
+    let mut s = Session::in_memory(None).unwrap();
+    let smelters = |clock: f64| -> Vec<ImportMachine> {
+        vec![
+            mc("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0, clock),
+            mc(
+                "Build_SmelterMk1_C",
+                "Recipe_IngotIron_C",
+                60.0,
+                40.0,
+                clock,
+            ),
+            mc(
+                "Build_SmelterMk1_C",
+                "Recipe_IngotIron_C",
+                110.0,
+                80.0,
+                clock,
+            ),
+        ]
+    };
+    s.import_save(snapshot(smelters(1.0))).unwrap();
+
+    // Same machines, retuned to 150% in game: count matches, clock drifts.
+    let ImportOutcome::Drift { proposal, .. } = s.import_save(snapshot(smelters(1.5))).unwrap()
+    else {
+        panic!("expected drift (reclocked)");
+    };
+    let p = &s.state.proposals[&proposal];
+    let item = p
+        .items
+        .iter()
+        .find(|i| i.label.contains("reclocked in game"))
+        .expect("honest clock-drift item");
+    assert!(item.detail.contains("100"), "detail: {}", item.detail);
+    assert!(item.detail.contains("150"), "detail: {}", item.detail);
+
+    // Accept syncs the clock, keeps the count; then re-import is IN SYNC.
+    s.accept_proposal(&proposal).unwrap();
+    let g = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_SmelterMk1_C")
+        .unwrap();
+    assert_eq!(g.count, 3);
+    assert!((g.clock - 1.5).abs() < 1e-9);
+    assert!(matches!(
+        s.import_save(snapshot(smelters(1.5))).unwrap(),
+        ImportOutcome::InSync
+    ));
+}
+
+#[test]
+fn clock_noise_within_tolerance_is_in_sync() {
+    let mut s = Session::in_memory(None).unwrap();
+    let smelters = |clock: f64| -> Vec<ImportMachine> {
+        vec![
+            mc("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0, clock),
+            mc(
+                "Build_SmelterMk1_C",
+                "Recipe_IngotIron_C",
+                60.0,
+                40.0,
+                clock,
+            ),
+        ]
+    };
+    s.import_save(snapshot(smelters(1.0))).unwrap();
+    // 0.2% off is representation noise, not a player reclock.
+    assert!(matches!(
+        s.import_save(snapshot(smelters(1.002))).unwrap(),
+        ImportOutcome::InSync
+    ));
 }
