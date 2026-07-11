@@ -379,6 +379,94 @@ fn wizard_produces_reviewable_partially_acceptable_proposal() {
     assert_eq!(s.state.proposals[&pid].status, ProposalStatus::Accepted);
 }
 
+/// Regression: an intermediate demanded by two stages (ingots feed the plate
+/// stage directly and the screw stage via rods) is popped from the demand
+/// queue twice, tapping the SAME surplus port twice. The wizard must merge
+/// the takes into one route item — two `AddRoute`s from one port would make
+/// accept always fail with "a port is already bound to a route".
+#[test]
+fn surplus_port_tapped_by_two_stages_yields_one_route() {
+    let mut s = Session::in_memory(None).unwrap();
+    build_base(&mut s);
+    let ingot_port = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.direction == PortDirection::Out && p.item == "Desc_IronIngot_C")
+        .unwrap()
+        .id
+        .clone();
+
+    // RIP 2/min: plates need 18 ingots/min, screws→rods need 6 ingots/min —
+    // two separate pops against the single 60/min ingot surplus port
+    let outcome = solve(
+        &mut s,
+        WizardGoal {
+            items: vec![("Desc_IronPlateReinforced_C".into(), 2.0)],
+            constraints: Default::default(),
+        },
+    );
+    let WizardOutcome::Proposal { proposal } = outcome else {
+        panic!("expected a proposal, got {outcome:?}");
+    };
+
+    let surplus_rows: Vec<&str> = proposal
+        .items
+        .iter()
+        .filter(|i| i.detail.contains("from surplus"))
+        .map(|i| i.detail.as_str())
+        .collect();
+    assert_eq!(
+        surplus_rows.len(),
+        1,
+        "takes from one port aggregate into one route item: {surplus_rows:?}"
+    );
+
+    // the whole point: the proposal must be acceptable end-to-end (a second
+    // AddRoute from the bound port used to roll the entire accept back)
+    let pid = s
+        .edit(vec![Command::CreateProposal { proposal }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let resp = s
+        .accept_proposal(&pid)
+        .expect("aggregated surplus proposal accepts");
+    assert_eq!(s.state.proposals[&pid].status, ProposalStatus::Accepted);
+
+    let from_ingot: Vec<&Route> = s
+        .state
+        .routes
+        .values()
+        .filter(|r| r.endpoints.0 == ingot_port)
+        .collect();
+    assert_eq!(
+        from_ingot.len(),
+        1,
+        "exactly one route leaves the surplus port"
+    );
+    assert_eq!(
+        s.state.ports[&ingot_port].bound_route.as_ref(),
+        Some(&from_ingot[0].id),
+        "the surplus port is bound to the aggregated route"
+    );
+
+    // and the new site actually produces the goal after the empire solve
+    let rip: f64 = s
+        .state
+        .ports
+        .values()
+        .filter(|p| p.direction == PortDirection::Out && p.item == "Desc_IronPlateReinforced_C")
+        .filter_map(|p| {
+            resp.derived
+                .factories
+                .get(&p.factory)
+                .and_then(|df| df.ports.get(&p.id))
+        })
+        .sum();
+    assert!((rip - 2.0).abs() < 1e-4, "rip: {rip}");
+}
+
 #[test]
 fn infeasible_returns_best_achievable_and_relaxations() {
     let mut s = Session::in_memory(None).unwrap();

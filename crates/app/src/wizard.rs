@@ -149,7 +149,14 @@ pub fn global_solve(
                     let take = rate.min(*avail);
                     *avail -= take;
                     rate -= take;
-                    surplus_taken.push((port.clone(), item.clone(), take));
+                    // one route per port: merge repeat takes from the same
+                    // port (an item demanded by two stages is popped twice)
+                    // so phase 4 emits a single AddPort+AddRoute pair for it
+                    if let Some(i) = surplus_taken.iter().position(|(p, _, _)| p == port) {
+                        surplus_taken[i].2 += take;
+                    } else {
+                        surplus_taken.push((port.clone(), item.clone(), take));
+                    }
                     log(
                         phase,
                         &format!(
