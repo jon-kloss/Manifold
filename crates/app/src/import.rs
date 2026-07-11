@@ -199,6 +199,8 @@ fn tier_for(rate: f64) -> u8 {
 /// groups per item, items consumed but not produced become In ports (they
 /// surface as deficits until routed — honest), and net surplus becomes Out
 /// ports. Groups whose recipe isn't in the loaded catalog stay unwired.
+/// Cards land in layered-layout positions (In ports → ranked groups → Out
+/// ports) so generated factories read left→right at a glance.
 pub fn write_built_layer(
     state: &mut PlanState,
     tx: &mut planner_core::commands::Transaction,
@@ -206,33 +208,17 @@ pub fn write_built_layer(
     import_id: &str,
     gd: &gamedata::docs::GameData,
 ) -> Vec<Id> {
+    use planner_core::layout::{layered_layout, LKind, LNode};
     let mut created = Vec::new();
     for c in clusters {
         let fid = new_id();
-        let mut group_ids = Vec::new();
-        // per item: (group id, rate/min) producing / consuming it
+        // pass 1: assign ids + collect per-item recipe I/O
+        let mut group_specs: Vec<(Id, &ClusterGroup, f64)> = Vec::new();
         let mut producers: BTreeMap<String, Vec<(Id, f64)>> = BTreeMap::new();
         let mut consumers: BTreeMap<String, Vec<(Id, f64)>> = BTreeMap::new();
-        for (i, g) in c.groups.iter().enumerate() {
+        for g in &c.groups {
             let gid = new_id();
             let clock = g.clock.clamp(0.01, 2.5);
-            tx.record(state.upsert(Entity::Group(MachineGroup {
-                id: gid.clone(),
-                factory: fid.clone(),
-                machine: g.machine.clone(),
-                recipe: g.recipe.clone(),
-                count: g.count,
-                clock,
-                somersloops: 0,
-                planned_delta: None,
-                graph_pos: GraphPos {
-                    x: 280.0 + 300.0 * (i as f64 % 4.0),
-                    y: 80.0 + 260.0 * (i as f64 / 4.0).floor(),
-                },
-                floor: 0,
-                status: Status::Built,
-                created_by: CreatedBy::Import(import_id.to_string()),
-            })));
             if let Some(r) = gd.recipes.get(&g.recipe) {
                 if r.duration_s > 0.0 {
                     let cycles_per_min = 60.0 / r.duration_s * g.count as f64 * clock;
@@ -250,14 +236,12 @@ pub fn write_built_layer(
                     }
                 }
             }
-            group_ids.push(gid);
+            group_specs.push((gid, g, clock));
         }
 
-        // internal wiring: every producer of an item feeds every consumer
+        // pass 2: wiring — internal edges + boundary ports (positions later)
+        let mut ports: Vec<Port> = Vec::new();
         let mut edges: Vec<BeltEdge> = Vec::new();
-        let mut port_ids: Vec<Id> = Vec::new();
-        let mut in_ports = 0usize;
-        let mut out_ports = 0usize;
         let items: std::collections::BTreeSet<&String> =
             producers.keys().chain(consumers.keys()).collect();
         for item in items {
@@ -285,24 +269,7 @@ pub fn write_built_layer(
             }
             let net = prod - cons;
             if net > 1e-6 {
-                // net surplus → Out port fed by every producer
                 let pid = new_id();
-                tx.record(state.upsert(Entity::Port(Port {
-                    id: pid.clone(),
-                    factory: fid.clone(),
-                    direction: PortDirection::Out,
-                    item: item.clone(),
-                    rate: net,
-                    rate_ceiling: None,
-                    bound_route: None,
-                    graph_pos: GraphPos {
-                        x: 1560.0,
-                        y: 80.0 + 140.0 * out_ports as f64,
-                    },
-                    status: Status::Built,
-                    created_by: CreatedBy::Import(import_id.to_string()),
-                })));
-                out_ports += 1;
                 for (pg, _) in producers.get(item).into_iter().flatten() {
                     edges.push(BeltEdge {
                         id: new_id(),
@@ -315,26 +282,20 @@ pub fn write_built_layer(
                         created_by: CreatedBy::Import(import_id.to_string()),
                     });
                 }
-                port_ids.push(pid);
-            } else if net < -1e-6 {
-                // net need → In port feeding every consumer
-                let pid = new_id();
-                tx.record(state.upsert(Entity::Port(Port {
-                    id: pid.clone(),
+                ports.push(Port {
+                    id: pid,
                     factory: fid.clone(),
-                    direction: PortDirection::In,
+                    direction: PortDirection::Out,
                     item: item.clone(),
-                    rate: -net,
+                    rate: net,
                     rate_ceiling: None,
                     bound_route: None,
-                    graph_pos: GraphPos {
-                        x: 40.0,
-                        y: 80.0 + 140.0 * in_ports as f64,
-                    },
+                    graph_pos: GraphPos { x: 0.0, y: 0.0 },
                     status: Status::Built,
                     created_by: CreatedBy::Import(import_id.to_string()),
-                })));
-                in_ports += 1;
+                });
+            } else if net < -1e-6 {
+                let pid = new_id();
                 for (cg, _) in consumers.get(item).into_iter().flatten() {
                     edges.push(BeltEdge {
                         id: new_id(),
@@ -347,8 +308,78 @@ pub fn write_built_layer(
                         created_by: CreatedBy::Import(import_id.to_string()),
                     });
                 }
-                port_ids.push(pid);
+                ports.push(Port {
+                    id: pid,
+                    factory: fid.clone(),
+                    direction: PortDirection::In,
+                    item: item.clone(),
+                    rate: -net,
+                    rate_ceiling: None,
+                    bound_route: None,
+                    graph_pos: GraphPos { x: 0.0, y: 0.0 },
+                    status: Status::Built,
+                    created_by: CreatedBy::Import(import_id.to_string()),
+                });
             }
+        }
+
+        // pass 3: layered layout over the wired graph
+        let mut lnodes: Vec<LNode> = group_specs
+            .iter()
+            .map(|(gid, _, _)| LNode {
+                id: gid.clone(),
+                kind: LKind::Group,
+            })
+            .collect();
+        for p in &ports {
+            lnodes.push(LNode {
+                id: p.id.clone(),
+                kind: if p.direction == PortDirection::In {
+                    LKind::InPort
+                } else {
+                    LKind::OutPort
+                },
+            });
+        }
+        let end_id = |e: &EdgeEnd| match e {
+            EdgeEnd::Group(id) | EdgeEnd::Port(id) | EdgeEnd::Junction(id) => id.clone(),
+        };
+        let pairs: Vec<(Id, Id)> = edges
+            .iter()
+            .map(|e| (end_id(&e.from), end_id(&e.to)))
+            .collect();
+        let positions = layered_layout(&lnodes, &pairs);
+
+        // pass 4: materialize everything in final positions
+        let mut group_ids = Vec::new();
+        for (i, (gid, g, clock)) in group_specs.iter().enumerate() {
+            let fallback = GraphPos {
+                x: 280.0 + 300.0 * (i as f64 % 4.0),
+                y: 80.0 + 260.0 * (i as f64 / 4.0).floor(),
+            };
+            tx.record(state.upsert(Entity::Group(MachineGroup {
+                id: gid.clone(),
+                factory: fid.clone(),
+                machine: g.machine.clone(),
+                recipe: g.recipe.clone(),
+                count: g.count,
+                clock: *clock,
+                somersloops: 0,
+                planned_delta: None,
+                graph_pos: positions.get(gid).copied().unwrap_or(fallback),
+                floor: 0,
+                status: Status::Built,
+                created_by: CreatedBy::Import(import_id.to_string()),
+            })));
+            group_ids.push(gid.clone());
+        }
+        let mut port_ids = Vec::new();
+        for mut p in ports {
+            if let Some(pos) = positions.get(&p.id) {
+                p.graph_pos = *pos;
+            }
+            port_ids.push(p.id.clone());
+            tx.record(state.upsert(Entity::Port(p)));
         }
         for e in edges {
             tx.record(state.upsert(Entity::Edge(e)));

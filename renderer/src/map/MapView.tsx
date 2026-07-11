@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapCanvasLayer } from "./CanvasLayer";
-import type { NodeRenderState } from "./CanvasLayer";
+import type { CanvasLayerData, NodeRenderState } from "./CanvasLayer";
 import { fromLatLng, toLatLng } from "./maputil";
 import { useStore } from "../state/store";
 import type { WorldNode } from "../state/types";
@@ -80,6 +80,29 @@ export default function MapView() {
   const routeDraftRef = useRef<typeof routeDraft>(null);
   routeDraftRef.current = routeDraft;
 
+  const claimLinks = useMemo(() => {
+    const nodeById: Record<string, { x: number; y: number }> = {};
+    for (const n of world.nodes) nodeById[n.id] = { x: n.x, y: n.y };
+    const links: CanvasLayerData["claimLinks"] = [];
+    for (const c of Object.values(plan.nodeClaims)) {
+      const node = nodeById[c.node];
+      const f = plan.factories[c.factory];
+      if (!node || !f) continue;
+      links.push({
+        node,
+        factory: f.position,
+        factoryName: f.name,
+        planned: c.status === "planned",
+        conflict: derived.nodes[c.node]?.conflict ?? false,
+        highlight:
+          (selection?.kind === "factory" && selection.id === c.factory) ||
+          (selection?.kind === "node" && selection.id === c.node) ||
+          hoveredNode?.id === c.node,
+      });
+    }
+    return links;
+  }, [plan.nodeClaims, plan.factories, world.nodes, derived.nodes, selection, hoveredNode]);
+
   const nodeStates = useMemo(() => {
     const out: Record<string, NodeRenderState> = {};
     const claimsByNode: Record<string, number> = {};
@@ -119,6 +142,7 @@ export default function MapView() {
     const layer = new MapCanvasLayer({
       world: useStore.getState().world,
       nodeStates: {},
+      claimLinks: [],
       hoveredNode: null,
       selectedNode: null,
       showNodes: true,
@@ -237,6 +261,7 @@ export default function MapView() {
     layerRef.current?.setData({
       world,
       nodeStates,
+      claimLinks,
       hoveredNode: hoveredNode?.id ?? null,
       selectedNode: selection?.kind === "node" ? selection.id : null,
       showNodes: overlays.nodes,
@@ -249,7 +274,7 @@ export default function MapView() {
       ghost: src && routeDraft ? { from: src.position, to: routeDraft.cursor } : null,
       review,
     });
-  }, [world, nodeStates, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
+  }, [world, nodeStates, claimLinks, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
 
   // ---- pointer interactions (hover + click on canvas nodes, placement) ----
   useEffect(() => {

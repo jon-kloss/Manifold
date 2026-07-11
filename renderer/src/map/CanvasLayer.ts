@@ -28,6 +28,15 @@ export interface RouteRender {
 export interface CanvasLayerData {
   world: World;
   nodeStates: Record<string, NodeRenderState>;
+  /** node→claiming-factory tethers (the assignment made visible) */
+  claimLinks: {
+    node: { x: number; y: number };
+    factory: { x: number; y: number };
+    factoryName: string;
+    planned: boolean;
+    conflict: boolean;
+    highlight: boolean;
+  }[];
   hoveredNode: string | null;
   selectedNode: string | null;
   showNodes: boolean;
@@ -134,7 +143,10 @@ export class MapCanvasLayer extends L.Layer {
     this.drawRegionLabels(ctx, map);
     if (this.data.showPower) this.drawPower(ctx, map);
     if (this.data.showRoutes) this.drawRoutes(ctx, map);
-    if (this.data.showNodes) this.drawNodes(ctx, map);
+    if (this.data.showNodes) {
+      this.drawClaimLinks(ctx, map);
+      this.drawNodes(ctx, map);
+    }
     this.drawGhost(ctx, map);
     if (this.data.review) this.drawReview(ctx, map, size);
   };
@@ -341,6 +353,46 @@ export class MapCanvasLayer extends L.Layer {
       if (distToSegment(point, a, b) < 8) return l.id;
     }
     return null;
+  }
+
+  /** Claim tethers: a quiet dashed line from each claimed node to the pin
+   *  that owns it; selection/hover promotes it to signal and names the
+   *  factory at the midpoint. Conflicted claims read crit. */
+  private drawClaimLinks(ctx: CanvasRenderingContext2D, map: L.Map) {
+    for (const link of this.data.claimLinks) {
+      const a = map.latLngToContainerPoint(toLatLng(link.node));
+      const b = map.latLngToContainerPoint(toLatLng(link.factory));
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = link.conflict
+        ? css("--flow-crit")
+        : link.highlight
+          ? css("--signal-500")
+          : link.planned
+            ? css("--bp-400")
+            : css("--steel-600");
+      ctx.lineWidth = link.highlight ? 1.5 : 1;
+      ctx.setLineDash([3, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (link.highlight) {
+        const text = `→ ${link.factoryName.toUpperCase()}`;
+        ctx.font = `500 9px ${css("--font-mono")}`;
+        const w = ctx.measureText(text).width + 10;
+        const cx = (a.x + b.x) / 2;
+        const cy = (a.y + b.y) / 2;
+        ctx.fillStyle = css("--steel-800");
+        ctx.strokeStyle = css("--steel-600");
+        ctx.lineWidth = 1;
+        ctx.fillRect(cx - w / 2, cy - 8, w, 15);
+        ctx.strokeRect(cx - w / 2, cy - 8, w, 15);
+        ctx.fillStyle = css("--ink-300");
+        ctx.textAlign = "center";
+        ctx.fillText(text, cx, cy + 3);
+        ctx.textAlign = "left";
+      }
+    }
   }
 
   private drawGhost(ctx: CanvasRenderingContext2D, map: L.Map) {

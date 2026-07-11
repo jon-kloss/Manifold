@@ -3,6 +3,7 @@
 
 pub mod commands;
 pub mod entities;
+pub mod layout;
 pub mod patch;
 pub mod proposals;
 pub mod state;

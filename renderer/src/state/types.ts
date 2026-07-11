@@ -447,6 +447,7 @@ export type Command =
   | { type: "set_group_clock"; id: Id; clock: number }
   | { type: "set_group_floor"; id: Id; floor: number }
   | { type: "move_group_card"; id: Id; graphPos: GraphPos }
+  | { type: "tidy_layout"; factory: Id }
   | { type: "delete_group"; id: Id }
   | { type: "add_port"; factory: Id; direction: PortDirection; item: string; rate: number; rateCeiling: number | null; graphPos: GraphPos }
   | { type: "set_port_rate"; id: Id; rate: number }

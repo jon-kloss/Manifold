@@ -210,4 +210,10 @@ fn import_auto_wires_groups_ports_and_preserves_built_counts() {
     assert_eq!(smelters.count, 2);
     assert_eq!(rodmakers.count, 1);
     assert_eq!(smelters.status, Status::Built);
+
+    // layered layout: flow reads left→right (ore port → smelters →
+    // constructor → rod port)
+    assert!(ore.graph_pos.x < smelters.graph_pos.x);
+    assert!(smelters.graph_pos.x < rodmakers.graph_pos.x);
+    assert!(rodmakers.graph_pos.x < rods.graph_pos.x);
 }

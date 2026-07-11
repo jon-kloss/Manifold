@@ -102,6 +102,12 @@ pub enum Command {
         id: Id,
         graph_pos: GraphPos,
     },
+    /// Recompute every card position in a factory via the layered auto-layout
+    /// (In ports → ranked groups/junctions → Out ports). Cosmetic: applies to
+    /// built cards too, one undoable step.
+    TidyLayout {
+        factory: Id,
+    },
     DeleteGroup {
         id: Id,
     },
@@ -249,6 +255,7 @@ impl Command {
             Command::SetGroupClock { .. } => "set clock",
             Command::SetGroupFloor { .. } => "set floor",
             Command::MoveGroupCard { .. } => "move card",
+            Command::TidyLayout { .. } => "tidy layout",
             Command::DeleteGroup { .. } => "delete group",
             Command::AddPort { .. } => "add port",
             Command::SetPortRate { .. } => "set target rate",
@@ -568,6 +575,87 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             g.graph_pos = *graph_pos;
             tx.record(state.upsert(Entity::Group(g)));
+        }
+        Command::TidyLayout { factory } => {
+            use crate::layout::{layered_layout, LKind, LNode};
+            let f = state
+                .factories
+                .get(factory)
+                .cloned()
+                .ok_or(DomainError::NotFound {
+                    id: factory.clone(),
+                })?;
+            let mut nodes: Vec<LNode> = Vec::new();
+            for pid in &f.ports {
+                if let Some(p) = state.ports.get(pid) {
+                    nodes.push(LNode {
+                        id: p.id.clone(),
+                        kind: if p.direction == PortDirection::In {
+                            LKind::InPort
+                        } else {
+                            LKind::OutPort
+                        },
+                    });
+                }
+            }
+            for gid in &f.groups {
+                if state.groups.contains_key(gid) {
+                    nodes.push(LNode {
+                        id: gid.clone(),
+                        kind: LKind::Group,
+                    });
+                }
+            }
+            for j in state.junctions.values().filter(|j| &j.factory == factory) {
+                nodes.push(LNode {
+                    id: j.id.clone(),
+                    kind: LKind::Junction,
+                });
+            }
+            let end_id = |e: &EdgeEnd| match e {
+                EdgeEnd::Group(id) | EdgeEnd::Port(id) | EdgeEnd::Junction(id) => id.clone(),
+            };
+            let edge_pairs: Vec<(Id, Id)> = state
+                .edges
+                .values()
+                .filter(|e| &e.factory == factory)
+                .map(|e| (end_id(&e.from), end_id(&e.to)))
+                .collect();
+            let positions = layered_layout(&nodes, &edge_pairs);
+            for n in &nodes {
+                let Some(pos) = positions.get(&n.id) else {
+                    continue;
+                };
+                match n.kind {
+                    LKind::Group => {
+                        if let Some(g) = state.groups.get(&n.id) {
+                            if g.graph_pos != *pos {
+                                let mut g = g.clone();
+                                g.graph_pos = *pos;
+                                tx.record(state.upsert(Entity::Group(g)));
+                            }
+                        }
+                    }
+                    LKind::Junction => {
+                        if let Some(j) = state.junctions.get(&n.id) {
+                            if j.graph_pos != *pos {
+                                let mut j = j.clone();
+                                j.graph_pos = *pos;
+                                tx.record(state.upsert(Entity::Junction(j)));
+                            }
+                        }
+                    }
+                    LKind::InPort | LKind::OutPort => {
+                        if let Some(p) = state.ports.get(&n.id) {
+                            if p.graph_pos != *pos {
+                                let mut p = p.clone();
+                                p.graph_pos = *pos;
+                                tx.record(state.upsert(Entity::Port(p)));
+                            }
+                        }
+                    }
+                }
+            }
         }
         Command::DeleteGroup { id } => {
             let g = state

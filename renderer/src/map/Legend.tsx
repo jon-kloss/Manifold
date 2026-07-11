@@ -26,6 +26,9 @@ export default function Legend() {
             <span className="legend-node conflict" /> Conflict
           </div>
           <div className="legend-row">
+            <span className="legend-tether" /> Claim tether (node → factory)
+          </div>
+          <div className="legend-row">
             <span className="legend-load" /> &lt;70
             <span className="legend-load warn" /> 70–95
             <span className="legend-load crit" /> ≥95

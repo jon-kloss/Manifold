@@ -549,6 +549,14 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         <span className="ctx-spring" />
         <button
           className="btn btn-ghost overlay-chip"
+          onClick={() => void dispatch([{ type: "tidy_layout", factory: factoryId }])}
+          title="Re-lay every card left→right by flow (inputs → stages → outputs) — one undo step"
+          data-testid="btn-tidy"
+        >
+          TIDY
+        </button>
+        <button
+          className="btn btn-ghost overlay-chip"
           onClick={autoFloor}
           title="Assign floors by production stage (inputs low, assembly high) and stack — one undo step"
           data-testid="btn-auto-floor"

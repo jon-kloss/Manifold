@@ -214,6 +214,13 @@
   font-size: 11px;
   color: var(--ink-300);
 }
+.legend-tether {
+  display: inline-block;
+  width: 24px;
+  border-top: 1px dashed var(--steel-600);
+  margin-right: 2px;
+  vertical-align: middle;
+}
 .legend-node {
   width: 10px;
   height: 10px;
