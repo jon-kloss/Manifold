@@ -213,6 +213,37 @@ pub fn global_solve(
             return WizardOutcome::Cancelled;
         }
         let Some(r) = pick_recipe(gd, item, c.include_alternates) else {
+            // A GOAL item with no pickable recipe can never be staged — the
+            // proposal would dangle a `$g.` alias and accept would always
+            // fail. Name the fix instead of emitting a broken proposal.
+            // (Non-goal mid-chain items keep degrading honestly via the
+            // ingredient-edge guard + T1 `Disconnected` shortfalls.)
+            if goal.items.iter().any(|(i, _)| i == item) {
+                let (binding, relaxations) =
+                    if !c.include_alternates && pick_recipe(gd, item, true).is_some() {
+                        (
+                            format!(
+                                "only alternate recipes produce {} (alternates are off)",
+                                item_name(item)
+                            ),
+                            vec!["enable alternate recipes ✓".to_string()],
+                        )
+                    } else {
+                        (
+                            format!("no usable recipe produces {}", item_name(item)),
+                            vec![format!(
+                                "pick another goal item — {} has no enabled recipe",
+                                item_name(item)
+                            )],
+                        )
+                    };
+                log(phase, &format!("INFEASIBLE — {binding}"));
+                return WizardOutcome::Infeasible(Infeasible {
+                    best_rate: 0.0,
+                    binding,
+                    relaxations,
+                });
+            }
             continue;
         };
         let machine_class = r.produced_in.first().cloned().unwrap_or_default();
@@ -528,18 +559,32 @@ pub fn global_solve(
             );
         }
     }
-    push(
-        &mut cmds,
-        &mut aliases,
-        Command::AddEdge {
-            factory: "$site".into(),
-            from: EdgeEnd::Group(format!("$g.{goal_item}")),
-            to: EdgeEnd::Port("$site.out".into()),
-            item: goal_item.clone(),
-            tier: tier_for(goal_rate),
-        },
-        None,
-    );
+    // The out port's feed depends on how the goal is produced: a stage group
+    // when one exists, else the raw in port (extraction-and-ship — the claims
+    // feed the in port, which feeds the out port). Unmetered water has no in
+    // port: leave the out port unwired — an honest T1 shortfall, not a
+    // dangling `$g.` alias that would roll back the whole accept.
+    let goal_from = if stages.iter().any(|s| s.item == goal_item) {
+        Some(EdgeEnd::Group(format!("$g.{goal_item}")))
+    } else if raw.contains_key(&goal_item) && goal_item != "Desc_Water_C" {
+        Some(EdgeEnd::Port(format!("$in.{goal_item}")))
+    } else {
+        None
+    };
+    if let Some(from) = goal_from {
+        push(
+            &mut cmds,
+            &mut aliases,
+            Command::AddEdge {
+                factory: "$site".into(),
+                from,
+                to: EdgeEnd::Port("$site.out".into()),
+                item: goal_item.clone(),
+                tier: tier_for(goal_rate),
+            },
+            None,
+        );
+    }
     push(
         &mut cmds,
         &mut aliases,

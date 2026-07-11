@@ -335,6 +335,20 @@ export default function WizardModal() {
                       DROP PURITY FLOOR → RE-SOLVE
                     </button>
                   )}
+                  {!constraints.includeAlternates &&
+                    infeasible.relaxations.some((r) => r.toLowerCase().includes("alternate")) && (
+                      <button
+                        className="chip warn"
+                        onClick={() => {
+                          const c = { ...constraints, includeAlternates: true };
+                          setConstraints(c);
+                          void solve({ items: [[item, rate]], constraints: c });
+                        }}
+                        data-testid="wizard-enable-alternates"
+                      >
+                        ENABLE ALTERNATES → RE-SOLVE
+                      </button>
+                    )}
                   {infeasible.bestRate > 0 && (
                     <button
                       className="chip"

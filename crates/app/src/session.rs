@@ -977,7 +977,11 @@ impl Session {
                     }
                 }
             }
-            if snapshot.groups.is_empty() {
+            // A wired group-less factory (e.g. the wizard's extraction-and-
+            // ship site: in port → out port) is a valid pass-through — T1
+            // solves it with edge vars, ceilings and elastic targets alone.
+            // Only a factory with neither groups nor edges keeps the error.
+            if snapshot.groups.is_empty() && snapshot.edges.is_empty() {
                 derived
                     .factories
                     .insert(fid.clone(), Self::error_factory("no machine groups yet"));

@@ -493,6 +493,177 @@ fn infeasible_returns_best_achievable_and_relaxations() {
     assert!(inf.best_rate < 30.0);
 }
 
+/// A raw/extractable goal ("produce Iron Ore at 120/min") has no production
+/// stage. The wizard must build an extraction-and-ship site — claims feed the
+/// in port, which feeds the out port — instead of emitting an edge on a
+/// `$g.<item>` alias no AddGroup ever creates (which rolled back every accept).
+#[test]
+fn raw_goal_builds_extraction_and_ship_site_that_accepts() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (works, _) = build_base(&mut s);
+
+    let outcome = solve(
+        &mut s,
+        WizardGoal {
+            items: vec![("Desc_OreIron_C".into(), 120.0)],
+            constraints: Default::default(),
+        },
+    );
+    let WizardOutcome::Proposal { proposal } = outcome else {
+        panic!("expected a proposal, got {outcome:?}");
+    };
+
+    let create = proposal
+        .items
+        .iter()
+        .find(|i| matches!(i.kind, planner_core::proposals::ProposalItemKind::Create))
+        .expect("create item");
+    assert!(
+        !create
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::AddGroup { .. })),
+        "a raw goal has no production stages"
+    );
+    assert!(
+        create.commands.iter().any(|c| matches!(
+            c,
+            Command::AddEdge {
+                from: EdgeEnd::Port(f),
+                to: EdgeEnd::Port(t),
+                ..
+            } if f == "$in.Desc_OreIron_C" && t == "$site.out"
+        )),
+        "pass-through edge wires the raw in port to the out port: {:?}",
+        create.commands
+    );
+    assert!(
+        proposal
+            .items
+            .iter()
+            .any(|i| matches!(i.kind, planner_core::proposals::ProposalItemKind::Claim)),
+        "extraction claims proposed"
+    );
+    // the goal is delivered to the existing unbound ore In port
+    let ore_in = s
+        .state
+        .ports
+        .values()
+        .find(|p| {
+            p.factory == works && p.direction == PortDirection::In && p.item == "Desc_OreIron_C"
+        })
+        .unwrap()
+        .id
+        .clone();
+    assert!(
+        proposal.items.iter().any(|i| i
+            .commands
+            .iter()
+            .any(|c| matches!(c, Command::AddRoute { to, .. } if to == &ore_in))),
+        "route delivers ore to the existing consumer"
+    );
+
+    let pid = s
+        .edit(vec![Command::CreateProposal { proposal }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let cons = s.eval_proposal(&pid).unwrap();
+    assert!(
+        !cons.warnings.iter().any(|w| w.contains("skipped")),
+        "no unresolved-alias skips: {:?}",
+        cons.warnings
+    );
+    assert!(cons.goal_met, "goal check: {:?}", cons.goal);
+
+    let resp = s.accept_proposal(&pid).expect("raw-goal proposal accepts");
+    assert_eq!(s.state.proposals[&pid].status, ProposalStatus::Accepted);
+    // the group-less pass-through site actually ships the ore (empire solve)
+    let ore: f64 = s
+        .state
+        .ports
+        .values()
+        .filter(|p| p.direction == PortDirection::Out && p.item == "Desc_OreIron_C")
+        .filter_map(|p| {
+            resp.derived
+                .factories
+                .get(&p.factory)
+                .and_then(|df| df.ports.get(&p.id))
+        })
+        .sum();
+    assert!((ore - 120.0).abs() < 1e-4, "shipped ore: {ore}");
+}
+
+/// A goal only alternate recipes can produce (alternates off) must return
+/// Infeasible naming the fix — not a proposal whose `$g.` alias dangles.
+#[test]
+fn alternate_only_goal_is_infeasible_naming_alternates() {
+    let s = Session::in_memory(None).unwrap();
+    let mut gd = s.gamedata.clone();
+    gd.recipes
+        .remove("Recipe_Screw_C")
+        .expect("fixture has the standard screw recipe");
+
+    let cancel = AtomicBool::new(false);
+    let mut log_lines = Vec::new();
+    let outcome = global_solve(
+        &s.state,
+        &gd,
+        &s.world,
+        &WizardGoal {
+            items: vec![("Desc_IronScrew_C".into(), 40.0)],
+            constraints: Default::default(),
+        },
+        s.plan_hash(),
+        "2026-07-10T00:00:00Z".into(),
+        |phase, line| log_lines.push(format!("{phase}: {line}")),
+        &cancel,
+    );
+    let WizardOutcome::Infeasible(inf) = outcome else {
+        panic!("expected infeasible, got {outcome:?}");
+    };
+    assert_eq!(inf.best_rate, 0.0, "nothing achievable without the recipe");
+    assert!(
+        inf.binding.to_lowercase().contains("alternate"),
+        "binding names alternates: {}",
+        inf.binding
+    );
+    assert!(
+        inf.relaxations
+            .iter()
+            .any(|r| r.to_lowercase().contains("alternate")),
+        "one-tap relaxation offered: {:?}",
+        inf.relaxations
+    );
+    assert!(
+        log_lines.iter().any(|l| l.contains("INFEASIBLE")),
+        "log names the dead end: {log_lines:?}"
+    );
+
+    // the relaxation is truthful: alternates on → a real proposal
+    let mut log_lines = Vec::new();
+    let outcome = global_solve(
+        &s.state,
+        &gd,
+        &s.world,
+        &WizardGoal {
+            items: vec![("Desc_IronScrew_C".into(), 40.0)],
+            constraints: app::wizard::WizardConstraints {
+                include_alternates: true,
+                ..Default::default()
+            },
+        },
+        s.plan_hash(),
+        "2026-07-10T00:00:00Z".into(),
+        |phase, line| log_lines.push(format!("{phase}: {line}")),
+        &cancel,
+    );
+    assert!(
+        matches!(outcome, WizardOutcome::Proposal { .. }),
+        "alternates on solves: {outcome:?}"
+    );
+}
+
 #[test]
 fn plan_hash_flags_staleness() {
     let mut s = Session::in_memory(None).unwrap();
