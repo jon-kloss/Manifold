@@ -146,3 +146,68 @@ fn first_import_writes_built_layer_then_reimport_diffs() {
     );
     assert_eq!(s.state.factories.len(), factories_before);
 }
+
+#[test]
+fn import_auto_wires_groups_ports_and_preserves_built_counts() {
+    let mut s = Session::in_memory(None).unwrap();
+    // one cluster: 2 smelters (60 ingot/min) feeding 1 rod constructor
+    // (consumes 15 ingot/min, makes 15 rod/min)
+    let outcome = s
+        .import_save(snapshot(vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 100.0, 0.0),
+        ]))
+        .unwrap();
+    assert!(matches!(
+        outcome,
+        ImportOutcome::Imported { factories: 1, .. }
+    ));
+    let f = s.state.factories.values().next().unwrap().clone();
+
+    // boundary ports materialize the factory's net I/O
+    let port = |dir: planner_core::entities::PortDirection, item: &str| {
+        f.ports
+            .iter()
+            .filter_map(|pid| s.state.ports.get(pid))
+            .find(|p| p.direction == dir && p.item == item)
+    };
+    use planner_core::entities::PortDirection::{In, Out};
+    let ore = port(In, "Desc_OreIron_C").expect("ore In port");
+    assert!(
+        (ore.rate - 60.0).abs() < 1e-6,
+        "ore need 60/min, got {}",
+        ore.rate
+    );
+    let surplus = port(Out, "Desc_IronIngot_C").expect("ingot surplus Out port");
+    assert!((surplus.rate - 45.0).abs() < 1e-6);
+    let rods = port(Out, "Desc_IronRod_C").expect("rod Out port");
+    assert!((rods.rate - 15.0).abs() < 1e-6);
+
+    // internal wiring: smelter group edges into the constructor group
+    let smelters = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_SmelterMk1_C")
+        .unwrap();
+    let rodmakers = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_ConstructorMk1_C")
+        .unwrap();
+    use planner_core::entities::EdgeEnd;
+    assert!(
+        s.state.edges.values().any(|e| e.item == "Desc_IronIngot_C"
+            && e.from == EdgeEnd::Group(smelters.id.clone())
+            && e.to == EdgeEnd::Group(rodmakers.id.clone())),
+        "ingot edge smelters→constructor"
+    );
+
+    // the import already empire-solved: built counts are ground truth and
+    // must survive the solver untouched
+    assert_eq!(smelters.count, 2);
+    assert_eq!(rodmakers.count, 1);
+    assert_eq!(smelters.status, Status::Built);
+}

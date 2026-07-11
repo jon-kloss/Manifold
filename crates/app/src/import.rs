@@ -181,27 +181,48 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
     clusters
 }
 
+/// Lowest belt tier whose capacity covers `rate`.
+fn tier_for(rate: f64) -> u8 {
+    for (i, cap) in BELT_CAPACITY.iter().enumerate() {
+        if rate <= *cap {
+            return (i + 1) as u8;
+        }
+    }
+    6
+}
+
 /// First import: materialize clusters as ◆ Built entities into `state`,
 /// recording into `tx`. Returns created factory ids.
+///
+/// The save parser extracts machines, not belt connectivity, so groups are
+/// auto-wired LOGICALLY by recipe I/O: producer groups edge into consumer
+/// groups per item, items consumed but not produced become In ports (they
+/// surface as deficits until routed — honest), and net surplus becomes Out
+/// ports. Groups whose recipe isn't in the loaded catalog stay unwired.
 pub fn write_built_layer(
     state: &mut PlanState,
     tx: &mut planner_core::commands::Transaction,
     clusters: &[Cluster],
     import_id: &str,
+    gd: &gamedata::docs::GameData,
 ) -> Vec<Id> {
     let mut created = Vec::new();
     for c in clusters {
         let fid = new_id();
         let mut group_ids = Vec::new();
+        // per item: (group id, rate/min) producing / consuming it
+        let mut producers: BTreeMap<String, Vec<(Id, f64)>> = BTreeMap::new();
+        let mut consumers: BTreeMap<String, Vec<(Id, f64)>> = BTreeMap::new();
         for (i, g) in c.groups.iter().enumerate() {
             let gid = new_id();
+            let clock = g.clock.clamp(0.01, 2.5);
             tx.record(state.upsert(Entity::Group(MachineGroup {
                 id: gid.clone(),
                 factory: fid.clone(),
                 machine: g.machine.clone(),
                 recipe: g.recipe.clone(),
                 count: g.count,
-                clock: g.clock.clamp(0.01, 2.5),
+                clock,
                 somersloops: 0,
                 planned_delta: None,
                 graph_pos: GraphPos {
@@ -212,8 +233,127 @@ pub fn write_built_layer(
                 status: Status::Built,
                 created_by: CreatedBy::Import(import_id.to_string()),
             })));
+            if let Some(r) = gd.recipes.get(&g.recipe) {
+                if r.duration_s > 0.0 {
+                    let cycles_per_min = 60.0 / r.duration_s * g.count as f64 * clock;
+                    for (item, n) in &r.products {
+                        producers
+                            .entry(item.clone())
+                            .or_default()
+                            .push((gid.clone(), n * cycles_per_min));
+                    }
+                    for (item, n) in &r.ingredients {
+                        consumers
+                            .entry(item.clone())
+                            .or_default()
+                            .push((gid.clone(), n * cycles_per_min));
+                    }
+                }
+            }
             group_ids.push(gid);
         }
+
+        // internal wiring: every producer of an item feeds every consumer
+        let mut edges: Vec<BeltEdge> = Vec::new();
+        let mut port_ids: Vec<Id> = Vec::new();
+        let mut in_ports = 0usize;
+        let mut out_ports = 0usize;
+        let items: std::collections::BTreeSet<&String> =
+            producers.keys().chain(consumers.keys()).collect();
+        for item in items {
+            let prod: f64 = producers
+                .get(item)
+                .map_or(0.0, |v| v.iter().map(|p| p.1).sum());
+            let cons: f64 = consumers
+                .get(item)
+                .map_or(0.0, |v| v.iter().map(|p| p.1).sum());
+            if let (Some(ps), Some(cs)) = (producers.get(item), consumers.get(item)) {
+                for (pg, pr) in ps {
+                    for (cg, cr) in cs {
+                        edges.push(BeltEdge {
+                            id: new_id(),
+                            factory: fid.clone(),
+                            from: EdgeEnd::Group(pg.clone()),
+                            to: EdgeEnd::Group(cg.clone()),
+                            item: item.clone(),
+                            tier: tier_for(pr.min(*cr)),
+                            status: Status::Built,
+                            created_by: CreatedBy::Import(import_id.to_string()),
+                        });
+                    }
+                }
+            }
+            let net = prod - cons;
+            if net > 1e-6 {
+                // net surplus → Out port fed by every producer
+                let pid = new_id();
+                tx.record(state.upsert(Entity::Port(Port {
+                    id: pid.clone(),
+                    factory: fid.clone(),
+                    direction: PortDirection::Out,
+                    item: item.clone(),
+                    rate: net,
+                    rate_ceiling: None,
+                    bound_route: None,
+                    graph_pos: GraphPos {
+                        x: 1560.0,
+                        y: 80.0 + 140.0 * out_ports as f64,
+                    },
+                    status: Status::Built,
+                    created_by: CreatedBy::Import(import_id.to_string()),
+                })));
+                out_ports += 1;
+                for (pg, _) in producers.get(item).into_iter().flatten() {
+                    edges.push(BeltEdge {
+                        id: new_id(),
+                        factory: fid.clone(),
+                        from: EdgeEnd::Group(pg.clone()),
+                        to: EdgeEnd::Port(pid.clone()),
+                        item: item.clone(),
+                        tier: tier_for(net),
+                        status: Status::Built,
+                        created_by: CreatedBy::Import(import_id.to_string()),
+                    });
+                }
+                port_ids.push(pid);
+            } else if net < -1e-6 {
+                // net need → In port feeding every consumer
+                let pid = new_id();
+                tx.record(state.upsert(Entity::Port(Port {
+                    id: pid.clone(),
+                    factory: fid.clone(),
+                    direction: PortDirection::In,
+                    item: item.clone(),
+                    rate: -net,
+                    rate_ceiling: None,
+                    bound_route: None,
+                    graph_pos: GraphPos {
+                        x: 40.0,
+                        y: 80.0 + 140.0 * in_ports as f64,
+                    },
+                    status: Status::Built,
+                    created_by: CreatedBy::Import(import_id.to_string()),
+                })));
+                in_ports += 1;
+                for (cg, _) in consumers.get(item).into_iter().flatten() {
+                    edges.push(BeltEdge {
+                        id: new_id(),
+                        factory: fid.clone(),
+                        from: EdgeEnd::Port(pid.clone()),
+                        to: EdgeEnd::Group(cg.clone()),
+                        item: item.clone(),
+                        tier: tier_for(-net),
+                        status: Status::Built,
+                        created_by: CreatedBy::Import(import_id.to_string()),
+                    });
+                }
+                port_ids.push(pid);
+            }
+        }
+        for e in edges {
+            tx.record(state.upsert(Entity::Edge(e)));
+        }
+
         tx.record(state.upsert(Entity::Factory(Factory {
             id: fid.clone(),
             name: c.name.clone(),
@@ -221,7 +361,7 @@ pub fn write_built_layer(
             region: String::new(),
             node_claims: vec![],
             groups: group_ids,
-            ports: vec![],
+            ports: port_ids,
             style_guide: None,
             status: Status::Built,
             created_by: CreatedBy::Import(import_id.to_string()),
@@ -393,10 +533,11 @@ pub fn apply_sync(
     tx: &mut planner_core::commands::Transaction,
     op: &SyncOp,
     import_id: &str,
+    gd: &gamedata::docs::GameData,
 ) {
     match op {
         SyncOp::CreateCluster { cluster } => {
-            write_built_layer(state, tx, std::slice::from_ref(cluster), import_id);
+            write_built_layer(state, tx, std::slice::from_ref(cluster), import_id, gd);
         }
         SyncOp::UpdateGroup {
             factory,

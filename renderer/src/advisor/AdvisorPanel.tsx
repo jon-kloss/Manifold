@@ -248,7 +248,7 @@ function Chat() {
       </div>
       {showCtx && ctx && (
         <pre className="chat-ctx-json mono" data-testid="context-json">
-          {JSON.stringify(ctx.payload, null, 1).slice(0, 4000)}
+          {JSON.stringify(ctx.payload, null, 1)}
         </pre>
       )}
       <div className="chat-log" ref={logRef} data-testid="chat-log">

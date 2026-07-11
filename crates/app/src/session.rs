@@ -395,7 +395,7 @@ impl Session {
                     if let Some(sync) = &item.sync {
                         let op: crate::import::SyncOp = serde_json::from_value(sync.clone())
                             .map_err(|e| SessionError::Internal(e.to_string()))?;
-                        crate::import::apply_sync(state, tx, &op, &p.id);
+                        crate::import::apply_sync(state, tx, &op, &p.id, &self.gamedata);
                         continue;
                     }
                     for (idx, cmd) in item.commands.iter().enumerate() {
@@ -467,7 +467,13 @@ impl Session {
             if let Some(sync) = &item.sync {
                 if let Ok(op) = serde_json::from_value::<crate::import::SyncOp>(sync.clone()) {
                     let mut scratch = Transaction::new("eval");
-                    crate::import::apply_sync(&mut self.state, &mut scratch, &op, &p.id);
+                    crate::import::apply_sync(
+                        &mut self.state,
+                        &mut scratch,
+                        &op,
+                        &p.id,
+                        &self.gamedata,
+                    );
                 }
                 continue 'items;
             }
@@ -586,7 +592,13 @@ impl Session {
         if !has_built {
             let import_id = planner_core::entities::new_id();
             let mut tx = Transaction::new("import save");
-            crate::import::write_built_layer(&mut self.state, &mut tx, &clusters, &import_id);
+            crate::import::write_built_layer(
+                &mut self.state,
+                &mut tx,
+                &clusters,
+                &import_id,
+                &self.gamedata,
+            );
             let derived = self.empire_solve(&T0Edit::Recompute, Some(&mut tx));
             self.advise(&derived);
             let created = tx.created.clone();
@@ -937,6 +949,12 @@ impl Session {
             if let Some(tx) = tx.as_deref_mut() {
                 for (gid, gr) in &result.groups {
                     if let Some(g) = self.state.groups.get(gid) {
+                        // ◆ built groups are game ground truth: the solver may
+                        // read them but never resize them — only import sync
+                        // (the documented exception) writes the built layer.
+                        if g.status == Status::Built {
+                            continue;
+                        }
                         if g.count != gr.count || (g.clock - gr.clock).abs() > 1e-9 {
                             let mut g = g.clone();
                             g.count = gr.count;

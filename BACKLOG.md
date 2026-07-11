@@ -36,3 +36,5 @@ Everything tempting that isn't Phase 1. Tags: v1 (later phase of this release), 
 - v1.1: Image→style-guide vision call (surface + entity are live; needs the model relay).
 - v1.1: An empty upstream factory feeds routes unconstrained (no groups → no supply entry); tighten to zero-supply once boundary-only factories have a defined meaning.
 - v1.1: @-entity references in the chat composer; chat history persistence.
+- **v1.1 — drift-sync rewiring:** `UpdateGroup` sync ops adjust group counts but don't refresh the factory's auto-wired edges/boundary-port rates, and a group newly added by drift isn't wired at all. Re-run the wiring pass over a factory after its sync ops apply.
+- **v1.1 — physical belt connectivity:** the .sav does contain conveyor connections; parsing them would replace inferred wiring with ground truth (big parser lift, quarantine interactions).
