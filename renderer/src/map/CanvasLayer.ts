@@ -20,7 +20,8 @@ export interface RouteRender {
   saturation: number;
   flow: number;
   capacity: number;
-  tier: number;
+  /** label chip suffix: MK.n for belts, RAIL/TRUCK/DRONE for transports */
+  tag: string;
   itemName: string;
   selected: boolean;
 }
@@ -252,7 +253,7 @@ export class MapCanvasLayer extends L.Layer {
       const cy = (mid.y + mid2.y) / 2;
       const text = `${r.itemName} · ${Math.round(r.flow * 100) / 100}/${r.capacity} · ${Math.round(
         r.saturation * 100,
-      )}%  MK.${r.tier}`;
+      )}%  ${r.tag}`;
       ctx.font = `italic 500 9px ${css("--font-mono")}`;
       const w = ctx.measureText(text).width + 10;
       ctx.fillStyle = level === "crit" ? css("--flow-crit") : css("--steel-800");

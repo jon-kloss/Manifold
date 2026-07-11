@@ -23,6 +23,10 @@ import ImportModal from "../import/ImportModal";
 import { fmtPower } from "../lib/format";
 import "./map.css";
 
+/** Cargo route kinds drawn with the saturation line grammar (A3.1). Pipe is
+ *  excluded: not creatable in the UI and it has no derived flow/capacity. */
+const CARGO_KINDS = new Set(["belt", "rail", "truck", "drone"]);
+
 /** Circuit margin level (SDD §12): headroom ≥20% OK, 5–20% WARN, <5% CRIT. */
 function circuitLevel(genMw: number, demandMw: number): "ok" | "warn" | "crit" {
   if (genMw <= 0) return demandMw > 0 ? "crit" : "ok";
@@ -182,7 +186,7 @@ export default function MapView() {
   // ---- canvas layer data sync ----
   useEffect(() => {
     const routes = Object.values(plan.routes)
-      .filter((r) => r.kind.kind === "belt")
+      .filter((r) => CARGO_KINDS.has(r.kind.kind))
       .map((r) => {
         const d = derived.routes[r.id];
         const itemClass = r.manifest[0]?.[0] ?? "";
@@ -193,7 +197,7 @@ export default function MapView() {
           saturation: d?.saturation ?? 0,
           flow: d?.flow ?? 0,
           capacity: d?.capacity ?? 0,
-          tier: r.kind.kind === "belt" ? r.kind.tier : 0,
+          tag: r.kind.kind === "belt" ? `MK.${r.kind.tier}` : r.kind.kind.toUpperCase(),
           itemName: (gamedata.items[itemClass]?.displayName ?? itemClass).toUpperCase(),
           selected: selection?.kind === "route" && selection.id === r.id,
         };

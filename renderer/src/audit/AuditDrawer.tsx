@@ -10,6 +10,10 @@ import "./audit.css";
 
 type Tab = "saturation" | "deficits" | "power" | "drift";
 
+/** Cargo route kinds audited for saturation (A3.1): throughput vs demand.
+ *  Pipe is excluded — not creatable in the UI, no derived flow/capacity. */
+const CARGO_KINDS = ["belt", "rail", "truck", "drone"];
+
 interface SatRow {
   key: string;
   label: string;
@@ -92,18 +96,18 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
   const satRows: SatRow[] = useMemo(() => {
     const rows: SatRow[] = [];
     for (const r of Object.values(plan.routes)) {
-      if (r.kind.kind !== "belt") continue;
+      if (!CARGO_KINDS.includes(r.kind.kind)) continue;
       const d = derived.routes[r.id];
       if (!d) continue;
       const src = plan.ports[r.endpoints[0]];
       const dst = plan.ports[r.endpoints[1]];
-      const tier = r.kind.tier;
+      const tier = r.kind.kind === "belt" ? r.kind.tier : null;
       rows.push({
         key: `route-${r.id}`,
         label: `${src ? plan.factories[src.factory]?.name ?? "?" : "?"} ⟶ ${
           dst ? plan.factories[dst.factory]?.name ?? "?" : "?"
         } · ${itemName(r.manifest[0]?.[0] ?? "")}`,
-        tierText: `ROUTE · MK.${tier}`,
+        tierText: `ROUTE · ${tier != null ? `MK.${tier}` : r.kind.kind.toUpperCase()}`,
         saturation: d.saturation,
         flow: d.flow,
         capacity: d.capacity,
@@ -111,8 +115,10 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
           setView({ mode: "map" });
           setSelection({ kind: "route", id: r.id });
         },
+        // UPGRADE TIER is belt-specific; consist/fleet stepping for transports
+        // lives in the TransportDrawer.
         upgrade:
-          tier < 6
+          tier != null && tier < 6
             ? () => void dispatch([{ type: "set_route_tier", id: r.id, tier: tier + 1 }])
             : null,
       });
@@ -202,7 +208,7 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
       <div className="audit-body">
         {tab === "saturation" && (
           <>
-            {satRows.length === 0 && <div className="drawer-empty">No belts yet.</div>}
+            {satRows.length === 0 && <div className="drawer-empty">No routes yet.</div>}
             {satRows.map((r) => {
               const level = flowLevel(r.saturation);
               return (

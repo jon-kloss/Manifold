@@ -113,6 +113,37 @@ test("rail route: the math block is the product", async ({ page }) => {
   const t2 = await throughput();
   expect(t2).toBeGreaterThan(t1 * 1.9);
 
+  // ---- the rail route is actually drawn on the map: deselect, then click the
+  // line itself. hitTestRoute only sees routes in the canvas data, so this
+  // fails if rail routes are filtered out of the drawn set. ----
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("route-drawer")).toBeHidden();
+  const a2 = await pin("IRON PLATE WORKS");
+  const b2 = await pin("DEPOT SOUTH");
+  // Neighbouring pin chips (DOM) can cover parts of the line; probe along the
+  // segment for a spot where the map itself would receive the click, so the
+  // hit lands on the canvas line — not on a pin.
+  const spot = await page.evaluate(([ax, ay, bx, by]) => {
+    for (const t of [0.5, 0.65, 0.35, 0.75, 0.25, 0.6, 0.4]) {
+      const x = ax + (bx - ax) * t;
+      const y = ay + (by - ay) * t;
+      if (document.elementFromPoint(x, y)?.classList.contains("leaflet-container")) return { x, y };
+    }
+    return null;
+  }, [a2.x, a2.y, b2.x, b2.y]);
+  if (!spot) throw new Error("no unobstructed point on the rail segment");
+  await page.mouse.click(spot.x, spot.y);
+  await expect(page.getByTestId("route-drawer")).toBeVisible();
+  await expect(page.getByTestId("route-drawer")).toContainText("RAIL ROUTE");
+
+  // ---- and audited: the SATURATION tab lists it as ROUTE · RAIL ----
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("audit-drawer")).toBeVisible();
+  await expect(page.getByTestId("audit-drawer")).toContainText("IRON PLATE WORKS ⟶ DEPOT SOUTH");
+  await expect(page.getByTestId("audit-drawer")).toContainText("ROUTE · RAIL");
+  await page.keyboard.press("Tab");
+  await expect(page.getByTestId("audit-drawer")).toBeHidden();
+
   // swapping to drone rewires the same binding with drone math
   await page.selectOption('[data-testid="route-kind-select"]', "drone");
   await expect(page.getByTestId("route-drawer")).toContainText("DRONE ROUTE");
