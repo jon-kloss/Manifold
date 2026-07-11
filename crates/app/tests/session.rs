@@ -848,6 +848,363 @@ fn connect_in(s: &mut Session, fid: &str, from: EdgeEnd, to: EdgeEnd, item: &str
     .unwrap();
 }
 
+// ---- deficit-honesty fixtures (rod → screw empire, small variants) ----
+
+fn mk_factory(s: &mut Session, name: &str, x: f64) -> Id {
+    s.edit(vec![Command::CreateFactory {
+        name: name.into(),
+        position: MapPos { x, y: 0.0, z: 0.0 },
+        region: "GRASS FIELDS".into(),
+    }])
+    .unwrap()
+    .created[0]
+        .clone()
+}
+
+fn mk_port(s: &mut Session, fid: &Id, dir: PortDirection, item: &str, ceiling: Option<f64>) -> Id {
+    s.edit(vec![Command::AddPort {
+        factory: fid.clone(),
+        direction: dir,
+        item: item.into(),
+        rate: 0.0,
+        rate_ceiling: ceiling,
+        graph_pos: GraphPos { x: 0.0, y: 100.0 },
+    }])
+    .unwrap()
+    .created[0]
+        .clone()
+}
+
+/// Upstream iron-rod factory (ore in @240 ceiling → smelter → constructor →
+/// rods out), same shape as `empire_routes_propagate_supply_and_deficits`.
+fn build_rod_factory(s: &mut Session) -> (Id, Id) {
+    let fid = mk_factory(s, "ROD WORKS", 0.0);
+    let rod_in = mk_port(s, &fid, PortDirection::In, "Desc_OreIron_C", Some(240.0));
+    let rod_out = mk_port(s, &fid, PortDirection::Out, "Desc_IronRod_C", None);
+    let smelt = add_group(
+        s,
+        &fid,
+        "Build_SmelterMk1_C",
+        "Recipe_IngotIron_C",
+        gp(200.0, 100.0),
+    );
+    let rods = add_group(
+        s,
+        &fid,
+        "Build_ConstructorMk1_C",
+        "Recipe_IronRod_C",
+        gp(400.0, 100.0),
+    );
+    let g = EdgeEnd::Group;
+    connect_in(
+        s,
+        &fid,
+        EdgeEnd::Port(rod_in),
+        g(smelt.clone()),
+        "Desc_OreIron_C",
+        3,
+    );
+    connect_in(s, &fid, g(smelt), g(rods.clone()), "Desc_IronIngot_C", 3);
+    connect_in(
+        s,
+        &fid,
+        g(rods),
+        EdgeEnd::Port(rod_out.clone()),
+        "Desc_IronRod_C",
+        3,
+    );
+    (fid, rod_out)
+}
+
+/// Downstream screw factory with `n_outs` screw Out ports fed by one group.
+fn build_screw_factory(s: &mut Session, n_outs: usize) -> (Id, Id, Vec<Id>, Id) {
+    let fid = mk_factory(s, "SCREW WORKS", 500.0);
+    let screw_in = mk_port(s, &fid, PortDirection::In, "Desc_IronRod_C", None);
+    let outs: Vec<Id> = (0..n_outs)
+        .map(|_| mk_port(s, &fid, PortDirection::Out, "Desc_IronScrew_C", None))
+        .collect();
+    let screws = add_group(
+        s,
+        &fid,
+        "Build_ConstructorMk1_C",
+        "Recipe_Screw_C",
+        gp(300.0, 100.0),
+    );
+    connect_in(
+        s,
+        &fid,
+        EdgeEnd::Port(screw_in.clone()),
+        EdgeEnd::Group(screws.clone()),
+        "Desc_IronRod_C",
+        3,
+    );
+    for out in &outs {
+        connect_in(
+            s,
+            &fid,
+            EdgeEnd::Group(screws.clone()),
+            EdgeEnd::Port(out.clone()),
+            "Desc_IronScrew_C",
+            3,
+        );
+    }
+    (fid, screw_in, outs, screws)
+}
+
+fn add_rod_route(s: &mut Session, rod_out: &Id, screw_in: &Id) -> Id {
+    s.edit(vec![Command::AddRoute {
+        kind: RouteKind::Belt { tier: 1 },
+        from: rod_out.clone(),
+        to: screw_in.clone(),
+        path: vec![
+            MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            MapPos {
+                x: 300.0,
+                y: 400.0,
+                z: 0.0,
+            },
+        ],
+    }])
+    .unwrap()
+    .created[0]
+        .clone()
+}
+
+/// M7: total starvation (supply ceiling exactly 0) must surface as a deficit
+/// row — the old `max_rate > 0.0` guard dropped the most severe case.
+#[test]
+fn empire_total_starvation_emits_deficit_row() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (_rod_fid, rod_out) = build_rod_factory(&mut s);
+    let (screw_fid, screw_in, outs, _) = build_screw_factory(&mut s, 1);
+    let screw_out = outs[0].clone();
+    let route = add_rod_route(&mut s, &rod_out, &screw_in);
+
+    // Healthy first: 80 rods shipped, 200 screws (needs 50 rods) — no clamp.
+    s.edit(vec![Command::SetPortRate {
+        id: rod_out.clone(),
+        rate: 80.0,
+    }])
+    .unwrap();
+    s.edit(vec![Command::SetPortRate {
+        id: screw_out.clone(),
+        rate: 200.0,
+    }])
+    .unwrap();
+    assert!((s.state.ports[&screw_out].rate - 200.0).abs() < 1e-4);
+
+    // Upstream target drops to exactly 0: supply ceiling 0, total starvation.
+    let resp = s
+        .edit(vec![Command::SetPortRate {
+            id: rod_out.clone(),
+            rate: 0.0,
+        }])
+        .unwrap();
+    let d = &resp.derived;
+    assert_eq!(d.deficits.len(), 1, "zero supply is still a deficit");
+    let row = &d.deficits[0];
+    assert_eq!(row.factory, screw_fid);
+    assert_eq!(row.port, screw_in);
+    assert_eq!(row.route.as_deref(), Some(route.as_str()));
+    assert!(
+        row.needed.is_finite(),
+        "needed must be finite: {}",
+        row.needed
+    );
+    assert!(
+        (row.needed - 50.0).abs() < 1e-4,
+        "200 screws need 50 rods: {}",
+        row.needed
+    );
+    assert!(row.supplied.abs() < 1e-6, "supplied 0: {}", row.supplied);
+    assert!((d.routes[&route].supplied).abs() < 1e-6);
+    // The downstream target is never silently rewritten by an upstream dip.
+    assert!((s.state.ports[&screw_out].rate - 200.0).abs() < 1e-4);
+}
+
+/// M6: an upstream factory in an error state (ports but no groups) must
+/// propagate ZERO supply — downstream clamps to 0 and reports a deficit,
+/// instead of silently solving as fully supplied.
+#[test]
+fn empire_errored_upstream_starves_downstream() {
+    let mut s = Session::in_memory(None).unwrap();
+    // Downstream first, target set while unconstrained (no route yet).
+    let (screw_fid, screw_in, outs, _) = build_screw_factory(&mut s, 1);
+    let screw_out = outs[0].clone();
+    s.edit(vec![Command::SetPortRate {
+        id: screw_out.clone(),
+        rate: 200.0,
+    }])
+    .unwrap();
+    // Upstream shell: an Out port but no machine groups → error state.
+    let rod_fid = mk_factory(&mut s, "ROD SHELL", 0.0);
+    let rod_out = mk_port(&mut s, &rod_fid, PortDirection::Out, "Desc_IronRod_C", None);
+
+    let route = add_rod_route(&mut s, &rod_out, &screw_in);
+    let resp = s.edit(vec![Command::RenameFactory {
+        id: rod_fid.clone(),
+        name: "ROD SHELL (WIP)".into(),
+    }]);
+    let d = match &resp {
+        Ok(r) => &r.derived,
+        Err(e) => panic!("recompute failed: {e}"),
+    };
+    let up = &d.factories[&rod_fid];
+    assert!(up.solve_error.is_some(), "upstream is in an error state");
+    // Downstream honestly clamps to zero supply — not fully supplied.
+    let down = &d.factories[&screw_fid];
+    assert!(down.solve_error.is_none());
+    assert!(
+        down.ports[&screw_out].abs() < 1e-6,
+        "achieved screws ~0, got {}",
+        down.ports[&screw_out]
+    );
+    assert!((d.routes[&route].supplied).abs() < 1e-6, "route supplies 0");
+    assert_eq!(d.deficits.len(), 1, "starvation surfaces as a deficit row");
+    let row = &d.deficits[0];
+    assert_eq!(row.factory, screw_fid);
+    assert!((row.needed - 50.0).abs() < 1e-4, "needed: {}", row.needed);
+    assert!(row.supplied.abs() < 1e-6);
+    // The canonical target survives untouched.
+    assert!((s.state.ports[&screw_out].rate - 200.0).abs() < 1e-4);
+}
+
+/// M8 residue: a multi-Out factory under a supply dip degrades through the
+/// shortfall channel into exactly one deficit row — no solve_error, real
+/// power, and no group write-back of the starved values.
+#[test]
+fn empire_multi_out_dip_degrades_into_deficits() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (_rod_fid, rod_out) = build_rod_factory(&mut s);
+    let (screw_fid, screw_in, outs, screws) = build_screw_factory(&mut s, 2);
+    let route = add_rod_route(&mut s, &rod_out, &screw_in);
+
+    // Healthy: 30 rods shipped; two screw targets of 60 need 30 rods total.
+    s.edit(vec![Command::SetPortRate {
+        id: rod_out.clone(),
+        rate: 30.0,
+    }])
+    .unwrap();
+    for out in &outs {
+        s.edit(vec![Command::SetPortRate {
+            id: out.clone(),
+            rate: 60.0,
+        }])
+        .unwrap();
+    }
+    let count_before = s.state.groups[&screws].count;
+
+    // Upstream dips to 15 while the screw factory still wants 120 total.
+    let resp = s
+        .edit(vec![Command::SetPortRate {
+            id: rod_out.clone(),
+            rate: 15.0,
+        }])
+        .unwrap();
+    let d = &resp.derived;
+    let df = &d.factories[&screw_fid];
+    assert!(
+        df.solve_error.is_none(),
+        "multi-Out dip must degrade, not dead-end: {:?}",
+        df.solve_error
+    );
+    assert!(df.total_power_mw > 0.0, "degraded solve keeps real power");
+    assert!(
+        df.shortfalls.values().any(|sf| matches!(
+            &sf.binding,
+            Some(solver::model::Constraint::InputCeiling { port, .. }) if port == &screw_in
+        )),
+        "shortfall names the starved In port: {:?}",
+        df.shortfalls
+    );
+    assert_eq!(d.deficits.len(), 1, "exactly one row for the route");
+    let row = &d.deficits[0];
+    assert_eq!(row.factory, screw_fid);
+    assert_eq!(row.port, screw_in);
+    assert_eq!(row.route.as_deref(), Some(route.as_str()));
+    assert!(
+        (row.needed - 30.0).abs() < 1e-4,
+        "120 screws need 30 rods: {}",
+        row.needed
+    );
+    assert!((row.supplied - 15.0).abs() < 1e-4);
+    // Degraded solves are advisory: counts are not rewritten to starved values.
+    assert_eq!(s.state.groups[&screws].count, count_before);
+    // Targets survive untouched.
+    for out in &outs {
+        assert!((s.state.ports[out].rate - 60.0).abs() < 1e-4);
+    }
+}
+
+/// Dedup: when the clamped channel (SetTarget on one Out) and the shortfall
+/// channel (the sibling Out) both name the same starved In port, the route
+/// still gets exactly ONE deficit row.
+#[test]
+fn empire_dedup_one_row_per_route_when_both_channels_fire() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (_rod_fid, rod_out) = build_rod_factory(&mut s);
+    let (screw_fid, screw_in, outs, _) = build_screw_factory(&mut s, 2);
+    let _route = add_rod_route(&mut s, &rod_out, &screw_in);
+
+    s.edit(vec![Command::SetPortRate {
+        id: rod_out.clone(),
+        rate: 30.0,
+    }])
+    .unwrap();
+    for out in &outs {
+        s.edit(vec![Command::SetPortRate {
+            id: out.clone(),
+            rate: 60.0,
+        }])
+        .unwrap();
+    }
+    // Deep dip (10 rods → 40 screws max), then re-assert the SECOND Out
+    // target during the dip: the edited port clamps at a target ceiling
+    // binding the In port, while the sibling (still 60) shortfalls on the
+    // same In port — both emitter channels are armed simultaneously.
+    s.edit(vec![Command::SetPortRate {
+        id: rod_out.clone(),
+        rate: 10.0,
+    }])
+    .unwrap();
+    let resp = s
+        .edit(vec![Command::SetPortRate {
+            id: outs[1].clone(),
+            rate: 60.0,
+        }])
+        .unwrap();
+    let d = &resp.derived;
+    let df = &d.factories[&screw_fid];
+    assert!(
+        matches!(
+            df.target_ceiling.as_ref().map(|c| &c.binding),
+            Some(solver::model::Constraint::InputCeiling { port, .. }) if port == &screw_in
+        ),
+        "clamped channel armed: {:?}",
+        df.target_ceiling
+    );
+    assert!(
+        df.shortfalls.values().any(|sf| matches!(
+            &sf.binding,
+            Some(solver::model::Constraint::InputCeiling { port, .. }) if port == &screw_in
+        )),
+        "shortfall channel armed: {:?}",
+        df.shortfalls
+    );
+    assert_eq!(
+        d.deficits.len(),
+        1,
+        "one decision per route — never two rows: {:?}",
+        d.deficits
+    );
+    assert_eq!(d.deficits[0].factory, screw_fid);
+    assert_eq!(d.deficits[0].port, screw_in);
+}
+
 #[test]
 fn generator_factories_and_circuits() {
     let mut s = Session::in_memory(None).unwrap();

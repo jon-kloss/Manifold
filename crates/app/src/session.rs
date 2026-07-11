@@ -897,6 +897,50 @@ impl Session {
         (order, false)
     }
 
+    /// Feed a factory's bound Out routes downstream: the achieved out rate
+    /// (absent from `ports` = 0) capped by the route's cargo capacity becomes
+    /// the downstream In port's supply ceiling. Error/skip paths call this
+    /// with EMPTY ports so a factory that couldn't solve honestly propagates
+    /// zero supply instead of leaving downstream fully supplied.
+    fn feed_downstream(
+        &self,
+        fid: &Id,
+        ports: &BTreeMap<String, f64>,
+        supplies: &mut BTreeMap<Id, f64>,
+        route_supply: &mut BTreeMap<Id, f64>,
+    ) {
+        let Some(factory) = self.state.factories.get(fid) else {
+            return;
+        };
+        for pid in &factory.ports {
+            let Some(port) = self.state.ports.get(pid) else {
+                continue;
+            };
+            if port.direction != PortDirection::Out {
+                continue;
+            }
+            let Some(rid) = &port.bound_route else {
+                continue;
+            };
+            let Some(route) = self.state.routes.get(rid) else {
+                continue;
+            };
+            let item = route.manifest.first().map(|(i, _)| i.as_str());
+            let Some((cap, _)) = cargo_capacity(
+                &self.gamedata,
+                &route.kind,
+                polyline_length(&route.path),
+                item,
+            ) else {
+                continue;
+            };
+            let out_rate = ports.get(pid).copied().unwrap_or(0.0);
+            let supply = out_rate.min(cap);
+            supplies.insert(route.endpoints.1.clone(), supply);
+            route_supply.insert(rid.clone(), supply);
+        }
+    }
+
     /// The empire pass: solve factories upstream-first, propagating supply
     /// ceilings through bound routes. With `tx`, solver-owned numbers write
     /// back into canonical state (counts/clocks, clamped edited target, route
@@ -917,6 +961,7 @@ impl Session {
                     fid.clone(),
                     Self::error_factory("missing recipe or machine data"),
                 );
+                self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                 continue;
             };
             // effective ceilings: a bound In port can't intake more than its route supplies
@@ -936,6 +981,7 @@ impl Session {
                 derived
                     .factories
                     .insert(fid.clone(), Self::error_factory("no machine groups yet"));
+                self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                 continue;
             }
             let trig = self.trigger_for_factory(&snapshot, trigger);
@@ -946,6 +992,7 @@ impl Session {
                     derived
                         .factories
                         .insert(fid.clone(), Self::error_factory(&e.to_string()));
+                    self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                     continue;
                 }
             };
@@ -1002,33 +1049,7 @@ impl Session {
             }
 
             // feed downstream: out port rate capped by the route's belt tier
-            for pid in &self.state.factories[fid].ports.clone() {
-                let Some(port) = self.state.ports.get(pid) else {
-                    continue;
-                };
-                if port.direction != PortDirection::Out {
-                    continue;
-                }
-                let Some(rid) = &port.bound_route else {
-                    continue;
-                };
-                let Some(route) = self.state.routes.get(rid) else {
-                    continue;
-                };
-                let item = route.manifest.first().map(|(i, _)| i.as_str());
-                let Some((cap, _)) = cargo_capacity(
-                    &self.gamedata,
-                    &route.kind,
-                    polyline_length(&route.path),
-                    item,
-                ) else {
-                    continue;
-                };
-                let out_rate = result.ports.get(pid).copied().unwrap_or(0.0);
-                let supply = out_rate.min(cap);
-                supplies.insert(route.endpoints.1.clone(), supply);
-                route_supply.insert(rid.clone(), supply);
-            }
+            self.feed_downstream(fid, &result.ports, &mut supplies, &mut route_supply);
 
             derived.total_power_mw += result.total_power_mw;
             derived
@@ -1037,6 +1058,10 @@ impl Session {
         }
 
         // Route flows (= downstream intake), deficits, manifests.
+        // Probe memo for DeficitRow::needed: canonical snapshot (no supply
+        // injection), elastic Recompute — the intake the factory would pull
+        // at its own targets. At most one probe solve per starved factory.
+        let mut probes: BTreeMap<Id, Option<BTreeMap<String, f64>>> = BTreeMap::new();
         let route_list: Vec<planner_core::entities::Route> =
             self.state.routes.values().cloned().collect();
         for r in &route_list {
@@ -1073,39 +1098,83 @@ impl Session {
                     transport,
                 },
             );
-            // Deficit: the downstream factory's own target is clamped by this port.
+            // Deficit contract — ONE decision, at most ONE row per route: the
+            // route is in deficit iff the downstream factory's solve was
+            // limited by this In port. T1 partitions unmet demand into two
+            // mutually exclusive channels and both feed this row:
+            //  - clamped channel: an edited/synthesized SetTarget hard-stopped
+            //    at `target_ceiling` binding InputCeiling on this port
+            //    (shortfalls are empty by construction on that path);
+            //  - degraded channel: a Recompute/multi-Out solve reporting
+            //    `shortfalls` whose binding names InputCeiling on this port.
+            // `needed` = the intake the factory's canonical targets require:
+            // the proportional flow·requested/max_rate when the clamped
+            // channel yields a usable max_rate, else a memoized probe solve
+            // (canonical snapshot, elastic Recompute). Total starvation
+            // (max_rate = 0) is a deficit like any other — never dropped.
             if let (Some(fid), Some(df)) = (
                 dst_factory.clone(),
                 dst_factory.as_ref().and_then(|f| derived.factories.get(f)),
             ) {
-                if let Some(ceiling) = &df.target_ceiling {
-                    if let solver::model::Constraint::InputCeiling { port, item, .. } =
-                        &ceiling.binding
-                    {
-                        if port == dst_port {
-                            let requested = self
-                                .state
-                                .factories
-                                .get(&fid)
-                                .and_then(|f| {
-                                    f.ports.iter().find_map(|pid| {
-                                        let p = self.state.ports.get(pid)?;
-                                        (p.direction == PortDirection::Out).then_some(p.rate)
-                                    })
-                                })
-                                .unwrap_or(0.0);
-                            if requested > ceiling.max_rate + 1e-6 && ceiling.max_rate > 0.0 {
-                                let needed = flow * requested / ceiling.max_rate;
-                                derived.deficits.push(DeficitRow {
-                                    factory: fid,
-                                    port: dst_port.clone(),
-                                    route: Some(r.id.clone()),
-                                    item: item.clone(),
-                                    needed,
-                                    supplied,
-                                });
-                            }
+                let requested = self
+                    .state
+                    .factories
+                    .get(&fid)
+                    .and_then(|f| {
+                        f.ports.iter().find_map(|pid| {
+                            let p = self.state.ports.get(pid)?;
+                            (p.direction == PortDirection::Out).then_some(p.rate)
+                        })
+                    })
+                    .unwrap_or(0.0);
+                let ceiling_max = df.target_ceiling.as_ref().and_then(|c| match &c.binding {
+                    solver::model::Constraint::InputCeiling { port, .. } if port == dst_port => {
+                        Some(c.max_rate)
+                    }
+                    _ => None,
+                });
+                let starved_by_ceiling =
+                    ceiling_max.is_some_and(|max_rate| requested > max_rate + 1e-6);
+                let starved_by_shortfall = df.shortfalls.values().any(|s| {
+                    matches!(
+                        &s.binding,
+                        Some(solver::model::Constraint::InputCeiling { port, .. })
+                            if port == dst_port
+                    )
+                });
+                if starved_by_ceiling || starved_by_shortfall {
+                    let needed = match ceiling_max {
+                        Some(max_rate) if starved_by_ceiling && max_rate > 0.0 => {
+                            Some(flow * requested / max_rate)
                         }
+                        _ => probes
+                            .entry(fid.clone())
+                            .or_insert_with(|| {
+                                self.snapshot(&fid).and_then(|snap| {
+                                    solver::t1::solve(&snap, &T0Edit::Recompute)
+                                        .ok()
+                                        .map(|res| res.ports)
+                                })
+                            })
+                            .as_ref()
+                            .and_then(|ports| ports.get(dst_port).copied()),
+                    };
+                    // Skip gracefully when no probe is available (the
+                    // canonical snapshot itself can't be built or solved).
+                    if let Some(needed) = needed {
+                        derived.deficits.push(DeficitRow {
+                            factory: fid,
+                            port: dst_port.clone(),
+                            route: Some(r.id.clone()),
+                            item: self
+                                .state
+                                .ports
+                                .get(dst_port)
+                                .map(|p| p.item.clone())
+                                .unwrap_or_default(),
+                            needed,
+                            supplied,
+                        });
                     }
                 }
             }
