@@ -219,6 +219,74 @@ mod tests {
         assert_eq!(state.factories[&fid].groups, vec![gid]);
     }
 
+    fn add_power_with_switch(
+        state: &mut PlanState,
+        log: &mut UndoLog,
+        from: &Id,
+        to: &Id,
+        priority: u8,
+    ) -> (Id, Id) {
+        let tx = apply(
+            state,
+            &Command::AddRoute {
+                kind: RouteKind::Power,
+                from: from.clone(),
+                to: to.clone(),
+                path: vec![],
+            },
+        )
+        .unwrap();
+        let rid = tx.created[0].clone();
+        log.commit(tx);
+        let tx = apply(
+            state,
+            &Command::AddPrioritySwitch {
+                route: rid.clone(),
+                priority,
+            },
+        )
+        .unwrap();
+        let sid = tx.created[0].clone();
+        log.commit(tx);
+        (rid, sid)
+    }
+
+    #[test]
+    fn cascade_delete_removes_priority_switches_and_undo_restores_them() {
+        let mut state = PlanState::default();
+        let mut log = UndoLog::new();
+        let a = create_factory(&mut state, &mut log);
+        let b = create_factory(&mut state, &mut log);
+        let c = create_factory(&mut state, &mut log);
+        let (route_ab, switch_ab) = add_power_with_switch(&mut state, &mut log, &a, &b, 3);
+        let (route_bc, switch_bc) = add_power_with_switch(&mut state, &mut log, &b, &c, 7);
+
+        let tx = apply(&mut state, &Command::DeleteFactory { id: a.clone() }).unwrap();
+        log.commit(tx);
+        // A's line goes, and the switch riding it goes with it — no dangling
+        // PrioritySwitch.route. The B—C control pair survives untouched.
+        assert!(!state.factories.contains_key(&a));
+        assert!(!state.routes.contains_key(&route_ab));
+        assert!(!state.switches.contains_key(&switch_ab));
+        assert!(state.routes.contains_key(&route_bc));
+        assert!(state.switches.contains_key(&switch_bc));
+
+        // One undo restores factory, route, and switch with identity intact.
+        log.undo(&mut state).unwrap();
+        assert!(state.factories.contains_key(&a));
+        assert!(state.routes.contains_key(&route_ab));
+        let sw = &state.switches[&switch_ab];
+        assert_eq!(sw.route, route_ab);
+        assert_eq!(sw.priority, 3);
+
+        // Redo removes all three again, still sparing the control pair.
+        log.redo(&mut state).unwrap();
+        assert!(!state.factories.contains_key(&a));
+        assert!(!state.routes.contains_key(&route_ab));
+        assert!(!state.switches.contains_key(&switch_ab));
+        assert!(state.switches.contains_key(&switch_bc));
+    }
+
     #[test]
     fn built_entities_are_immutable() {
         let mut state = PlanState::default();

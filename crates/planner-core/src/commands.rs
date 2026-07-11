@@ -320,6 +320,39 @@ fn valid_tier(tier: u8) -> Result<u8, DomainError> {
     Ok(tier)
 }
 
+/// Remove a route and everything riding it, recording each op into `tx`:
+/// unbind any port still bound to the line, cascade the priority switches
+/// sitting on it (switches riding this line go with it), then remove the
+/// route. Every removal path (DeleteRoute, DeleteFactory, DeletePort) goes
+/// through here so no path can forget the cascade. Deliberately carries no
+/// status check — DeleteFactory bypasses `require_planned` for its children.
+fn remove_route_cascading(state: &mut PlanState, tx: &mut Transaction, route_id: &Id) {
+    if let Some(r) = state.routes.get(route_id).cloned() {
+        for pid in [&r.endpoints.0, &r.endpoints.1] {
+            if let Some(mut p) = state.ports.get(pid).cloned() {
+                if p.bound_route.as_deref() == Some(route_id.as_str()) {
+                    p.bound_route = None;
+                    tx.record(state.upsert(Entity::Port(p)));
+                }
+            }
+        }
+    }
+    let sw_ids: Vec<Id> = state
+        .switches
+        .values()
+        .filter(|s| &s.route == route_id)
+        .map(|s| s.id.clone())
+        .collect();
+    for sid in sw_ids {
+        if let Some(ops) = state.remove(COLL_SWITCHES, &sid) {
+            tx.record(ops);
+        }
+    }
+    if let Some(ops) = state.remove(COLL_ROUTES, route_id) {
+        tx.record(ops);
+    }
+}
+
 /// Apply a command to canonical state. Returns an open `Transaction`.
 pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, DomainError> {
     let mut tx = Transaction::new(cmd.label());
@@ -443,20 +476,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .map(|r| r.id.clone())
                 .collect();
             for rid in route_ids {
-                if let Some(r) = state.routes.get(&rid).cloned() {
-                    // unbind the far port so it doesn't dangle
-                    for pid in [&r.endpoints.0, &r.endpoints.1] {
-                        if let Some(mut p) = state.ports.get(pid).cloned() {
-                            if p.bound_route.as_deref() == Some(rid.as_str()) {
-                                p.bound_route = None;
-                                tx.record(state.upsert(Entity::Port(p)));
-                            }
-                        }
-                    }
-                }
-                if let Some(ops) = state.remove(COLL_ROUTES, &rid) {
-                    tx.record(ops);
-                }
+                remove_route_cascading(state, &mut tx, &rid);
             }
             for eid in edge_ids {
                 if let Some(ops) = state.remove(COLL_EDGES, &eid) {
@@ -757,19 +777,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             require_planned(p.status, id, "delete")?;
             if let Some(rid) = p.bound_route.clone() {
-                if let Some(r) = state.routes.get(&rid).cloned() {
-                    for pid in [&r.endpoints.0, &r.endpoints.1] {
-                        if pid != id {
-                            if let Some(mut far) = state.ports.get(pid).cloned() {
-                                far.bound_route = None;
-                                tx.record(state.upsert(Entity::Port(far)));
-                            }
-                        }
-                    }
-                }
-                if let Some(ops) = state.remove(COLL_ROUTES, &rid) {
-                    tx.record(ops);
-                }
+                remove_route_cascading(state, &mut tx, &rid);
             }
             let edge_ids: Vec<Id> = state
                 .edges
@@ -1103,38 +1111,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             require_planned(r.status, id, "delete")?;
-            // unbind ports on belt routes
-            if matches!(
-                r.kind,
-                RouteKind::Belt { .. }
-                    | RouteKind::Rail { .. }
-                    | RouteKind::Truck { .. }
-                    | RouteKind::Drone { .. }
-            ) {
-                for pid in [&r.endpoints.0, &r.endpoints.1] {
-                    if let Some(mut p) = state.ports.get(pid).cloned() {
-                        if p.bound_route.as_deref() == Some(id.as_str()) {
-                            p.bound_route = None;
-                            tx.record(state.upsert(Entity::Port(p)));
-                        }
-                    }
-                }
-            }
-            // switches riding this line go with it
-            let sw_ids: Vec<Id> = state
-                .switches
-                .values()
-                .filter(|s| &s.route == id)
-                .map(|s| s.id.clone())
-                .collect();
-            for sid in sw_ids {
-                if let Some(ops) = state.remove(COLL_SWITCHES, &sid) {
-                    tx.record(ops);
-                }
-            }
-            if let Some(ops) = state.remove(COLL_ROUTES, id) {
-                tx.record(ops);
-            }
+            remove_route_cascading(state, &mut tx, id);
         }
         Command::ClaimNode {
             factory,
