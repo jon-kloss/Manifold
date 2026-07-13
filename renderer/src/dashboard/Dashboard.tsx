@@ -10,13 +10,19 @@
 // overrides render with an OVERRIDE badge; route/claim steps are labelled
 // manual-only because completion can't be detected in the save.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../state/store";
 import { fmtRate } from "../lib/format";
-import type { BuildStep } from "../state/types";
+import type { BuildStep, Cutover, CutoverPlan, CutoverStep } from "../state/types";
 import "./dashboard.css";
 
 const GLYPH: Record<string, string> = { pending: "◇", partial: "◈", done: "◆" };
+
+const CUTOVER_PHASES = [
+  { key: "build_new", label: "BUILD NEW" },
+  { key: "switch", label: "SWITCH" },
+  { key: "dismantle", label: "DISMANTLE" },
+] as const;
 
 export default function Dashboard() {
   const plan = useStore((s) => s.plan);
@@ -29,9 +35,39 @@ export default function Dashboard() {
   const setSelection = useStore((s) => s.setSelection);
   const setWizard = useStore((s) => s.setWizard);
   const markBuildDone = useStore((s) => s.markBuildDone);
+  const cutoverPlan = useStore((s) => s.cutoverPlan);
 
   const itemName = (cls: string) => gamedata.items[cls]?.displayName ?? cls;
   const queue = derived.buildQueue;
+  const cutovers = derived.cutovers;
+
+  // Downtime is priced ON DEMAND (scratch-solved, ripple-inclusive) — fetch it
+  // per open cutover when the dashboard is shown. Keyed by new-factory id; a
+  // stable signature (ids + step done-flags) avoids a refetch loop as derived
+  // state churns.
+  const [downtimes, setDowntimes] = useState<Record<string, CutoverPlan>>({});
+  const cutoverSig = useMemo(
+    () =>
+      cutovers
+        .map((c) => `${c.newFactory}:${c.steps.map((s) => (s.done ? "1" : "0")).join("")}`)
+        .join(","),
+    [cutovers],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const out: Record<string, CutoverPlan> = {};
+      for (const c of cutovers) {
+        const p = await cutoverPlan(c.newFactory);
+        if (p) out[c.newFactory] = p;
+      }
+      if (!cancelled) setDowntimes(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutoverSig, cutoverPlan]);
 
   const doneCount = useMemo(() => queue.filter((s) => s.done).length, [queue]);
   const partial = useMemo(() => queue.filter((s) => s.state === "partial"), [queue]);
@@ -104,6 +140,93 @@ export default function Dashboard() {
       </button>
     </label>
   );
+
+  // One cutover step row (reuses the ◇◈◆ grammar). Switch steps are manual-only;
+  // BuildNew/Dismantle derive completion but can still be hand-overridden.
+  const cutoverStepRow = (step: CutoverStep) => {
+    const toggle = () => {
+      const target = !step.done;
+      const derivedDone = step.state === "done";
+      void markBuildDone(step.id, target === derivedDone ? null : target);
+    };
+    const goToStep = () => {
+      if (step.factory) {
+        setView({ mode: "map" });
+        setSelection({ kind: "factory", id: step.factory });
+      }
+      dismiss();
+    };
+    return (
+      <label className={`dash-step ${step.done ? "done" : ""}`} key={step.id} data-testid="cutover-step">
+        <input type="checkbox" checked={step.done} onChange={toggle} />
+        <span className={`dash-glyph mono s-${step.state}`}>{GLYPH[step.state]}</span>
+        <span className="dash-step-main">
+          <span className="dash-step-label">{step.label}</span>
+          <span className="dash-step-detail mono">{step.detail}</span>
+        </span>
+        {step.overridden ? (
+          <span className="dash-badge override" data-testid="cutover-override">
+            OVERRIDE
+          </span>
+        ) : step.done ? (
+          <span className="dash-badge ingame">DONE</span>
+        ) : step.manualOnly ? (
+          <span className="dash-badge manual">MANUAL ONLY · repoint the belts</span>
+        ) : null}
+        {step.factory && (
+          <button
+            className="chip dash-goto"
+            onClick={(e) => {
+              e.preventDefault();
+              goToStep();
+            }}
+          >
+            GO THERE
+          </button>
+        )}
+      </label>
+    );
+  };
+
+  const cutoverCard = (c: Cutover) => {
+    const dt = downtimes[c.newFactory];
+    return (
+      <div className="dash-cutover" key={c.newFactory} data-testid="cutover-card">
+        <div className="dash-line">
+          <span className="dash-step-label">
+            {c.newName.toUpperCase()} <span className="mono dim">REPLACES</span> {c.oldName.toUpperCase()}
+          </span>
+        </div>
+        {(c.nodeReuse || dt?.hard) && (
+          <div className="dash-line crit-row" data-testid="cutover-node-reuse">
+            <span className="mono crit">NODE REUSE — UNAVOIDABLE DOWNTIME</span>
+          </div>
+        )}
+        {CUTOVER_PHASES.map(({ key, label }) => {
+          const steps = c.steps.filter((s) => s.phase === key);
+          if (steps.length === 0) return null;
+          return (
+            <div className="dash-cutover-phase" key={key}>
+              <h4 className="t-label" data-testid={`cutover-phase-${key}`}>
+                {label}
+              </h4>
+              {steps.map(cutoverStepRow)}
+            </div>
+          );
+        })}
+        {dt && dt.dips.length > 0 && (
+          <div className="dash-line" data-testid="cutover-downtime">
+            {dt.dips.map((d, i) => (
+              <span className="chip warn" key={i} data-testid="downtime-dip">
+                {itemName(d.item).toUpperCase()} → {fmtRate(d.rate)}/min (was {fmtRate(d.baseline)}) · ~
+                {d.estHours < 1 ? d.estHours.toFixed(1) : Math.round(d.estHours)}h (est)
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="dash-scrim" onClick={dismiss} data-testid="dashboard">
@@ -232,6 +355,14 @@ export default function Dashboard() {
                   </button>
                 </div>
               ))}
+            </section>
+          )}
+
+          {/* cutover timeline (W2a) — refactor/replacement plans, phased */}
+          {cutovers.length > 0 && (
+            <section className="dash-section" data-testid="cutover-timeline">
+              <h3 className="t-label">CUTOVER TIMELINE ({cutovers.length})</h3>
+              {cutovers.map(cutoverCard)}
             </section>
           )}
 

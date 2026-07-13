@@ -56,6 +56,14 @@ pub struct Factory {
     pub groups: Vec<Id>,
     pub ports: Vec<Id>,
     pub style_guide: Option<Id>,
+    /// Refactor/cutover link (W2a): when this ◇ factory is a planned replacement
+    /// for a running ◆ factory, `replaces` names that old factory's id. It is a
+    /// planner-side LABEL (same species as `name`) — never a ◆ mutation and never
+    /// a write to the referenced entity; the cutover + downtime are DERIVED from
+    /// it, and it auto-nulls on re-import once the old factory is gone. serde-
+    /// default so plan files predating W2a load unchanged (no migration).
+    #[serde(default)]
+    pub replaces: Option<Id>,
     pub status: Status,
     pub created_by: CreatedBy,
 }

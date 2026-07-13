@@ -30,6 +30,9 @@ pub enum ProposalSource {
     Advisor,
     Chat,
     SaveReimport,
+    /// A refactor/cutover proposal (W2a): a ◇ replacement sited beside a running
+    /// ◆ factory, bound to it by a trailing `SetFactoryReplaces` alias command.
+    Refactor,
 }
 
 /// Display grouping in the review panel (mock 3a: CREATE / MODIFY / CLAIM / ROUTE).

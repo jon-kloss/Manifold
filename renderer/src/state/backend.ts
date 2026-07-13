@@ -8,7 +8,9 @@ import type {
   ChatScope,
   Command,
   ContextSnapshot,
+  CutoverPlan,
   EditResponse,
+  Id,
   ImportOutcome,
   ImportSnapshot,
   InitPayload,
@@ -18,6 +20,13 @@ import type {
   ViewState,
   WizardGoal,
 } from "./types";
+
+/** Result of planning a replacement: the drafted Refactor proposal is stored,
+ *  and the renderer opens it in review. */
+export interface PlanReplacementResult {
+  response: EditResponse;
+  proposal: Id;
+}
 
 export interface Backend {
   hydrate(): Promise<InitPayload>;
@@ -31,6 +40,10 @@ export interface Backend {
   t2Optimize(factory: string): Promise<Proposal | null>;
   proposalAccept(id: string): Promise<EditResponse>;
   proposalEval(id: string): Promise<ProposalConsequence>;
+  /** W2a: plan a whole-factory replacement (stores a Draft Refactor proposal). */
+  planReplacement(factory: string): Promise<PlanReplacementResult>;
+  /** W2a: price a cutover's downtime on demand (scratch-solved, ripple-inclusive). */
+  cutoverPlan(factory: string): Promise<CutoverPlan>;
   importRun(snapshot: ImportSnapshot): Promise<ImportOutcome>;
   advisorDismiss(id: string): Promise<AdvisorFeed>;
   advisorUnmute(rule: string): Promise<AdvisorFeed>;
@@ -80,6 +93,12 @@ class TauriBackend implements Backend {
   }
   proposalEval(id: string) {
     return this.invoke<ProposalConsequence>("proposal_eval", { id });
+  }
+  planReplacement(factory: string) {
+    return this.invoke<PlanReplacementResult>("cutover_plan", { factory });
+  }
+  cutoverPlan(factory: string) {
+    return this.invoke<CutoverPlan>("cutover_downtime", { factory });
   }
   importRun(snapshot: ImportSnapshot) {
     return this.invoke<ImportOutcome>("import_run", { snapshot });
@@ -153,6 +172,12 @@ class BridgeBackend implements Backend {
   }
   proposalEval(id: string) {
     return this.call<ProposalConsequence>("proposal/eval", { method: "POST", body: JSON.stringify({ id }) });
+  }
+  planReplacement(factory: string) {
+    return this.call<PlanReplacementResult>("cutover/plan", { method: "POST", body: JSON.stringify({ factory }) });
+  }
+  cutoverPlan(factory: string) {
+    return this.call<CutoverPlan>("cutover/downtime", { method: "POST", body: JSON.stringify({ factory }) });
   }
   importRun(snapshot: ImportSnapshot) {
     return this.call<ImportOutcome>("import/run", { method: "POST", body: JSON.stringify(snapshot) });

@@ -36,7 +36,7 @@ function circuitLevel(genMw: number, demandMw: number): "ok" | "warn" | "crit" {
   return "ok";
 }
 
-function pinHtml(name: string, status: string, selected: boolean): string {
+function pinHtml(name: string, status: string, selected: boolean, tag?: "retiring" | "incoming"): string {
   const glyph = status === "planned" ? "◇" : status === "under_construction" ? "◈" : "◆";
   // 22px rotated-square diamond as SVG — dashed strokes stay crisp
   const stroke =
@@ -44,13 +44,21 @@ function pinHtml(name: string, status: string, selected: boolean): string {
   const dash = status === "built" ? "" : 'stroke-dasharray="4 3"';
   const fill =
     status === "built" ? "var(--steel-800)" : status === "planned" ? "rgba(86,168,255,.10)" : "rgba(138,100,35,.4)";
+  // W2a: a retiring ◆ / incoming ◇ carries a cutover tag chip.
+  const tagChip =
+    tag === "retiring"
+      ? `<div class="pin-tag mono retiring">RETIRING</div>`
+      : tag === "incoming"
+        ? `<div class="pin-tag mono incoming">INCOMING</div>`
+        : "";
   return `
-    <div class="pin-wrap">
+    <div class="pin-wrap ${tag ? `cutover-${tag}` : ""}">
       <svg class="pin-svg ${selected ? "selected" : ""}" width="30" height="30" viewBox="0 0 30 30">
         <rect x="8" y="8" width="14" height="14" transform="rotate(45 15 15)"
               fill="${fill}" stroke="${stroke}" stroke-width="2" ${dash} />
       </svg>
       <div class="pin-chip mono ${status}">${glyph} ${name.toUpperCase()}</div>
+      ${tagChip}
     </div>`;
 }
 
@@ -142,6 +150,24 @@ export default function MapView() {
     return links;
   }, [plan.nodeClaims, plan.factories, world.nodes, derived.nodes, selection, hoveredNode]);
 
+  // Refactor tethers (W2a): old ◆ → new ◇ links from every `replaces`. Highlight
+  // when either endpoint is the selected factory ("orange is a verb").
+  const replacesLinks = useMemo(() => {
+    const links: CanvasLayerData["replacesLinks"] = [];
+    for (const f of Object.values(plan.factories)) {
+      if (!f.replaces) continue;
+      const old = plan.factories[f.replaces];
+      if (!old) continue;
+      links.push({
+        old: old.position,
+        new: f.position,
+        highlight:
+          selection?.kind === "factory" && (selection.id === f.id || selection.id === old.id),
+      });
+    }
+    return links;
+  }, [plan.factories, selection]);
+
   const nodeStates = useMemo(() => {
     const out: Record<string, NodeRenderState> = {};
     const claimsByNode: Record<string, number> = {};
@@ -182,6 +208,7 @@ export default function MapView() {
       world: useStore.getState().world,
       nodeStates: {},
       claimLinks: [],
+      replacesLinks: [],
       hoveredNode: null,
       selectedNode: null,
       showNodes: true,
@@ -323,6 +350,7 @@ export default function MapView() {
       world,
       nodeStates,
       claimLinks,
+      replacesLinks,
       hoveredNode: hoveredNode?.id ?? null,
       selectedNode: selection?.kind === "node" ? selection.id : null,
       showNodes: overlays.nodes,
@@ -336,7 +364,7 @@ export default function MapView() {
       ghost: src && routeDraft ? { from: src.position, to: routeDraft.cursor } : null,
       review,
     });
-  }, [world, nodeStates, claimLinks, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
+  }, [world, nodeStates, claimLinks, replacesLinks, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
 
   // ---- pointer interactions (hover + click on canvas nodes, placement) ----
   useEffect(() => {
@@ -439,10 +467,15 @@ export default function MapView() {
     if (!map) return;
     const markers = markersRef.current;
     const seen = new Set<string>();
+    // W2a cutover tags: a factory named by some `replaces` is RETIRING; a
+    // factory that carries `replaces` is the INCOMING replacement.
+    const retiring = new Set<string>();
+    for (const f of Object.values(plan.factories)) if (f.replaces) retiring.add(f.replaces);
     for (const f of Object.values(plan.factories)) {
       seen.add(f.id);
       const selected = selection?.kind === "factory" && selection.id === f.id;
-      const html = pinHtml(f.name, f.status, selected);
+      const tag = f.replaces ? "incoming" : retiring.has(f.id) ? "retiring" : undefined;
+      const html = pinHtml(f.name, f.status, selected, tag);
       const icon = L.divIcon({ className: "pin-icon", html, iconSize: [30, 30], iconAnchor: [15, 15] });
       let marker = markers.get(f.id);
       if (!marker) {

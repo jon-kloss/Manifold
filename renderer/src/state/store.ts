@@ -6,6 +6,7 @@ import { applyPatches } from "./patch";
 import type {
   AdvisorFeed,
   Command,
+  CutoverPlan,
   Derived,
   DerivedFactory,
   EditResponse,
@@ -74,6 +75,7 @@ const emptyDerived: Derived = {
   recomputeUs: 0,
   totalPowerMw: 0,
   buildQueue: [],
+  cutovers: [],
 };
 
 export interface AppStore {
@@ -137,6 +139,12 @@ export interface AppStore {
   /** mark a build-queue step done/undone (manual override), or clear it back
       to derived with `null` — one undoable step (SetBuildDone). */
   markBuildDone(id: Id, done: boolean | null): Promise<void>;
+  /** W2a: plan a whole-factory replacement → stores a Draft Refactor proposal
+      and opens it in the review surface. */
+  planReplacement(factoryId: Id): Promise<void>;
+  /** W2a: fetch a cutover's scratch-solved downtime on demand (or null on
+      refusal — recorded in cmdError). */
+  cutoverPlan(factoryId: Id): Promise<CutoverPlan | null>;
 }
 
 export const useStore = create<AppStore>((set, get) => ({
@@ -318,6 +326,41 @@ export const useStore = create<AppStore>((set, get) => ({
     // One undoable step: SetBuildDone upserts (Some) or clears (null) the
     // override; the response patches /buildOverrides and the derived queue.
     await get().dispatch([{ type: "set_build_done", id, done }]);
+  },
+
+  // Plan a replacement = one backend call that stores a Draft Refactor
+  // proposal (◇-only) and lands it in review, exactly like an import drift.
+  async planReplacement(factoryId) {
+    let res: { response: EditResponse; proposal: Id };
+    try {
+      res = await backend.planReplacement(factoryId);
+    } catch (e) {
+      get().reportCmdError(errText(e));
+      return;
+    }
+    const resp = res.response;
+    set((s) => ({
+      plan: applyPatches(s.plan, resp.patches),
+      derived: resp.derived,
+      canUndo: resp.canUndo,
+      canRedo: resp.canRedo,
+      undoLabel: resp.undoLabel,
+      planHash: resp.planHash,
+      advisor: resp.advisor,
+      reviewing: res.proposal,
+      selection: null,
+      settled: new Set(resp.patches.map((p) => p.path)),
+      cmdError: null,
+    }));
+  },
+
+  async cutoverPlan(factoryId) {
+    try {
+      return await backend.cutoverPlan(factoryId);
+    } catch (e) {
+      get().reportCmdError(errText(e));
+      return null;
+    }
   },
 
   // Accept = one backend transaction, one undo entry, ◇ entities only.

@@ -182,6 +182,25 @@
   border-color: var(--bp-600);
   font-style: italic;
 }
+/* W2a cutover tags: RETIRING (◆ being replaced) / INCOMING (◇ replacement) */
+.pin-tag {
+  margin-top: 2px;
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.pin-tag.retiring {
+  color: var(--flow-warn);
+  border: 1px solid var(--flow-warn);
+  background: rgba(138, 100, 35, 0.18);
+}
+.pin-tag.incoming {
+  color: var(--bp-400);
+  border: 1px dashed var(--bp-600);
+  background: rgba(86, 168, 255, 0.1);
+}
 
 .node-tooltip {
   position: absolute;
@@ -228,6 +247,9 @@
   border-top: 1px dashed var(--steel-600);
   margin-right: 2px;
   vertical-align: middle;
+}
+.legend-tether.replaces {
+  border-top: 1.5px dashed var(--bp-400);
 }
 .legend-node {
   width: 10px;

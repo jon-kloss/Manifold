@@ -43,6 +43,12 @@ export interface CanvasLayerData {
     conflict: boolean;
     highlight: boolean;
   }[];
+  /** old ◆ → new ◇ refactor tethers (W2a): the "this replaces that" link */
+  replacesLinks: {
+    old: { x: number; y: number };
+    new: { x: number; y: number };
+    highlight: boolean;
+  }[];
   hoveredNode: string | null;
   selectedNode: string | null;
   showNodes: boolean;
@@ -186,6 +192,7 @@ export class MapCanvasLayer extends L.Layer {
       this.drawClaimLinks(ctx, map);
       this.drawNodes(ctx, map);
     }
+    this.drawReplacesLinks(ctx, map);
     this.drawGhost(ctx, map);
     if (this.data.review) this.drawReview(ctx, map, size);
   };
@@ -536,6 +543,41 @@ export class MapCanvasLayer extends L.Layer {
         ctx.fillRect(cx - w / 2, cy - 8, w, 15);
         ctx.strokeRect(cx - w / 2, cy - 8, w, 15);
         ctx.fillStyle = css("--ink-300");
+        ctx.textAlign = "center";
+        ctx.fillText(text, cx, cy + 3);
+        ctx.textAlign = "left";
+      }
+    }
+  }
+
+  /** Refactor tethers (W2a): a steel/blueprint-dashed line from each retiring
+   *  ◆ factory to its ◇ replacement — "this replaces that" made visible.
+   *  "Orange is a verb": the line rests as blueprint dash and promotes to signal
+   *  orange (named REPLACES at the midpoint) only when either pin is selected. */
+  private drawReplacesLinks(ctx: CanvasRenderingContext2D, map: L.Map) {
+    for (const link of this.data.replacesLinks) {
+      const a = map.latLngToContainerPoint(toLatLng(link.old));
+      const b = map.latLngToContainerPoint(toLatLng(link.new));
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = link.highlight ? css("--signal-500") : css("--bp-400");
+      ctx.lineWidth = link.highlight ? 2 : 1.25;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (link.highlight) {
+        const text = "REPLACES";
+        ctx.font = `600 9px ${css("--font-mono")}`;
+        const w = ctx.measureText(text).width + 10;
+        const cx = (a.x + b.x) / 2;
+        const cy = (a.y + b.y) / 2;
+        ctx.fillStyle = css("--steel-800");
+        ctx.strokeStyle = css("--signal-500");
+        ctx.lineWidth = 1;
+        ctx.fillRect(cx - w / 2, cy - 8, w, 15);
+        ctx.strokeRect(cx - w / 2, cy - 8, w, 15);
+        ctx.fillStyle = css("--signal-500");
         ctx.textAlign = "center";
         ctx.fillText(text, cx, cy + 3);
         ctx.textAlign = "left";

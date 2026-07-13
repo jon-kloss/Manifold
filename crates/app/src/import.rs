@@ -446,6 +446,7 @@ pub fn write_built_layer(
             groups: group_ids,
             ports: port_ids,
             style_guide: None,
+            replaces: None,
             status: Status::Built,
             created_by: CreatedBy::Import(import_id.to_string()),
         })));

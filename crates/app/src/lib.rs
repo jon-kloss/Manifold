@@ -5,6 +5,7 @@
 pub mod advisor;
 pub mod buildqueue;
 pub mod chat;
+pub mod cutover;
 pub mod import;
 pub mod jobs;
 pub mod session;

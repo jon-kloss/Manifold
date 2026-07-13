@@ -247,6 +247,15 @@ pub enum Command {
         id: Id,
         done: Option<bool>,
     },
+    /// Link a ◇ planned factory to the running ◆ factory it replaces (W2a
+    /// refactor). `Some` sets the label, `None` clears it. A planner-side label
+    /// (same species as RenameFactory) — never a ◆ mutation and never a write to
+    /// the referenced entity; the cutover/downtime are DERIVED from it. Undo is
+    /// free via the standard upsert patch-pair.
+    SetFactoryReplaces {
+        id: Id,
+        replaces: Option<Id>,
+    },
 }
 
 impl Command {
@@ -294,6 +303,7 @@ impl Command {
             Command::DeleteStyleGuide { .. } => "delete style guide",
             Command::SetFactoryTheme { .. } => "set factory theme",
             Command::SetBuildDone { .. } => "mark build done",
+            Command::SetFactoryReplaces { .. } => "link replacement",
         }
     }
 }
@@ -513,6 +523,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 groups: vec![],
                 ports: vec![],
                 style_guide: None,
+                replaces: None,
                 status: Status::Planned,
                 created_by: CreatedBy::Manual,
             };
@@ -1486,6 +1497,37 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                     }
                 }
             }
+        }
+        Command::SetFactoryReplaces { id, replaces } => {
+            let mut f = state
+                .factories
+                .get(id)
+                .cloned()
+                .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // Deliberately NOT `require_planned` (§3.1.1 exemption): `replaces`
+            // is a planner-side label with the same reasoning as RenameFactory —
+            // the save format has no such concept, so it can never break drift.
+            if let Some(target) = replaces {
+                if target == id {
+                    return Err(DomainError::Invalid {
+                        message: "a factory can't replace itself".into(),
+                    });
+                }
+                let old = state
+                    .factories
+                    .get(target)
+                    .ok_or(DomainError::NotFound { id: target.clone() })?;
+                // The replaced factory must be a running ◆ Built one — that is
+                // the whole premise of a cutover (tear down the built factory
+                // once its ◇ replacement is up).
+                if old.status != Status::Built {
+                    return Err(DomainError::Invalid {
+                        message: format!("replacement target {target} is not a built factory"),
+                    });
+                }
+            }
+            f.replaces = replaces.clone();
+            tx.record(state.upsert(Entity::Factory(f)));
         }
         Command::DeleteSwitch { id } => {
             let sw = state

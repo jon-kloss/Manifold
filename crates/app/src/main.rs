@@ -159,6 +159,31 @@ fn proposal_eval(state: State<AppState>, id: String) -> Result<ProposalConsequen
     state.0.lock().unwrap().eval_proposal(&id)
 }
 
+/// W2a: plan a whole-factory replacement → store the Draft proposal and return
+/// { response, proposal } so the renderer opens the review surface.
+#[tauri::command]
+fn cutover_plan(
+    window: tauri::Window,
+    state: State<AppState>,
+    factory: String,
+) -> Result<serde_json::Value, SessionError> {
+    let mut s = state.0.lock().unwrap();
+    let proposal = s.plan_replacement(factory)?;
+    let resp = s.edit(vec![Command::CreateProposal { proposal }])?;
+    let _ = window.emit("state://patch", &resp);
+    let pid = resp.created.first().cloned().unwrap_or_default();
+    Ok(serde_json::json!({ "response": resp, "proposal": pid }))
+}
+
+/// W2a: price a cutover's downtime on demand (scratch-solved, ripple-inclusive).
+#[tauri::command]
+fn cutover_downtime(
+    state: State<AppState>,
+    factory: String,
+) -> Result<app::cutover::CutoverPlan, SessionError> {
+    state.0.lock().unwrap().cutover_plan(factory)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -194,7 +219,9 @@ fn main() {
             chat_send,
             chat_context,
             proposal_accept,
-            proposal_eval
+            proposal_eval,
+            cutover_plan,
+            cutover_downtime
         ])
         .run(tauri::generate_context!())
         .expect("error while running FICSIT Planner");

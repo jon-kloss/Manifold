@@ -15,6 +15,7 @@ use planner_core::undo::UndoLog;
 
 use crate::advisor::{AdvisorFeed, AdvisorState};
 use crate::buildqueue::{derive_build_queue, BuildStep};
+use crate::cutover::{derive_cutovers, Cutover, CutoverPlan, Dip};
 
 use gamedata::docs::GameData;
 use gamedata::worldnodes::WorldSnapshot;
@@ -237,6 +238,10 @@ pub struct Derived {
     /// Derived build queue (W1c): ordered ◇ planned / partially-built steps
     /// with resolved completion. Recomputed every solve like circuits/deficits.
     pub build_queue: Vec<BuildStep>,
+    /// Derived cutovers (W2a): the lightweight presence/steps for each ◇→◆
+    /// refactor link. The N+1 scratch-solves that price the downtime are NOT run
+    /// here — they are on-demand via [`Session::cutover_plan`].
+    pub cutovers: Vec<Cutover>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -580,6 +585,10 @@ impl Session {
         // same undo entry as the accept.
         if p.items.iter().any(|i| i.sync.is_some()) {
             crate::buildqueue::dissolve_stale_overrides(&mut self.state, &mut tx, &self.gamedata);
+            // Any `replaces` pointing at a now-removed ◆ factory is dangling
+            // intent — null it so the cutover reads dismantle-complete (mirrors
+            // the override dissolve). Folded into the same undo entry.
+            crate::cutover::dissolve_stale_replaces(&mut self.state, &mut tx);
         }
         let derived = self.empire_solve(&T0Edit::Recompute, Some(&mut tx));
         self.commit_mutation(tx, derived)
@@ -641,27 +650,14 @@ impl Session {
         }
         let after = self.solve_all_readonly();
         // goal check: production delta of each goal item across all out ports
-        let out_rate_of = |state: &PlanState, derived: &Derived, item: &str| -> f64 {
-            state
-                .ports
-                .values()
-                .filter(|port| port.direction == PortDirection::Out && port.item == item)
-                .filter_map(|port| {
-                    derived
-                        .factories
-                        .get(&port.factory)
-                        .and_then(|df| df.ports.get(&port.id))
-                })
-                .sum()
-        };
         let goal: Vec<GoalCheck> = p
             .goal
             .iter()
             .map(|(item, requested)| GoalCheck {
                 item: item.clone(),
                 requested: *requested,
-                achieved: out_rate_of(&self.state, &after, item)
-                    - out_rate_of(&saved, &before, item),
+                achieved: Self::out_rate(&self.state, &after, item)
+                    - Self::out_rate(&saved, &before, item),
             })
             .collect();
         // new deficits feed the amber warning strip; per-circuit power now
@@ -742,6 +738,214 @@ impl Session {
         };
         self.state = saved;
         Ok(consequence)
+    }
+
+    /// Achieved production of `item` summed across every Out port empire-wide
+    /// (the port's derived rate). The one place the goal-check delta and the
+    /// cutover downtime engine measure "how much of this is being produced", so
+    /// the two can never disagree.
+    fn out_rate(state: &PlanState, derived: &Derived, item: &str) -> f64 {
+        state
+            .ports
+            .values()
+            .filter(|port| port.direction == PortDirection::Out && port.item == item)
+            .filter_map(|port| {
+                derived
+                    .factories
+                    .get(&port.factory)
+                    .and_then(|df| df.ports.get(&port.id))
+            })
+            .sum()
+    }
+
+    /// Plan a whole-factory replacement (W2a): target the item(s) the running ◆
+    /// factory produces, run the existing global solver to site a ◇ replacement
+    /// beside the old pin, and bind the two with a trailing `SetFactoryReplaces`
+    /// alias command. Returns a Draft proposal — accept goes through the
+    /// UNTOUCHED accept path (◇-only, one undo, the old ◆ never touched).
+    pub fn plan_replacement(&mut self, old_factory_id: Id) -> Result<Proposal, SessionError> {
+        let old = self
+            .state
+            .factories
+            .get(&old_factory_id)
+            .cloned()
+            .ok_or_else(|| SessionError::Internal(format!("factory {old_factory_id} not found")))?;
+        if old.status != Status::Built {
+            return Err(SessionError::Internal(
+                "only a running ◆ built factory can be replaced".into(),
+            ));
+        }
+        // Goal = the achieved production of every item the old factory ships
+        // (its Out ports). Power (generator output) is sourced separately, never
+        // belted — skip it as a replacement goal.
+        let derived = self.solve_all_readonly();
+        let mut by_item: BTreeMap<String, f64> = BTreeMap::new();
+        for pid in &old.ports {
+            let Some(port) = self.state.ports.get(pid) else {
+                continue;
+            };
+            if port.direction != PortDirection::Out || port.item == gamedata::docs::POWER_ITEM {
+                continue;
+            }
+            let rate = derived
+                .factories
+                .get(&old_factory_id)
+                .and_then(|df| df.ports.get(pid))
+                .copied()
+                .filter(|r| *r > 0.0)
+                .unwrap_or(port.rate);
+            *by_item.entry(port.item.clone()).or_insert(0.0) += rate;
+        }
+        if by_item.is_empty() {
+            return Err(SessionError::Internal(
+                "the factory ships nothing to replace (no output ports)".into(),
+            ));
+        }
+        let goal = crate::wizard::WizardGoal {
+            items: by_item.into_iter().collect(),
+            constraints: crate::wizard::WizardConstraints::default(),
+            milestone: None,
+        };
+        let outcome = crate::wizard::global_solve(
+            &self.state,
+            &self.gamedata,
+            &self.world,
+            &goal,
+            self.plan_hash(),
+            crate::jobs::now_rfc3339(),
+            |_, _| {},
+            &std::sync::atomic::AtomicBool::new(false),
+        );
+        let mut proposal = match outcome {
+            crate::wizard::WizardOutcome::Proposal { proposal } => proposal,
+            crate::wizard::WizardOutcome::Infeasible(inf) => {
+                return Err(SessionError::Internal(format!(
+                    "replacement infeasible — {}",
+                    inf.binding
+                )))
+            }
+            crate::wizard::WizardOutcome::Cancelled => {
+                return Err(SessionError::Internal("replacement solve cancelled".into()))
+            }
+        };
+        // Refactor provenance + a title that names the retirement.
+        proposal.source = planner_core::proposals::ProposalSource::Refactor;
+        proposal.provenance = "REFACTOR".into();
+        proposal.title = format!("REPLACE {}", old.name.to_uppercase());
+        // Find the CREATE item minting the new factory (alias "site") and
+        // (a) re-site it beside the old pin, (b) append the SetFactoryReplaces
+        // link. The alias resolves at accept via the untouched $alias machinery.
+        let target_pos = MapPos {
+            x: old.position.x + 400.0,
+            y: old.position.y,
+            z: old.position.z,
+        };
+        let create = proposal
+            .items
+            .iter_mut()
+            .find(|it| it.kind == planner_core::proposals::ProposalItemKind::Create)
+            .ok_or_else(|| SessionError::Internal("solver produced no CREATE item".into()))?;
+        let orig_pos = create.commands.iter().find_map(|c| match c {
+            Command::CreateFactory { position, .. } => Some(*position),
+            _ => None,
+        });
+        if let Some(orig) = orig_pos {
+            for item in &mut proposal.items {
+                for cmd in &mut item.commands {
+                    shift_site_pos(cmd, &orig, &target_pos);
+                }
+            }
+        }
+        let create = proposal
+            .items
+            .iter_mut()
+            .find(|it| it.kind == planner_core::proposals::ProposalItemKind::Create)
+            .expect("CREATE item present");
+        create.commands.push(Command::SetFactoryReplaces {
+            id: "$site".into(),
+            replaces: Some(old_factory_id.clone()),
+        });
+        create.aliases.push(None);
+        create.detail = format!("{} · replaces {}", create.detail, old.name);
+        Ok(proposal)
+    }
+
+    /// Price the downtime of a cutover ON DEMAND (never in the per-edit solve):
+    /// scratch-solve the whole empire at each phase boundary and report the
+    /// honest, ripple-inclusive production dip per tracked item. Baseline is
+    /// boundary k=0; the Switch boundary (k=1) is the worst case (old down, new
+    /// not yet up). Restores canonical state before returning.
+    pub fn cutover_plan(&mut self, factory: Id) -> Result<CutoverPlan, SessionError> {
+        let cutover = derive_cutovers(&self.state, &self.gamedata)
+            .into_iter()
+            .find(|c| c.new_factory == factory || c.old_factory == factory)
+            .ok_or_else(|| {
+                SessionError::Internal(format!("no cutover involving factory {factory}"))
+            })?;
+        let tracked: Vec<String> = self
+            .state
+            .factories
+            .get(&cutover.old_factory)
+            .map(|old| crate::cutover::supplied_items(&self.state, old))
+            .unwrap_or_default();
+        // Machines torn down = the old factory's group counts (drives the est).
+        let old_machines: u32 = self
+            .state
+            .factories
+            .get(&cutover.old_factory)
+            .map(|old| {
+                old.groups
+                    .iter()
+                    .filter_map(|gid| self.state.groups.get(gid))
+                    .map(|g| g.count)
+                    .sum()
+            })
+            .unwrap_or(0);
+
+        // Scratch-solve at each boundary against a SAVED base, then restore.
+        let saved = self.state.clone();
+        let mut production: Vec<BTreeMap<String, f64>> = Vec::new();
+        for k in 0..=2usize {
+            self.state = crate::cutover::shape_for_boundary(&saved, &cutover, k);
+            let derived = self.solve_all_readonly();
+            let mut row = BTreeMap::new();
+            for item in &tracked {
+                row.insert(item.clone(), Self::out_rate(&self.state, &derived, item));
+            }
+            production.push(row);
+        }
+        self.state = saved;
+
+        let baseline = production[0].clone();
+        const EPS: f64 = 1e-6;
+        let mut dips: Vec<Dip> = Vec::new();
+        for (k, row) in production.iter().enumerate() {
+            if k == 0 {
+                continue;
+            }
+            for item in &tracked {
+                let base = baseline.get(item).copied().unwrap_or(0.0);
+                let rate = row.get(item).copied().unwrap_or(0.0);
+                if rate < base - EPS {
+                    dips.push(Dip {
+                        phase: k as u8,
+                        item: item.clone(),
+                        rate,
+                        baseline: base,
+                        est_hours: crate::cutover::est_hours(old_machines),
+                    });
+                }
+            }
+        }
+        Ok(CutoverPlan {
+            new_factory: cutover.new_factory,
+            old_factory: cutover.old_factory,
+            tracked,
+            baseline,
+            production,
+            dips,
+            hard: cutover.node_reuse,
+        })
     }
 
     /// Save import (SDD §8). First import writes the ◆ Built layer directly;
@@ -1574,6 +1778,8 @@ impl Session {
         // Build queue: a pure projection over canonical state + gamedata,
         // recomputed here like circuits/deficits (no stored ordering entity).
         derived.build_queue = derive_build_queue(&self.state, &self.gamedata);
+        // Cutovers: cheap presence/steps projection (no scratch-solves here).
+        derived.cutovers = derive_cutovers(&self.state, &self.gamedata);
         derived.recompute_us = started.elapsed().as_micros() as u64;
         derived
     }
@@ -1742,6 +1948,26 @@ fn polyline_climb(path: &[MapPos]) -> (f64, f64) {
             (up, down - dz)
         }
     })
+}
+
+/// Re-site a solver-drafted factory beside the old pin (W2a): rewrite every
+/// occurrence of the solver's original site position `orig` to `target` inside a
+/// command — the CreateFactory pin and any AddRoute path endpoint anchored there
+/// — so the replacement lands next to the factory it retires and its routes
+/// track the move. Purely on the DRAFT proposal, before accept.
+fn shift_site_pos(cmd: &mut Command, orig: &MapPos, target: &MapPos) {
+    let same = |p: &MapPos| p.x == orig.x && p.y == orig.y && p.z == orig.z;
+    match cmd {
+        Command::CreateFactory { position, .. } if same(position) => *position = *target,
+        Command::AddRoute { path, .. } => {
+            for p in path.iter_mut() {
+                if same(p) {
+                    *p = *target;
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn item_or(manifest: &[(String, f64)], src_port: &Id, state: &PlanState) -> String {

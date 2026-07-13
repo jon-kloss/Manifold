@@ -18,6 +18,10 @@ export interface Factory {
   groups: Id[];
   ports: Id[];
   styleGuide: Id | null;
+  /** W2a refactor link: when this ◇ factory is a planned replacement for a
+   *  running ◆ factory, `replaces` names that old factory's id (a planner-side
+   *  label; the cutover/downtime are DERIVED, the ◆ is never mutated). */
+  replaces?: Id | null;
   status: Status;
   createdBy: CreatedBy;
 }
@@ -370,6 +374,61 @@ export interface BuildStep {
   progress?: BuildProgress;
 }
 
+/** W2a cutover — a DERIVED refactor overlay: a ◇ replacement linked to the ◆ it
+ *  retires, with ordered BuildNew → Switch → Dismantle steps. The ◆ layer is
+ *  never mutated; dismantle completion is derived from it. */
+export type CutoverPhase = "build_new" | "switch" | "dismantle";
+
+export interface CutoverStep {
+  id: Id;
+  phase: CutoverPhase;
+  /** owning factory, for "go there" navigation */
+  factory: Id | null;
+  label: string;
+  detail: string;
+  /** derived completion, ignoring the override — drives the ◇◈◆ glyph */
+  state: BuildStepState;
+  done: boolean;
+  overridden: boolean;
+  /** completion can't be auto-detected (Switch steps) — check is manual */
+  manualOnly: boolean;
+}
+
+export interface Cutover {
+  newFactory: Id;
+  newName: string;
+  oldFactory: Id;
+  oldName: string;
+  steps: CutoverStep[];
+  /** the new ◇ reuses a node the old ◆ still holds → unavoidable downtime */
+  nodeReuse: boolean;
+  number: number;
+}
+
+/** A single tracked-item production dip at a phase boundary. `rate`/`baseline`
+ *  are COMPUTED (scratch-solve output); `estHours` is the labeled estimate. */
+export interface Dip {
+  /** boundary: 1 = Switch, 2 = Dismantle */
+  phase: number;
+  item: string;
+  rate: number;
+  baseline: number;
+  estHours: number;
+}
+
+/** On-demand, scratch-solved downtime pricing for one cutover (ripple-inclusive).
+ *  Fetched via cutoverPlan(factoryId) — never part of the per-edit derived. */
+export interface CutoverPlan {
+  newFactory: Id;
+  oldFactory: Id;
+  tracked: string[];
+  baseline: Record<string, number>;
+  production: Record<string, number>[];
+  dips: Dip[];
+  /** node reuse: unavoidable downtime for the build window */
+  hard: boolean;
+}
+
 export interface Derived {
   factories: Record<Id, DerivedFactory>;
   nodes: Record<string, { claims: number; conflict: boolean }>;
@@ -382,6 +441,8 @@ export interface Derived {
   totalPowerMw: number;
   /** ordered ◇ planned / partially-built steps with resolved completion */
   buildQueue: BuildStep[];
+  /** W2a cutovers: lightweight presence/steps (downtime is fetched on demand) */
+  cutovers: Cutover[];
 }
 
 // ---- IPC ----
@@ -394,7 +455,13 @@ export type PatchOp =
 // ---- proposals (Phase 3): reviewable, partially-acceptable change sets ----
 
 export type ProposalStatus = "draft" | "reviewing" | "accepted" | "rejected";
-export type ProposalSource = "global_solver" | "t2_optimize" | "advisor" | "chat" | "save_reimport";
+export type ProposalSource =
+  | "global_solver"
+  | "t2_optimize"
+  | "advisor"
+  | "chat"
+  | "save_reimport"
+  | "refactor";
 export type ProposalItemKind = "create" | "modify" | "claim" | "route_add";
 
 export interface ProposalItem {
@@ -581,7 +648,8 @@ export type Command =
   | { type: "create_style_guide"; guide: StyleGuide }
   | { type: "delete_style_guide"; id: Id }
   | { type: "set_factory_theme"; factory: Id; styleGuide: Id | null }
-  | { type: "set_build_done"; id: Id; done: boolean | null };
+  | { type: "set_build_done"; id: Id; done: boolean | null }
+  | { type: "set_factory_replaces"; id: Id; replaces: Id | null };
 
 export const BELT_CAPACITY = [60, 120, 270, 480, 780, 1200];
 export const beltCapacity = (tier: number) => BELT_CAPACITY[Math.min(6, Math.max(1, tier)) - 1];

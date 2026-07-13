@@ -16,6 +16,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
   const setView = useStore((s) => s.setView);
   const setSelection = useStore((s) => s.setSelection);
   const dispatch = useStore((s) => s.dispatch);
+  const planReplacement = useStore((s) => s.planReplacement);
   const [editingName, setEditingName] = useState(false);
 
   const df = derived.factories[factory.id];
@@ -195,6 +196,25 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
           <span className={`t-data-12 ${projected}`}>{fmtPower(df?.totalPowerMw ?? 0)}</span>
         </div>
       </section>
+
+      {factory.status === "built" && (
+        <section className="drawer-section">
+          <h3 className="t-label">REFACTOR</h3>
+          <div className="drawer-empty" style={{ marginBottom: 8 }}>
+            Tiers unlocked? Plan a replacement beside this factory and get an
+            ordered cutover with honest downtime — the ◆ built layer is never
+            touched.
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{ width: "100%", height: 32 }}
+            data-testid="btn-plan-replacement"
+            onClick={() => void planReplacement(factory.id)}
+          >
+            PLAN REPLACEMENT
+          </button>
+        </section>
+      )}
 
       <footer className="drawer-footer">
         <button
