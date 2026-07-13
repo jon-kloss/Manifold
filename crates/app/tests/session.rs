@@ -2122,6 +2122,7 @@ fn accept_proposal_persist_failure_rolls_back() {
         snapshot_time: "2026-01-01T00:00:00Z".into(),
         input_hash: s.plan_hash(),
         provenance: "TEST".into(),
+        milestone: None,
         items: vec![ProposalItem {
             id: "item-1".into(),
             kind: ProposalItemKind::Create,

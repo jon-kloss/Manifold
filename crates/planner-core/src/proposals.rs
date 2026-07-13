@@ -68,6 +68,22 @@ pub struct ProposalItem {
     pub sync: Option<serde_json::Value>,
 }
 
+/// Milestone target carried alongside a goal: the game hands players a huge
+/// total-quantity goal (e.g. 2,500 Versatile Frameworks) with no plan. A
+/// milestone rides passively inside the proposal — the recipe/siting/routing
+/// algorithm is untouched; only the review surface annotates the target and
+/// its time-at-rate. Live "built so far" progress is a later unit's job.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Milestone {
+    /// Goal item class, mirrors the proposal's first goal item.
+    pub item: String,
+    /// Total quantity the player must accumulate.
+    pub total: f64,
+    /// Production rate the plan targets (per minute); total/rate = the ETA.
+    pub rate: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Proposal {
@@ -87,6 +103,10 @@ pub struct Proposal {
     /// Provenance line fragment, e.g. `GLOBAL SOLVER · 0.8s`.
     pub provenance: String,
     pub items: Vec<ProposalItem>,
+    /// Optional total-quantity target (goal-mode). serde-default so legacy
+    /// plan files that predate milestones deserialize to `None` — no migration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<Milestone>,
 }
 
 impl Proposal {
@@ -185,5 +205,44 @@ mod tests {
     fn fnv_is_stable() {
         assert_eq!(fnv1a(b"ficsit"), fnv1a(b"ficsit"));
         assert_ne!(fnv1a(b"ficsit"), fnv1a(b"ficsit2"));
+    }
+
+    fn bare_proposal(milestone: Option<Milestone>) -> Proposal {
+        Proposal {
+            id: "01ID".into(),
+            source: ProposalSource::GlobalSolver,
+            title: "PRODUCE MODULAR FRAME AT 8.0/MIN".into(),
+            goal: vec![("Desc_ModularFrame_C".into(), 8.0)],
+            status: ProposalStatus::Draft,
+            number: 7,
+            snapshot_time: "2026-07-13T00:00:00Z".into(),
+            input_hash: "deadbeef".into(),
+            provenance: "GLOBAL SOLVER".into(),
+            items: vec![],
+            milestone,
+        }
+    }
+
+    #[test]
+    fn milestone_round_trips() {
+        let p = bare_proposal(Some(Milestone {
+            item: "Desc_ModularFrame_C".into(),
+            total: 2500.0,
+            rate: 8.0,
+        }));
+        let v = serde_json::to_value(&p).unwrap();
+        // present-when-Some, and camelCase like the rest of the proposal
+        assert!(v["milestone"]["total"].as_f64().unwrap() == 2500.0);
+        let back: Proposal = serde_json::from_value(v).unwrap();
+        assert_eq!(back, p);
+
+        // None milestone is omitted entirely (skip_serializing_if) …
+        let bare = bare_proposal(None);
+        let v = serde_json::to_value(&bare).unwrap();
+        assert!(v.get("milestone").is_none(), "None milestone omits the key");
+
+        // … and legacy JSON lacking the key deserializes to None — no migration.
+        let legacy: Proposal = serde_json::from_value(v).unwrap();
+        assert!(legacy.milestone.is_none());
     }
 }

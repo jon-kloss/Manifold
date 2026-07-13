@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { backend } from "../state/backend";
-import { fmtPower, fmtRate } from "../lib/format";
+import { fmtDuration, fmtPower, fmtRate } from "../lib/format";
 import type { Proposal, ProposalConsequence, ProposalItem } from "../state/types";
 import "./proposal.css";
 
@@ -115,6 +115,19 @@ export default function ProposalReview({ proposal }: { proposal: Proposal }) {
 
       {/* change list */}
       <aside className="prop-panel">
+        {/* milestone chip: total-quantity target + time-at-rate, pinned under
+            the title. Static — this carries the goal; live "built so far"
+            progress is a later unit. */}
+        {proposal.milestone && (
+          <div className="prop-milestone mono" data-testid="proposal-milestone">
+            <span className="prop-milestone-tag">MILESTONE</span>
+            <span className="prop-milestone-body">
+              {proposal.milestone.total.toLocaleString("en-US")} {itemName(proposal.milestone.item).toUpperCase()} @{" "}
+              {proposal.milestone.rate.toFixed(1)}/MIN →{" "}
+              {fmtDuration(proposal.milestone.total / proposal.milestone.rate)}
+            </span>
+          </div>
+        )}
         <div className="prop-list" ref={listRef}>
           {KIND_ORDER.map((kind) => {
             const items = proposal.items.filter((i) => i.kind === kind);

@@ -772,6 +772,7 @@ impl Session {
             input_hash: self.plan_hash(),
             provenance: "SAVE RE-IMPORT".into(),
             items,
+            milestone: None,
         };
         let response = self.edit(vec![Command::CreateProposal { proposal }])?;
         let proposal_id = response.created[0].clone();

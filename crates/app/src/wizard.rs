@@ -61,6 +61,10 @@ pub struct WizardGoal {
     pub items: Vec<(String, f64)>,
     #[serde(default)]
     pub constraints: WizardConstraints,
+    /// Total-quantity goal mode: carried through global_solve into the
+    /// Proposal untouched (no solver behaviour changes — a target annotation).
+    #[serde(default)]
+    pub milestone: Option<Milestone>,
 }
 
 /// Infeasible ≠ dead end (mock 5c): best achievable + named binding + one-tap
@@ -856,6 +860,9 @@ pub fn global_solve(
             input_hash: plan_hash,
             provenance: "GLOBAL SOLVER".into(),
             items,
+            // passthrough: the total-quantity target rides into the review
+            // surface; the solve itself never read it (rate drives the plan).
+            milestone: goal.milestone.clone(),
         },
     }
 }
@@ -1076,5 +1083,6 @@ pub fn t2_optimize(state: &PlanState, gd: &GameData, factory_id: &Id) -> Option<
         input_hash: String::new(),
         provenance: "T2 OPTIMIZE".into(),
         items,
+        milestone: None,
     })
 }

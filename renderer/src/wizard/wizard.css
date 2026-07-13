@@ -85,6 +85,49 @@
   text-align: right;
 }
 
+/* total-quantity goal (milestone) */
+.wizard-total-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.wizard-total-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.wizard-total-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wizard-total {
+  width: 96px;
+  height: 28px;
+  font-size: 14px;
+  text-align: right;
+}
+.wizard-ladder {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--ink-300);
+  background: var(--steel-950);
+  border: 1px solid var(--steel-700);
+}
+.wizard-ladder-rung {
+  white-space: nowrap;
+}
+.wizard-ladder-rung:first-child {
+  color: var(--signal-400);
+}
+
 .wizard-quickfill {
   display: flex;
   align-items: center;

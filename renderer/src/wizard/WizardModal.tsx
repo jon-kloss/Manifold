@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { backend } from "../state/backend";
-import { fmtRate } from "../lib/format";
+import { fmtDuration, fmtRate } from "../lib/format";
 import type { WizardConstraints, WizardGoal, WizardInfeasible, WizardLogLine } from "../state/types";
 import "./wizard.css";
 
@@ -33,6 +33,10 @@ export default function WizardModal() {
   const [step, setStep] = useState<1 | 2>(1);
   const [item, setItem] = useState("");
   const [rate, setRate] = useState(8);
+  // total-quantity goal mode (milestone): off by default so the rate-only flow
+  // is visually unchanged; toggling on reveals the total input + time ladder.
+  const [totalOn, setTotalOn] = useState(false);
+  const [total, setTotal] = useState(2500);
   const [constraints, setConstraints] = useState<WizardConstraints>(DEFAULT_CONSTRAINTS);
   const [log, setLog] = useState<WizardLogLine[]>([]);
   const [infeasible, setInfeasible] = useState<WizardInfeasible | null>(null);
@@ -57,6 +61,7 @@ export default function WizardModal() {
     setStep(1);
     setLog([]);
     setInfeasible(null);
+    setTotalOn(false);
     if (wizard.prefill) {
       setItem(wizard.prefill.item);
       setRate(wizard.prefill.rate);
@@ -74,7 +79,13 @@ export default function WizardModal() {
 
   const solve = useCallback(
     async (goalOverride?: WizardGoal) => {
-      const goal: WizardGoal = goalOverride ?? { items: [[item, rate]], constraints };
+      const goal: WizardGoal = goalOverride ?? {
+        items: [[item, rate]],
+        constraints,
+        // total-quantity mode: carry the target through the solver; the plan
+        // itself is still driven by `rate` (the solver never reads milestone).
+        ...(totalOn && total > 0 ? { milestone: { item, total, rate } } : {}),
+      };
       setStep(2);
       setLog([]);
       setInfeasible(null);
@@ -113,7 +124,7 @@ export default function WizardModal() {
       };
       void poll();
     },
-    [item, rate, constraints, dispatch, setReviewing, setWizard],
+    [item, rate, total, totalOn, constraints, dispatch, setReviewing, setWizard],
   );
 
   // ⏎ solves from step 1; ESC closes
@@ -191,6 +202,48 @@ export default function WizardModal() {
               />
               <span className="t-label">/MIN EMPIRE-WIDE</span>
             </div>
+
+            {/* total-quantity goal (milestone): the game hands out huge total
+                goals ("2,500 Versatile Frameworks") with no plan. Toggle it on
+                to see how long the chosen rate takes — and faster alternatives. */}
+            <div className="wizard-total-row">
+              <label className="wizard-total-toggle">
+                <input
+                  type="checkbox"
+                  checked={totalOn}
+                  onChange={(e) => setTotalOn(e.target.checked)}
+                  data-testid="wizard-total-toggle"
+                />
+                <span className="t-label">TOTAL-QUANTITY GOAL (MILESTONE)</span>
+              </label>
+              {totalOn && (
+                <div className="wizard-total-inputs">
+                  <span className="t-label">NEED</span>
+                  <input
+                    type="number"
+                    className="mono wizard-total"
+                    min={1}
+                    step={100}
+                    value={total}
+                    onChange={(e) => setTotal(Number(e.target.value))}
+                    data-testid="wizard-total"
+                  />
+                  <span className="t-label">TOTAL</span>
+                </div>
+              )}
+            </div>
+            {totalOn && total > 0 && (
+              <div className="wizard-ladder mono" data-testid="wizard-ladder">
+                {[rate, rate * 2, rate * 4]
+                  .filter((r) => r > 0 && isFinite(r))
+                  .map((r, i) => (
+                    <span key={i} className="wizard-ladder-rung">
+                      at {fmtRate(r)}/min → {fmtDuration(total / r)}
+                    </span>
+                  ))}
+              </div>
+            )}
+
             {deficitChips.length > 0 && (
               <div className="wizard-quickfill">
                 <span className="t-label" style={{ color: "var(--ink-500)" }}>

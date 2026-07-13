@@ -28,6 +28,18 @@ export function fmtKm(meters: number): string {
   return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
 }
 
+/** Human duration from minutes: "5h 12m", "16h", "40m". "—" for a
+ *  non-finite or non-positive input (e.g. a zero/absent production rate). */
+export function fmtDuration(minutes: number): string {
+  if (!isFinite(minutes) || minutes <= 0) return "—";
+  const total = Math.floor(minutes);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 /** Flow level from saturation (UI spec thresholds: <70 OK, 70–95 WARN, ≥95 CRIT). */
 export type FlowLevel = "ok" | "warn" | "crit";
 export function flowLevel(saturation: number): FlowLevel {

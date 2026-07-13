@@ -9,7 +9,7 @@ use app::Session;
 use planner_core::commands::Command;
 use planner_core::entities::*;
 use planner_core::proposals::{
-    Proposal, ProposalItem, ProposalItemKind, ProposalSource, ProposalStatus,
+    Milestone, Proposal, ProposalItem, ProposalItemKind, ProposalSource, ProposalStatus,
 };
 
 fn gp(x: f64, y: f64) -> GraphPos {
@@ -246,6 +246,7 @@ fn store_proposal(s: &mut Session, items: Vec<ProposalItem>) -> Id {
         input_hash: s.plan_hash(),
         provenance: "test".into(),
         items,
+        milestone: None,
     };
     s.edit(vec![Command::CreateProposal { proposal }])
         .unwrap()
@@ -465,6 +466,7 @@ fn wizard_produces_reviewable_partially_acceptable_proposal() {
         WizardGoal {
             items: vec![("Desc_IronRod_C".into(), 30.0)],
             constraints: Default::default(),
+            milestone: None,
         },
     );
     let WizardOutcome::Proposal { proposal } = outcome else {
@@ -643,6 +645,7 @@ fn surplus_port_tapped_by_two_stages_yields_one_route() {
         WizardGoal {
             items: vec![("Desc_IronPlateReinforced_C".into(), 2.0)],
             constraints: Default::default(),
+            milestone: None,
         },
     );
     let WizardOutcome::Proposal { proposal } = outcome else {
@@ -718,6 +721,7 @@ fn infeasible_returns_best_achievable_and_relaxations() {
                 node_budget: 0,
                 ..Default::default()
             },
+            milestone: None,
         },
     );
     let WizardOutcome::Infeasible(inf) = outcome else {
@@ -746,6 +750,7 @@ fn raw_goal_builds_extraction_and_ship_site_that_accepts() {
         WizardGoal {
             items: vec![("Desc_OreIron_C".into(), 120.0)],
             constraints: Default::default(),
+            milestone: None,
         },
     );
     let WizardOutcome::Proposal { proposal } = outcome else {
@@ -852,6 +857,7 @@ fn alternate_only_goal_is_infeasible_naming_alternates() {
         &WizardGoal {
             items: vec![("Desc_IronScrew_C".into(), 40.0)],
             constraints: Default::default(),
+            milestone: None,
         },
         s.plan_hash(),
         "2026-07-10T00:00:00Z".into(),
@@ -891,6 +897,7 @@ fn alternate_only_goal_is_infeasible_naming_alternates() {
                 include_alternates: true,
                 ..Default::default()
             },
+            milestone: None,
         },
         s.plan_hash(),
         "2026-07-10T00:00:00Z".into(),
@@ -914,6 +921,7 @@ fn plan_hash_flags_staleness() {
         WizardGoal {
             items: vec![("Desc_IronRod_C".into(), 10.0)],
             constraints: Default::default(),
+            milestone: None,
         },
     );
     let WizardOutcome::Proposal { proposal } = outcome else {
@@ -1090,6 +1098,7 @@ fn eval_reports_per_circuit_power_impact_for_a_touched_grid() {
         WizardGoal {
             items: vec![("Desc_IronRod_C".into(), 30.0)],
             constraints: Default::default(),
+            milestone: None,
         },
     );
     let WizardOutcome::Proposal { proposal } = outcome else {
@@ -1196,5 +1205,61 @@ fn multi_grid_proposal_yields_one_impact_per_touched_grid() {
             ci.generation_after_mw > 0.0 && ci.demand_before_mw == 0.0,
             "each touched grid is newly formed from zero: {ci:?}"
         );
+    }
+}
+
+/// A total-quantity goal (milestone) rides through the solver untouched into
+/// the Proposal, and survives the JSON persist round-trip — the solve itself
+/// never read it (the rate still drives the plan).
+#[test]
+fn wizard_milestone_carries_into_proposal_and_persists() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("world.ficsit");
+
+    let pid;
+    {
+        let mut s = Session::open(&path, None, "fixture").unwrap();
+        build_base(&mut s);
+
+        // "2,500 iron rods" — the game's total goal, planned at 30/min
+        let outcome = solve(
+            &mut s,
+            WizardGoal {
+                items: vec![("Desc_IronRod_C".into(), 30.0)],
+                constraints: Default::default(),
+                milestone: Some(Milestone {
+                    item: "Desc_IronRod_C".into(),
+                    total: 2500.0,
+                    rate: 30.0,
+                }),
+            },
+        );
+        let WizardOutcome::Proposal { proposal } = outcome else {
+            panic!("expected a proposal, got {outcome:?}");
+        };
+
+        // stamped through global_solve, right item/total/rate
+        let m = proposal.milestone.as_ref().expect("milestone stamped");
+        assert_eq!(m.item, "Desc_IronRod_C");
+        assert_eq!(m.total, 2500.0);
+        assert_eq!(m.rate, 30.0);
+
+        pid = s
+            .edit(vec![Command::CreateProposal { proposal }])
+            .unwrap()
+            .created[0]
+            .clone();
+    }
+
+    // reopen from disk: the milestone survives the proposals(id, json) persist
+    {
+        let s = Session::open(&path, None, "fixture").unwrap();
+        let m = s.state.proposals[&pid]
+            .milestone
+            .as_ref()
+            .expect("milestone persists across reopen");
+        assert_eq!(m.item, "Desc_IronRod_C");
+        assert_eq!(m.total, 2500.0);
+        assert_eq!(m.rate, 30.0);
     }
 }

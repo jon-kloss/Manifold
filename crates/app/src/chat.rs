@@ -291,6 +291,7 @@ fn intent_to_proposal(
     let goal = WizardGoal {
         items: vec![(item_class.to_string(), rate)],
         constraints: Default::default(),
+        milestone: None,
     };
     let cancel = std::sync::atomic::AtomicBool::new(false);
     let mut log_lines = 0usize;

@@ -369,6 +369,15 @@ export interface ProposalItem {
   sync?: unknown;
 }
 
+/** Total-quantity goal target carried alongside a proposal (goal-mode). The
+ *  solver never reads it — the rate drives the plan; the review surface
+ *  annotates the target and its time-at-rate. */
+export interface Milestone {
+  item: string;
+  total: number;
+  rate: number;
+}
+
 export interface Proposal {
   id: Id;
   source: ProposalSource;
@@ -381,6 +390,8 @@ export interface Proposal {
   inputHash: string;
   provenance: string;
   items: ProposalItem[];
+  /** optional total-quantity target (goal-mode); absent on legacy plans */
+  milestone?: Milestone;
 }
 
 export interface GoalCheck { item: string; requested: number; achieved: number }
@@ -419,6 +430,8 @@ export interface WizardConstraints {
 export interface WizardGoal {
   items: [string, number][];
   constraints: WizardConstraints;
+  /** total-quantity goal mode; passed through the solver into the proposal */
+  milestone?: Milestone;
 }
 
 export interface WizardLogLine { phase: string; line: string }

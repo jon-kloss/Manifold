@@ -127,3 +127,38 @@ test("priority switch on the grid: sheds-at + brownout sim", async ({ page }) =>
   await page.getByRole("button", { name: "DELETE SWITCH" }).click();
   await expect(page.getByTestId("switch-drawer")).not.toBeVisible();
 });
+
+test("total-quantity goal: milestone ladder + carried proposal chip", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("map-root")).toBeVisible();
+
+  // P opens the wizard; pick a craftable item + rate
+  await page.keyboard.press("p");
+  await expect(page.getByTestId("wizard-modal")).toBeVisible();
+  await page.selectOption('[data-testid="wizard-item"]', "Desc_IronPlate_C");
+  await page.fill('[data-testid="wizard-rate"]', "8");
+
+  // toggle TOTAL-QUANTITY GOAL on and set the huge total the game hands out
+  await page.getByTestId("wizard-total-toggle").check();
+  await page.fill('[data-testid="wizard-total"]', "2500");
+
+  // the ladder computes time-at-rate purely in UI (2500 / 8 = 5h 12m)
+  await expect(page.getByTestId("wizard-ladder")).toBeVisible();
+  await expect(page.getByTestId("wizard-ladder")).toContainText("5h 12m");
+
+  await page.click('[data-testid="wizard-solve"]');
+
+  // the proposal carries the milestone: a static chip with the thousands-
+  // separated total, the item, and the ETA — under the title
+  await expect(page.getByTestId("proposal-review")).toBeVisible({ timeout: 10_000 });
+  const chip = page.getByTestId("proposal-milestone");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("2,500");
+  await expect(chip).toContainText("IRON PLATE");
+  await expect(chip).toContainText("5h 12m");
+
+  // end clean: exit review WITHOUT accepting — leave no proposal open and no
+  // new factory in the shared serial state
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("proposal-review")).not.toBeVisible();
+});
