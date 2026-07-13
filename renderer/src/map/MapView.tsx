@@ -54,6 +54,38 @@ function pinHtml(name: string, status: string, selected: boolean): string {
     </div>`;
 }
 
+/** Pin-chip declutter: chips whose rects would overlap an already-kept chip
+ *  are culled (the diamond stays; hovering the pin reveals the name).
+ *  Selected factory wins, then stable name order — the same zoom always
+ *  shows the same chips. */
+function declutterPinChips(map: L.Map, markers: Map<string, L.Marker>) {
+  const st = useStore.getState();
+  const entries = Object.values(st.plan.factories)
+    .map((f) => {
+      const marker = markers.get(f.id);
+      const el = marker?.getElement()?.querySelector(".pin-chip") as HTMLElement | null;
+      if (!marker || !el) return null;
+      const pt = map.latLngToContainerPoint(toLatLng(f.position));
+      const w = f.name.length * 6.4 + 34; // 10px mono + glyph + padding
+      return {
+        el,
+        selected: st.selection?.kind === "factory" && st.selection.id === f.id,
+        name: f.name,
+        rect: { x: pt.x - w / 2, y: pt.y + 15, w, h: 20 },
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null)
+    .sort((a, b) => (a.selected !== b.selected ? (a.selected ? -1 : 1) : a.name.localeCompare(b.name)));
+  const kept: { x: number; y: number; w: number; h: number }[] = [];
+  for (const e of entries) {
+    const hit = kept.some(
+      (k) => e.rect.x < k.x + k.w && k.x < e.rect.x + e.rect.w && e.rect.y < k.y + k.h && k.y < e.rect.y + e.rect.h,
+    );
+    if (!hit) kept.push(e.rect);
+    e.el.classList.toggle("chip-culled", hit);
+  }
+}
+
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -164,6 +196,7 @@ export default function MapView() {
     });
     layer.addTo(map);
     layerRef.current = layer;
+    map.on("move zoom viewreset", () => declutterPinChips(map, markersRef.current));
     mapRef.current = map;
     setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
 
@@ -185,6 +218,23 @@ export default function MapView() {
 
   // ---- canvas layer data sync ----
   useEffect(() => {
+    // Lane assignment: routes (cargo AND power) between the same factory
+    // pair fan out with stable perpendicular offsets instead of stacking.
+    const laneOf = new Map<string, { lane: number; lanes: number }>();
+    {
+      const groups = new Map<string, string[]>();
+      // cargo endpoints are PORT ids, power endpoints are FACTORY ids —
+      // normalize to factories so mixed kinds share the fan
+      const owner = (e: string) => plan.ports[e]?.factory ?? e;
+      for (const r of Object.values(plan.routes)) {
+        const key = r.endpoints.map(owner).sort().join("|");
+        groups.set(key, [...(groups.get(key) ?? []), r.id]);
+      }
+      for (const ids of groups.values()) {
+        ids.sort();
+        ids.forEach((id, i) => laneOf.set(id, { lane: i, lanes: ids.length }));
+      }
+    }
     const routes = Object.values(plan.routes)
       .filter((r) => CARGO_KINDS.has(r.kind.kind))
       .map((r) => {
@@ -200,6 +250,7 @@ export default function MapView() {
           tag: r.kind.kind === "belt" ? `MK.${r.kind.tier}` : r.kind.kind.toUpperCase(),
           itemName: (gamedata.items[itemClass]?.displayName ?? itemClass).toUpperCase(),
           selected: selection?.kind === "route" && selection.id === r.id,
+          ...(laneOf.get(r.id) ?? { lane: 0, lanes: 1 }),
         };
       });
     // power lines connect factory pins; the chip carries the grid margin
@@ -207,6 +258,7 @@ export default function MapView() {
       .filter((r) => r.kind.kind === "power")
       .map((r) => ({
         id: r.id,
+        ...(laneOf.get(r.id) ?? { lane: 0, lanes: 1 }),
         from: plan.factories[r.endpoints[0]]?.position ?? r.path[0] ?? { x: 0, y: 0 },
         to: plan.factories[r.endpoints[1]]?.position ?? r.path[r.path.length - 1] ?? { x: 0, y: 0 },
         selected: selection?.kind === "route" && selection.id === r.id,
@@ -418,6 +470,7 @@ export default function MapView() {
         markers.delete(id);
       }
     }
+    declutterPinChips(map, markers);
   }, [plan.factories, selection]);
 
   // ---- keys: N place, F frame, ESC deselect, 1/4 overlays, ⏎ dive ----

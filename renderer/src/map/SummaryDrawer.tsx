@@ -51,7 +51,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
             </button>
           )}
           <div className="mono drawer-sub">
-            {factory.region.toUpperCase()} · {factory.groups.length} GROUPS · {factory.nodeClaims.length} NODES
+            {factory.region.toUpperCase()} · {factory.groups.length} {factory.groups.length === 1 ? "GROUP" : "GROUPS"} · {factory.nodeClaims.length} {factory.nodeClaims.length === 1 ? "NODE" : "NODES"}
           </div>
         </div>
         <span className={`chip ${factory.status === "planned" ? "planned" : ""}`}>

@@ -111,7 +111,7 @@ await edit([{ type: "set_port_rate", id: mwOut, rate: 150 }]);
 // the copper basin takes the frames — a live belt route across the map
 const framesIn = (
   await edit([
-    { type: "add_port", factory: basinId, direction: "in", item: "Desc_ModularFrame_C", rate: 0, rateCeiling: null, graphPos: { x: 0, y: 100 } },
+    { type: "add_port", factory: basinId, direction: "in", item: "Desc_ModularFrame_C", rate: 2, rateCeiling: null, graphPos: { x: 0, y: 100 } },
   ])
 ).created[0];
 await edit([

@@ -107,8 +107,27 @@ export default function ImportModal({ file, onClose }: { file: File; onClose: ()
                   {phase.snapshot.trainStations ?? 0} STATIONS
                 </span>
                 <span>UNRECOGNIZED</span>
-                <span>{quarantined(phase.snapshot)} → listed, ignored</span>
+                <span>{quarantined(phase.snapshot)} → ignored</span>
               </div>
+              {quarantined(phase.snapshot) > 0 && (
+                <details className="import-quarantine mono">
+                  <summary>VIEW UNRECOGNIZED CLASSES</summary>
+                  {Object.entries(phase.snapshot.quarantined ?? {})
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 12)
+                    .map(([cls, n]) => (
+                      <div key={cls} className="import-quarantine-row">
+                        <span>{cls}</span>
+                        <span>×{n}</span>
+                      </div>
+                    ))}
+                  {Object.keys(phase.snapshot.quarantined ?? {}).length > 12 && (
+                    <div className="import-quarantine-row">
+                      <span>… {Object.keys(phase.snapshot.quarantined ?? {}).length - 12} more classes</span>
+                    </div>
+                  )}
+                </details>
+              )}
               <div className="wizard-infeasible" style={{ borderColor: "var(--flow-warn)" }}>
                 <span className="wizard-foot-note" style={{ color: "var(--flow-warn)" }}>
                   The save format is community-reverse-engineered. Everything imports as ◆ BUILT

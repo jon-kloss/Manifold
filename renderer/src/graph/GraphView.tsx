@@ -527,7 +527,12 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       } else if (e.key === "r" || e.key === "R") {
         setStripOpen((o) => !o);
       } else if (e.key === "f" || e.key === "F") {
-        void fitView({ padding: 0.15, duration: 200 });
+        // leave room for the inspector panel (360px) so framed cards are
+        // never hidden under it
+        void fitView({
+          padding: useStore.getState().selection ? { top: 0.15, bottom: 0.15, left: 0.15, right: 0.32 } : 0.15,
+          duration: 200,
+        });
       }
     };
     window.addEventListener("keydown", onKey);

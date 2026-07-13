@@ -127,9 +127,17 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
       const df = derived.factories[e.factory];
       const d = df?.edges[e.id];
       if (!d) continue;
+      const toGroup = e.to.kind === "group" ? plan.groups[e.to.id] : undefined;
+      const toName = toGroup
+        ? gamedata.machines[toGroup.machine]?.displayName?.toUpperCase()
+        : e.to.kind === "port"
+          ? "PORT"
+          : e.to.kind === "junction"
+            ? "JUNCTION"
+            : undefined;
       rows.push({
         key: `edge-${e.id}`,
-        label: `${plan.factories[e.factory]?.name ?? "?"} · ${itemName(e.item)}`,
+        label: `${plan.factories[e.factory]?.name ?? "?"} · ${itemName(e.item)}${toName ? ` → ${toName}` : ""}`,
         tierText: `BELT · MK.${e.tier}`,
         saturation: d.saturation,
         flow: d.flow,

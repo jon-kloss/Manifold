@@ -19,6 +19,21 @@ import type {
 /** Human text for a rejected backend call (DomainError string or Error). */
 export const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** Backend errors cite entity ids; users know names. Swap any ULID we can
+ *  resolve for its display name (quoted), leave the rest untouched. */
+const nameIds = (msg: string): string =>
+  msg.replace(/[0-9A-HJKMNP-TV-Z]{26}/g, (id) => {
+    const p = useStore.getState().plan;
+    const group = p.groups[id];
+    const name =
+      p.factories[id]?.name ??
+      (group ? `${p.factories[group.factory]?.name ?? "?"} machine bank` : undefined) ??
+      (p.ports[id] ? `${p.ports[id].item.replace(/^Desc_|_C$/g, "")} port` : undefined) ??
+      (p.routes[id] ? "route" : undefined) ??
+      p.proposals[id]?.title;
+    return name ? `"${name}"` : id;
+  });
+
 export type Selection =
   | { kind: "factory"; id: Id }
   | { kind: "node"; id: string }
@@ -244,7 +259,7 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   reportCmdError(message) {
-    set({ cmdError: { message, at: Date.now() } });
+    set({ cmdError: { message: nameIds(message), at: Date.now() } });
   },
 
   clearCmdError(at) {

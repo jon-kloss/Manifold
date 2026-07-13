@@ -15,6 +15,9 @@ export interface NodeRenderState {
 
 export interface RouteRender {
   id: string;
+  /** parallel-route fan: lane index / total lanes between this factory pair */
+  lane: number;
+  lanes: number;
   path: { x: number; y: number }[];
   planned: boolean;
   saturation: number;
@@ -44,7 +47,14 @@ export interface CanvasLayerData {
   routes: RouteRender[];
   showRoutes: boolean;
   /** power lines (pairs of factory positions) + grid chips at centroids */
-  powerLines: { from: { x: number; y: number }; to: { x: number; y: number }; selected: boolean; id: string }[];
+  powerLines: {
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    selected: boolean;
+    id: string;
+    lane: number;
+    lanes: number;
+  }[];
   circuitChips: { x: number; y: number; text: string; level: "ok" | "warn" | "crit" }[];
   /** priority switches (A2.3): square pins on power lines + P/SHEDS chip */
   switches: { id: string; x: number; y: number; priority: number; chip: string; selected: boolean }[];
@@ -65,6 +75,9 @@ const css = (name: string) =>
 
 export class MapCanvasLayer extends L.Layer {
   private canvas: HTMLCanvasElement | null = null;
+  /** Label-chip rects placed this redraw — later overlapping chips are culled
+   *  (their lines/pins still draw). Selected chips are placed first. */
+  private chipRects: { x: number; y: number; w: number; h: number }[] = [];
   private data: CanvasLayerData;
   private mapRef: L.Map | null = null;
 
@@ -138,6 +151,7 @@ export class MapCanvasLayer extends L.Layer {
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, size.x, size.y);
+    this.chipRects = [];
 
     this.drawRegionTints(ctx, map);
     this.drawGrid(ctx, map, size);
@@ -225,8 +239,9 @@ export class MapCanvasLayer extends L.Layer {
   /** Flow/route encoding per mock 1e. Planned routes are always
    *  blueprint-dashed; saturation rides the label chip (color + italic). */
   private drawRoutes(ctx: CanvasRenderingContext2D, map: L.Map) {
+    // pass 1: every line
     for (const r of this.data.routes) {
-      const pts = r.path.map((p) => map.latLngToContainerPoint(toLatLng(p)));
+      const pts = this.lanePts(r.path.map((p) => map.latLngToContainerPoint(toLatLng(p))), r.lane, r.lanes);
       if (pts.length < 2) continue;
       const level = r.saturation >= 0.95 ? "crit" : r.saturation >= 0.7 ? "warn" : "ok";
       ctx.beginPath();
@@ -245,8 +260,13 @@ export class MapCanvasLayer extends L.Layer {
       }
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // label chip at the midpoint — the always-present data channel
+    }
+    // pass 2: label chips, selected first, overlaps culled
+    const byPriority = [...this.data.routes].sort((a, b) => Number(b.selected) - Number(a.selected));
+    for (const r of byPriority) {
+      const pts = this.lanePts(r.path.map((p) => map.latLngToContainerPoint(toLatLng(p))), r.lane, r.lanes);
+      if (pts.length < 2) continue;
+      const level = r.saturation >= 0.95 ? "crit" : r.saturation >= 0.7 ? "warn" : "ok";
       const mid = pts[Math.floor((pts.length - 1) / 2)];
       const mid2 = pts[Math.min(pts.length - 1, Math.floor((pts.length - 1) / 2) + 1)];
       const cx = (mid.x + mid2.x) / 2;
@@ -256,6 +276,7 @@ export class MapCanvasLayer extends L.Layer {
       )}%  ${r.tag}`;
       ctx.font = `italic 500 9px ${css("--font-mono")}`;
       const w = ctx.measureText(text).width + 10;
+      if (!this.placeChip(cx - w / 2, cy - 8, w, 16)) continue;
       ctx.fillStyle = level === "crit" ? css("--flow-crit") : css("--steel-800");
       ctx.strokeStyle = r.selected ? css("--signal-500") : css("--steel-600");
       ctx.lineWidth = 1;
@@ -275,8 +296,11 @@ export class MapCanvasLayer extends L.Layer {
    *  link load — power is a bus, not a belt (A2.1). */
   private drawPower(ctx: CanvasRenderingContext2D, map: L.Map) {
     for (const l of this.data.powerLines) {
-      const a = map.latLngToContainerPoint(toLatLng(l.from));
-      const b = map.latLngToContainerPoint(toLatLng(l.to));
+      const [a, b] = this.lanePts(
+        [map.latLngToContainerPoint(toLatLng(l.from)), map.latLngToContainerPoint(toLatLng(l.to))],
+        l.lane,
+        l.lanes,
+      );
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
@@ -304,6 +328,7 @@ export class MapCanvasLayer extends L.Layer {
       if (sw.chip) {
         ctx.font = `500 9px ${css("--font-mono")}`;
         const w = ctx.measureText(sw.chip).width + 10;
+        if (!this.placeChip(p.x - w / 2, p.y + 12, w, 15)) continue;
         ctx.fillStyle = css("--steel-800");
         ctx.strokeStyle = sw.selected ? css("--signal-500") : css("--steel-600");
         ctx.lineWidth = 1;
@@ -319,6 +344,7 @@ export class MapCanvasLayer extends L.Layer {
       const p = map.latLngToContainerPoint(toLatLng(c));
       ctx.font = `700 10px ${css("--font-mono")}`;
       const w = ctx.measureText(c.text).width + 12;
+      if (!this.placeChip(p.x - w / 2, p.y - 10, w, 20)) continue;
       ctx.fillStyle = css("--steel-800");
       ctx.strokeStyle = css(c.level === "crit" ? "--flow-crit" : c.level === "warn" ? "--flow-warn-dark" : "--steel-600");
       ctx.lineWidth = 1;
@@ -349,8 +375,11 @@ export class MapCanvasLayer extends L.Layer {
     const map = this.mapRef;
     if (!map || !this.data.showPower) return null;
     for (const l of this.data.powerLines) {
-      const a = map.latLngToContainerPoint(toLatLng(l.from));
-      const b = map.latLngToContainerPoint(toLatLng(l.to));
+      const [a, b] = this.lanePts(
+        [map.latLngToContainerPoint(toLatLng(l.from)), map.latLngToContainerPoint(toLatLng(l.to))],
+        l.lane,
+        l.lanes,
+      );
       if (distToSegment(point, a, b) < 8) return l.id;
     }
     return null;
@@ -396,6 +425,32 @@ export class MapCanvasLayer extends L.Layer {
     }
   }
 
+  /** Fan parallel routes: offset projected points perpendicular to the
+   *  overall segment by lane — screen-space, so the separation is
+   *  zoom-stable and hit-tests share it. */
+  private lanePts(pts: L.Point[], lane: number, lanes: number): L.Point[] {
+    if (lanes <= 1 || pts.length < 2) return pts;
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const off = (lane - (lanes - 1) / 2) * 9;
+    const ox = (-dy / len) * off;
+    const oy = (dx / len) * off;
+    return pts.map((p) => L.point(p.x + ox, p.y + oy));
+  }
+
+  /** Reserve a chip rect; false = an earlier chip owns this space. */
+  private placeChip(x: number, y: number, w: number, h: number): boolean {
+    const pad = 2;
+    const hit = this.chipRects.some(
+      (k) => x - pad < k.x + k.w && k.x < x + w + pad && y - pad < k.y + k.h && k.y < y + h + pad,
+    );
+    if (!hit) this.chipRects.push({ x, y, w, h });
+    return !hit;
+  }
+
   private drawGhost(ctx: CanvasRenderingContext2D, map: L.Map) {
     const g = this.data.ghost;
     if (!g) return;
@@ -416,7 +471,7 @@ export class MapCanvasLayer extends L.Layer {
     const map = this.mapRef;
     if (!map || !this.data.showRoutes) return null;
     for (const r of this.data.routes) {
-      const pts = r.path.map((p) => map.latLngToContainerPoint(toLatLng(p)));
+      const pts = this.lanePts(r.path.map((p) => map.latLngToContainerPoint(toLatLng(p))), r.lane, r.lanes);
       for (let i = 0; i < pts.length - 1; i++) {
         if (distToSegment(point, pts[i], pts[i + 1]) < 8) return r.id;
       }
@@ -545,12 +600,17 @@ export class MapCanvasLayer extends L.Layer {
         ctx.fill();
       }
 
-      // mono ghost label under every node (mock 2a: FE PURE #08)
+      // mono ghost label under every node (mock 2a: FE PURE #08) — culled
+      // when it would overlap an earlier chip/label (hover/select always wins)
       ctx.font = `500 9px ${css("--font-mono")}`;
-      ctx.textAlign = "center";
-      ctx.fillStyle = state.conflict ? crit : hovered || selected ? inkMuted : css("--ink-ghost");
-      ctx.fillText(this.nodeLabel(node), p.x, p.y + r + 12);
-      ctx.textAlign = "left";
+      const label = this.nodeLabel(node);
+      const lw = ctx.measureText(label).width;
+      if (hovered || selected || this.placeChip(p.x - lw / 2, p.y + r + 3, lw, 12)) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = state.conflict ? crit : hovered || selected ? inkMuted : css("--ink-ghost");
+        ctx.fillText(label, p.x, p.y + r + 12);
+        ctx.textAlign = "left";
+      }
 
       if (state.conflict) {
         ctx.font = `700 9px ${css("--font-mono")}`;

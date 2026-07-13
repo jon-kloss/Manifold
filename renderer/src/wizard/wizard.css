@@ -209,3 +209,20 @@
   font-size: 9.5px;
   letter-spacing: 0.08em;
 }
+
+/* import preview: expandable quarantine list */
+.import-quarantine {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--ink-500);
+}
+.import-quarantine summary {
+  cursor: pointer;
+  color: var(--ink-300);
+  letter-spacing: 1px;
+}
+.import-quarantine-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0 1px 12px;
+}

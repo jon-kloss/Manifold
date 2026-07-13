@@ -169,6 +169,14 @@
   white-space: nowrap;
   color: var(--ink-300);
 }
+.pin-chip.chip-culled {
+  display: none;
+}
+.pin-wrap:hover .pin-chip.chip-culled {
+  display: block; /* culled chips reveal on hover */
+  position: relative;
+  z-index: 30;
+}
 .pin-chip.planned {
   color: var(--bp-400);
   border-color: var(--bp-600);
