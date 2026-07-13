@@ -310,6 +310,21 @@ impl PlanFile {
     pub fn last_import(&self) -> Option<String> {
         self.get_meta("last_import").ok()
     }
+
+    /// Unlocked recipe set (W2b) — the recipe classes the imported save has
+    /// purchased (mPurchasedSchematics × FGSchematic unlocks), stored as a JSON
+    /// array blob. A save-derived fact, so it lives in the meta KV store beside
+    /// last_import, NOT the undo journal: undoing a plan edit must not toggle
+    /// unlocks, and it is excluded from plan_hash. Tolerant default — old plan
+    /// files with no "unlocked" blob load as an empty set.
+    pub fn set_unlocked(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("unlocked", json)?;
+        Ok(())
+    }
+
+    pub fn unlocked(&self) -> Option<String> {
+        self.get_meta("unlocked").ok()
+    }
 }
 
 #[cfg(test)]

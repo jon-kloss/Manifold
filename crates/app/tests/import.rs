@@ -861,3 +861,76 @@ fn new_extractor_fields_round_trip() {
     assert_eq!(snap2.extractors[0].node_actor_id, e.node_actor_id);
     assert_eq!(snap2.unlocked_schematics, snap.unlocked_schematics);
 }
+
+/// W2b: import resolves the unlocked recipe set from mPurchasedSchematics ×
+/// FGSchematic unlocks, persists it as a META fact (outside the undo journal),
+/// reloads it on reopen, and surfaces it through hydrate as `unlocked`.
+#[test]
+fn unlocked_set_resolves_from_schematics() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("world.ficsit");
+    {
+        let mut s = app::Session::open(&path, None, "fixture").unwrap();
+        // synthetic FGSchematic mapping — the trimmed fixture ships none.
+        s.gamedata.schematics.insert(
+            "Schematic_Alt_C".into(),
+            vec!["Recipe_Alternate_Screw_C".into()],
+        );
+        let snap = ImportSnapshot {
+            save_name: "UNLOCK-01".into(),
+            machines: vec![m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0)],
+            unlocked_schematics: vec![
+                "Schematic_Alt_C".into(),
+                "Schematic_Unmapped_C".into(), // no mapping → contributes nothing
+            ],
+            ..Default::default()
+        };
+        s.import_save(snap).unwrap();
+        assert!(
+            s.unlocked.contains("Recipe_Alternate_Screw_C"),
+            "purchased schematic resolves to its unlocked recipe"
+        );
+        assert_eq!(
+            s.unlocked.len(),
+            1,
+            "unmapped schematics contribute nothing"
+        );
+        let h = s.hydrate();
+        let arr = h["unlocked"]
+            .as_array()
+            .expect("hydrate carries an unlocked array");
+        assert!(arr
+            .iter()
+            .any(|v| v.as_str() == Some("Recipe_Alternate_Screw_C")));
+    }
+    // reopen: the META blob round-trips through the persist layer.
+    let mut s2 = app::Session::open(&path, None, "fixture").unwrap();
+    assert!(
+        s2.unlocked.contains("Recipe_Alternate_Screw_C"),
+        "unlocked set survives reopen"
+    );
+    assert_eq!(s2.hydrate()["unlocked"].as_array().unwrap().len(), 1);
+}
+
+/// The trimmed fixture catalog ships no schematics → import resolves an empty
+/// unlocked set → alternates behave exactly as before (no-regression guard).
+#[test]
+fn fixture_yields_empty_unlocked() {
+    let mut s = Session::in_memory(None).unwrap();
+    assert!(
+        s.gamedata.schematics.is_empty(),
+        "fixture has no schematics"
+    );
+    let snap = ImportSnapshot {
+        save_name: "FIX-01".into(),
+        machines: vec![m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0)],
+        unlocked_schematics: vec!["Schematic_Whatever_C".into()],
+        ..Default::default()
+    };
+    s.import_save(snap).unwrap();
+    assert!(
+        s.unlocked.is_empty(),
+        "no schematic catalog → nothing unlocks"
+    );
+    assert!(s.hydrate()["unlocked"].as_array().unwrap().is_empty());
+}

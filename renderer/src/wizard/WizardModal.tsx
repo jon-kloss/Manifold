@@ -25,6 +25,7 @@ const DEFAULT_CONSTRAINTS: WizardConstraints = {
 export default function WizardModal() {
   const wizard = useStore((s) => s.wizard);
   const gamedata = useStore((s) => s.gamedata);
+  const unlocked = useStore((s) => s.unlocked);
   const derived = useStore((s) => s.derived);
   const dispatch = useStore((s) => s.dispatch);
   const setWizard = useStore((s) => s.setWizard);
@@ -43,17 +44,22 @@ export default function WizardModal() {
   const jobRef = useRef<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
-  // craftable items only (recipes exist, not power, not raw-ore-only)
+  // craftable items only (recipes exist, not power, not raw-ore-only). W2b:
+  // unlocked alternates are first-class, so an item reachable only through an
+  // unlocked alt recipe is offered too.
   const craftable = useMemo(
     () =>
       Object.values(gamedata.items)
         .filter((i) =>
           Object.values(gamedata.recipes).some(
-            (r) => !r.alternate && r.producedIn.length > 0 && r.products.some(([p]) => p === i.className),
+            (r) =>
+              (!r.alternate || unlocked.has(r.className)) &&
+              r.producedIn.length > 0 &&
+              r.products.some(([p]) => p === i.className),
           ),
         )
         .sort((a, b) => a.displayName.localeCompare(b.displayName)),
-    [gamedata],
+    [gamedata, unlocked],
   );
 
   useEffect(() => {
@@ -303,7 +309,9 @@ export default function WizardModal() {
                 </select>
               </label>
               <label className="wc-row">
-                <span>Alternate recipes (render locked — suggestion only)</span>
+                <span>
+                  Also consider LOCKED alternates (suggestion only) — {unlocked.size} unlocked from your save
+                </span>
                 <input
                   type="checkbox"
                   checked={constraints.includeAlternates}

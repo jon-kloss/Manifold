@@ -92,6 +92,7 @@ fn main() -> anyhow::Result<()> {
                                 s.gamedata.clone(),
                                 s.world.clone(),
                                 goal,
+                                s.unlocked.clone(),
                                 s.plan_hash(),
                                 now_rfc3339(),
                             );
@@ -117,7 +118,8 @@ fn main() -> anyhow::Result<()> {
                 (Method::Post, "/api/t2/optimize") => {
                     let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
                     let fid = req["factory"].as_str().unwrap_or_default().to_string();
-                    let mut proposal = app::wizard::t2_optimize(&s.state, &s.gamedata, &fid);
+                    let mut proposal =
+                        app::wizard::t2_optimize(&s.state, &s.gamedata, &s.unlocked, &fid);
                     if let Some(p) = proposal.as_mut() {
                         p.input_hash = s.plan_hash();
                         p.snapshot_time = now_rfc3339();

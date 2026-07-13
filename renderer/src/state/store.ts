@@ -111,6 +111,9 @@ export interface AppStore {
   advisorOpen: boolean;
   /** last save-import summary (W1c resume dashboard "what changed") */
   lastImport: LastImport | null;
+  /** W2b: recipe classes the imported save has unlocked — gates alternate-recipe
+      eligibility in the wizard/recipe pickers. Empty until a save is imported. */
+  unlocked: Set<string>;
   /** resume dashboard overlay — auto-presents once per plan (viewState.resumeSeen) */
   dashboardOpen: boolean;
 
@@ -173,6 +176,7 @@ export const useStore = create<AppStore>((set, get) => ({
   advisor: { cards: [], muted: [], paused: false, callsThisHour: 0, callBudget: 6, aiStatus: "offline" },
   advisorOpen: false,
   lastImport: null,
+  unlocked: new Set(),
   dashboardOpen: false,
 
   async hydrate() {
@@ -191,6 +195,7 @@ export const useStore = create<AppStore>((set, get) => ({
         planHash: init.planHash,
         advisor: init.advisor,
         lastImport: init.lastImport ?? null,
+        unlocked: new Set(init.unlocked ?? []),
         viewState: init.viewState ?? {},
         view:
           openFactory && init.plan.factories[openFactory]

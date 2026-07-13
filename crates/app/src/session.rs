@@ -3,7 +3,7 @@
 //! write-backs into the same transaction → persist → commit (one undo entry).
 //! Disk commits first — see [`Session::commit_mutation`] for the invariant.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use planner_core::commands::{self, Command, DomainError, Transaction};
@@ -269,6 +269,11 @@ pub struct Session {
     slow_solves: BTreeMap<Id, u32>,
     /// Ambient advisor state (cards/mutes persist outside the undo journal).
     pub advisor: AdvisorState,
+    /// Recipe classes the imported save has unlocked (W2b). Resolved from
+    /// `mPurchasedSchematics × FGSchematic` unlocks at import; persisted in the
+    /// meta KV store, OUTSIDE the undo journal / plan_hash (a save-derived fact,
+    /// not canonical plan state). Empty when no save with schematics is imported.
+    pub unlocked: BTreeSet<String>,
     /// Model API key (env `FICSIT_AI_KEY`; OS keychain when the shell wires it).
     pub ai_key: Option<String>,
 }
@@ -316,6 +321,12 @@ impl Session {
             // already reported and must not fire duplicate cards on launch.
             advisor.restore_gate_snapshot(&json);
         }
+        // Unlocked recipe set survives restarts (save-derived fact). Tolerant
+        // default: a plan file with no "unlocked" blob hydrates as empty.
+        let unlocked = file
+            .unlocked()
+            .and_then(|s| serde_json::from_str::<BTreeSet<String>>(&s).ok())
+            .unwrap_or_default();
         Ok(Self {
             state,
             undo,
@@ -324,6 +335,7 @@ impl Session {
             world,
             slow_solves: BTreeMap::new(),
             advisor,
+            unlocked,
             ai_key: std::env::var("FICSIT_AI_KEY")
                 .ok()
                 .filter(|k| !k.is_empty()),
@@ -352,6 +364,7 @@ impl Session {
             "undoLabel": self.undo.undo_label(),
             "viewState": self.file.view_state().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
             "lastImport": self.file.last_import().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+            "unlocked": self.unlocked,
         })
     }
 
@@ -811,6 +824,7 @@ impl Session {
             &self.gamedata,
             &self.world,
             &goal,
+            &self.unlocked,
             self.plan_hash(),
             crate::jobs::now_rfc3339(),
             |_, _| {},
@@ -992,6 +1006,21 @@ impl Session {
         &mut self,
         snapshot: crate::import::ImportSnapshot,
     ) -> Result<ImportOutcome, SessionError> {
+        // Resolve the save's unlocked recipe set: mPurchasedSchematics ×
+        // FGSchematic unlocks. A save-derived META fact — persisted outside the
+        // undo journal / plan_hash, surfaced through hydrate as `unlocked`. With
+        // the trimmed fixture catalog gamedata.schematics is empty, so this
+        // degrades to an empty set and alternates stay locked exactly as before.
+        self.unlocked = snapshot
+            .unlocked_schematics
+            .iter()
+            .filter_map(|s| self.gamedata.schematics.get(s))
+            .flatten()
+            .cloned()
+            .collect();
+        let _ = self
+            .file
+            .set_unlocked(&serde_json::to_string(&self.unlocked).unwrap_or_else(|_| "[]".into()));
         let clusters = crate::import::cluster(&snapshot, &self.gamedata);
         let has_built = self
             .state

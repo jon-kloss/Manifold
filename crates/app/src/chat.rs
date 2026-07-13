@@ -300,6 +300,7 @@ fn intent_to_proposal(
         &s.gamedata,
         &s.world,
         &goal,
+        &s.unlocked,
         s.plan_hash(),
         crate::jobs::now_rfc3339(),
         |_, _| log_lines += 1,

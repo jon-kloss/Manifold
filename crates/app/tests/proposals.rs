@@ -445,6 +445,7 @@ fn solve(s: &mut Session, goal: WizardGoal) -> WizardOutcome {
         &s.gamedata,
         &s.world,
         &goal,
+        &s.unlocked,
         s.plan_hash(),
         "2026-07-10T00:00:00Z".into(),
         |phase, line| log_lines.push(format!("{phase}: {line}")),
@@ -859,6 +860,7 @@ fn alternate_only_goal_is_infeasible_naming_alternates() {
             constraints: Default::default(),
             milestone: None,
         },
+        &s.unlocked,
         s.plan_hash(),
         "2026-07-10T00:00:00Z".into(),
         |phase, line| log_lines.push(format!("{phase}: {line}")),
@@ -899,6 +901,7 @@ fn alternate_only_goal_is_infeasible_naming_alternates() {
             },
             milestone: None,
         },
+        &s.unlocked,
         s.plan_hash(),
         "2026-07-10T00:00:00Z".into(),
         |phase, line| log_lines.push(format!("{phase}: {line}")),
@@ -1045,7 +1048,8 @@ fn t2_suggests_cast_screw_mini_proposal() {
     assert_eq!(screws_before, 2, "80/min on 40/min standard = 2 machines");
 
     // T2: Cast Screw (50/min per machine, ingots already sourceable) wins
-    let proposal = app::wizard::t2_optimize(&s.state, &s.gamedata, &f).expect("a mini-proposal");
+    let proposal =
+        app::wizard::t2_optimize(&s.state, &s.gamedata, &s.unlocked, &f).expect("a mini-proposal");
     assert!(proposal.title.starts_with("OPTIMIZE"));
     let swap = proposal
         .items
@@ -1057,6 +1061,23 @@ fn t2_suggests_cast_screw_mini_proposal() {
         "alternate flagged: {}",
         swap.detail
     );
+
+    // W2b: once the save has unlocked that alternate, the flag drops — it is a
+    // first-class swap, not a locked suggestion (same swap, different framing).
+    s.unlocked.insert("Recipe_Alternate_Screw_C".into());
+    let unlocked_prop = app::wizard::t2_optimize(&s.state, &s.gamedata, &s.unlocked, &f)
+        .expect("still swaps to the cheaper unlocked alt");
+    let unlocked_swap = unlocked_prop
+        .items
+        .iter()
+        .find(|i| i.label.contains("Cast Screw"))
+        .expect("cast screw swap");
+    assert!(
+        !unlocked_swap.detail.contains("NOT UNLOCKED"),
+        "an unlocked alt is not flagged: {}",
+        unlocked_swap.detail
+    );
+    s.unlocked.clear(); // restore for the accept-path assertions below
 
     // accept applies the swap + rewire and the chain still solves to 80/min
     let r = s

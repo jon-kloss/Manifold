@@ -3,7 +3,7 @@
 //! the dev bridge; Tauri emits the same shape as events). Cancellation is
 //! cooperative (AtomicBool checked between phases and per demand item).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -45,12 +45,14 @@ pub struct JobRegistry {
 
 impl JobRegistry {
     /// Spawn a solve over cloned inputs; returns the job id immediately.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         &self,
         state: PlanState,
         gd: GameData,
         world: WorldSnapshot,
         goal: WizardGoal,
+        unlocked: BTreeSet<String>,
         plan_hash: String,
         snapshot_time: String,
     ) -> String {
@@ -64,6 +66,7 @@ impl JobRegistry {
                 &gd,
                 &world,
                 &goal,
+                &unlocked,
                 plan_hash,
                 snapshot_time,
                 |phase, line| {

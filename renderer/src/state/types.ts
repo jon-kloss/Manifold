@@ -591,6 +591,10 @@ export interface InitPayload {
   viewState: ViewState | null;
   /** last save-import summary (W1c "what changed since last import") */
   lastImport: LastImport | null;
+  /** W2b: recipe classes the imported save has unlocked (mPurchasedSchematics ×
+      FGSchematic unlocks). Save-derived, outside the undo journal; [] until a
+      save with schematics is imported. Gates alternate-recipe eligibility. */
+  unlocked: string[];
 }
 
 /** Session fact: what the most recent save import did (W1c resume dashboard). */

@@ -67,6 +67,7 @@ fn wizard_solve(state: State<AppState>, jobs: State<Jobs>, goal: WizardGoal) -> 
         s.gamedata.clone(),
         s.world.clone(),
         goal,
+        s.unlocked.clone(),
         s.plan_hash(),
         now_rfc3339(),
     )
@@ -88,7 +89,7 @@ fn t2_optimize(
     factory: String,
 ) -> Option<planner_core::proposals::Proposal> {
     let s = state.0.lock().unwrap();
-    let mut p = app::wizard::t2_optimize(&s.state, &s.gamedata, &factory);
+    let mut p = app::wizard::t2_optimize(&s.state, &s.gamedata, &s.unlocked, &factory);
     if let Some(pr) = p.as_mut() {
         pr.input_hash = s.plan_hash();
         pr.snapshot_time = now_rfc3339();
