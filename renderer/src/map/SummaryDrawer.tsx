@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useStore } from "../state/store";
 import { fmtPower, fmtRate } from "../lib/format";
 import type { Factory } from "../state/types";
+import BuildSheet from "../graph/BuildSheet";
 
 const STATUS_GLYPH = { planned: "◇", under_construction: "◈", built: "◆" } as const;
 
@@ -18,6 +19,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
   const dispatch = useStore((s) => s.dispatch);
   const planReplacement = useStore((s) => s.planReplacement);
   const [editingName, setEditingName] = useState(false);
+  const [buildSheet, setBuildSheet] = useState(false);
   // Replacement infeasibility is an EXPECTED outcome — surface it as a clear,
   // dismissible inline notice at the button, not just the status-bar chip.
   const [infeasible, setInfeasible] = useState<string | null>(null);
@@ -253,6 +255,15 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
         >
           OPEN FACTORY ⏎
         </button>
+        <button
+          className="btn btn-ghost"
+          style={{ height: 34 }}
+          onClick={() => setBuildSheet(true)}
+          title="BUILD SHEET — copy/print-friendly per-factory build checklist"
+          data-testid="btn-build-sheet"
+        >
+          BUILD SHEET
+        </button>
         {factory.status === "planned" && (
           <button
             className="btn btn-ghost"
@@ -265,6 +276,8 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
           </button>
         )}
       </footer>
+
+      {buildSheet && <BuildSheet factoryId={factory.id} onClose={() => setBuildSheet(false)} />}
     </aside>
   );
 }

@@ -1,0 +1,185 @@
+/* BUILD SHEET panel — read-only per-factory export. Design language: tokens
+ * only, mono for numbers, ◇◈◆ grammar, orange only on the COPY verb. A print
+ * block flattens it to an ink-on-paper checklist for the build site. */
+
+.bs-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 14, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.bs-modal {
+  width: 680px;
+  max-width: 92vw;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+}
+
+.bs-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-bottom: 2px solid var(--signal-500);
+  flex: none;
+  flex-wrap: wrap;
+}
+.bs-stamp {
+  padding: 2px 8px;
+  background: var(--signal-500);
+  color: var(--on-signal);
+  font-size: 10px;
+  font-weight: 700;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+}
+.bs-sub {
+  font-size: 11px;
+  color: var(--ink-500);
+}
+.bs-power {
+  color: var(--ink-300);
+}
+.bs-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bs-copy {
+  height: 28px;
+  min-width: 84px;
+}
+
+.bs-body {
+  padding: 14px 18px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bs-section h3 {
+  margin: 0 0 4px;
+  color: var(--ink-500);
+}
+.bs-empty {
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.bs-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--steel-800);
+  font-size: 13px;
+  color: var(--ink-100);
+}
+.bs-row:last-child {
+  border-bottom: none;
+}
+.bs-count {
+  color: var(--ink-300);
+  min-width: 32px;
+}
+.bs-name {
+  color: var(--ink-100);
+}
+.bs-clock,
+.bs-tier {
+  color: var(--ink-300);
+  font-size: 12px;
+}
+.bs-recipe {
+  color: var(--ink-500);
+}
+.bs-arrow {
+  color: var(--ink-500);
+}
+.bs-rate {
+  margin-left: auto;
+  color: var(--ink-100);
+}
+.bs-src {
+  font-size: 10px;
+  color: var(--ink-500);
+  text-align: right;
+  min-width: 150px;
+}
+.bs-len {
+  font-size: 11px;
+  color: var(--ink-500);
+  min-width: 56px;
+  text-align: right;
+}
+
+/* Print: flatten to an ink-on-paper checklist. Only the sheet shows; the
+ * scrim/modal chrome and app shell drop away. */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .bs-scrim,
+  .bs-scrim * {
+    visibility: visible !important;
+  }
+  .bs-scrim {
+    position: absolute;
+    inset: 0;
+    background: white;
+    display: block;
+  }
+  .bs-modal {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    border: none;
+    clip-path: none;
+    background: white;
+    color: black;
+  }
+  .bs-head {
+    border-bottom: 2px solid black;
+  }
+  .bs-stamp {
+    background: black;
+    color: white;
+  }
+  .bs-sub,
+  .bs-power,
+  .bs-name,
+  .bs-count,
+  .bs-clock,
+  .bs-tier,
+  .bs-recipe,
+  .bs-arrow,
+  .bs-rate,
+  .bs-src,
+  .bs-len,
+  .bs-section h3,
+  .t-title {
+    color: black !important;
+  }
+  .bs-row {
+    border-bottom: 1px solid var(--ink-500);
+  }
+  .bs-actions {
+    display: none !important;
+  }
+}
