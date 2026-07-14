@@ -2104,7 +2104,27 @@ impl Session {
                     next_shed,
                 });
             }
-            derived.total_generation_mw = self.state.factories.keys().map(gen_of).sum();
+            // Empire generation is authoritative from every generator group's
+            // nameplate × count × clock (#58). This equals the solved POWER_ITEM
+            // output when a fuel recipe runs, but stays honest for imported
+            // generators — which carry no recipe, so the solver yields 0 and a
+            // gen_of sum over the derived set would read a false "NO GEN". Per-grid
+            // generation above still uses the solved output for in-grid members.
+            derived.total_generation_mw = self
+                .state
+                .groups
+                .values()
+                .filter_map(
+                    |g| match self.gamedata.machines.get(&g.machine).map(|m| &m.kind) {
+                        Some(gamedata::docs::MachineKind::Generator {
+                            power_production_mw,
+                        }) => Some(
+                            power_production_mw * g.effective_count() as f64 * g.effective_clock(),
+                        ),
+                        _ => None,
+                    },
+                )
+                .sum();
         }
         // Build queue: a pure projection over canonical state + gamedata,
         // recomputed here like circuits/deficits (no stored ordering entity).

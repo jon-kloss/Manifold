@@ -1393,6 +1393,56 @@ fn generator_factories_and_circuits() {
 }
 
 #[test]
+fn imported_generator_counts_nameplate_without_fuel() {
+    // Power honesty (#58): an imported ◆ coal plant has generators but no traced
+    // coal supply, so the fuel-burn recipe solves to 0 POWER_ITEM. Generation
+    // must still reflect nameplate × count × clock, else the empire power balance
+    // reads a false "NO GEN" for every imported world.
+    let mut s = Session::in_memory(None).unwrap();
+    // Real generators carry NO recipe in the save (nothing to read), exactly the
+    // case that made the solver report 0 generation for imports.
+    let gen_mach = |x: f64| app::import::ImportMachine {
+        class: "Build_GeneratorCoal_C".into(),
+        recipe: None,
+        clock: 1.0,
+        x,
+        y: 0.0,
+        z: 0.0,
+        ..Default::default()
+    };
+    // Import 4 coal generators as ◆ BUILT — clustered into one group of 4, with
+    // NO coal supply anywhere (the fuel chain is untraced, as in a real import).
+    s.import_save(app::import::ImportSnapshot {
+        save_name: "IMPORT-GEN".into(),
+        machines: vec![
+            gen_mach(0.0),
+            gen_mach(40.0),
+            gen_mach(80.0),
+            gen_mach(120.0),
+        ],
+        ..Default::default()
+    })
+    .unwrap();
+    let gens = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_GeneratorCoal_C")
+        .expect("imported generator group");
+    assert_eq!(gens.status, Status::Built, "imported as ◆ built");
+    assert_eq!(gens.recipe, "", "no recipe was read from the save");
+    assert_eq!(gens.count, 4, "4 generators clustered into one group");
+    // The empire power balance (the summary's source) must reflect nameplate
+    // generation — 4 × 75 MW = 300 MW — not the solver's fuel-starved 0.
+    let d = s.solve_all_readonly();
+    assert!(
+        (d.total_generation_mw - 300.0).abs() < 1e-4,
+        "empire generation honest without a fuel recipe: {}",
+        d.total_generation_mw
+    );
+}
+
+#[test]
 fn floor_assignment_is_undoable_and_persists() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("world.ficsit");
