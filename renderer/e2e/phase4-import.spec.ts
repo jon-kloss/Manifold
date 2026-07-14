@@ -32,6 +32,9 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   await expect(page.getByTestId("import-done")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("import-done")).toContainText("13 factories · 867 machines imported as ◆ BUILT");
   await expect(page.getByTestId("import-done")).toContainText("quarantined");
+  // the header is snapshotted at open: a FIRST import must not relabel itself
+  // "RE-IMPORT SAVE" the instant its own write lands
+  await expect(page.locator('[data-testid="import-modal"] .t-title')).toHaveText("IMPORT SAVE AS BUILT");
   await page.locator(".wizard-foot .btn-primary").click();
   expect(await factoryCount()).toBe(before + 13);
   // 13 clustered pins → the declutter pass may cull this chip at world zoom;
@@ -58,6 +61,7 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   await importSave(page, "Dunarr-076.sav");
   await expect(page.getByTestId("import-done")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("import-done")).toContainText("IN SYNC");
+  await expect(page.locator('[data-testid="import-modal"] .t-title')).toHaveText("RE-IMPORT SAVE");
   await page.locator(".wizard-foot .btn-primary").click();
 
   // ---- a different world's save: pure game drift → review + DIFF rows ----

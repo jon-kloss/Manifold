@@ -1160,3 +1160,35 @@ fn drift_import_leaves_non_reimport_drafts_open() {
     );
     s.accept_proposal(&wizard_pid).unwrap();
 }
+
+/// Fuel-less generators (geothermal) are real machines: their clusters take
+/// the machine's display name instead of the "IMPORTED" fallback, and their
+/// variable-power average counts toward empire generation instead of 0.
+/// Regression from the first real-save import: 20 geothermal units produced
+/// 12 factories named "IMPORTED WORKS N" contributing no MW.
+#[test]
+fn geothermal_cluster_names_itself_and_counts_generation() {
+    let mut s = Session::in_memory(None).unwrap();
+    let machines = vec![
+        m("Build_GeneratorGeoThermal_C", "", 0.0, 0.0),
+        m("Build_GeneratorGeoThermal_C", "", 50.0, 0.0),
+    ];
+    s.import_save(snapshot(machines)).unwrap();
+
+    let f = s
+        .state
+        .factories
+        .values()
+        .next()
+        .expect("one imported factory");
+    assert_eq!(
+        f.name, "GEOTHERMAL GENERATOR WORKS 1",
+        "fuel-less generator clusters name themselves by machine"
+    );
+    let hydrated = s.hydrate();
+    let gen = hydrated["derived"]["totalGenerationMw"].as_f64().unwrap();
+    assert!(
+        (gen - 400.0).abs() < 1e-6,
+        "2 geothermal x 200 MW average counts as generation, got {gen}"
+    );
+}

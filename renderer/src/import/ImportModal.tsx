@@ -18,11 +18,15 @@ type Phase =
 export default function ImportModal({ file, onClose }: { file: File; onClose: () => void }) {
   const hydrate = useStore((s) => s.hydrate);
   const setReviewing = useStore((s) => s.setReviewing);
-  const plan = useStore((s) => s.plan);
   const [phase, setPhase] = useState<Phase | null>(null);
   const started = useRef(false);
 
-  const hasBuilt = Object.values(plan.factories).some((f) => f.status === "built");
+  // Snapshot at mount: a FIRST import flips the plan to built mid-flow, and a
+  // live read would relabel the header "RE-IMPORT SAVE" while its own done
+  // message still reads "imported as ◆ BUILT".
+  const [hasBuilt] = useState(() =>
+    Object.values(useStore.getState().plan.factories).some((f) => f.status === "built"),
+  );
 
   const start = useCallback(async () => {
     setPhase({ step: "parsing", name: file.name });

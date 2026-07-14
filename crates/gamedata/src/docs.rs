@@ -369,13 +369,24 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
                     }
                 }
             }
-            "FGBuildableGeneratorFuel" | "FGBuildableGeneratorNuclear" => {
+            "FGBuildableGeneratorFuel"
+            | "FGBuildableGeneratorNuclear"
+            | "FGBuildableGeneratorGeoThermal" => {
                 for c in &classes {
                     let class_name = s(c, "ClassName");
                     if class_name.is_empty() {
                         continue;
                     }
-                    let mw = f(c, "mPowerProduction");
+                    // Geothermal is fuel-less variable power: mPowerProduction
+                    // is 0 and mVariablePowerProductionFactor carries the
+                    // normal-purity AVERAGE (200 MW; the game cycles ±50% and
+                    // scales by geyser purity, which imports don't know) — an
+                    // honest nameplate, and it keeps the 20-generator geo farm
+                    // of a real save from reading 0 MW / "IMPORTED WORKS".
+                    let mw = match f(c, "mPowerProduction") {
+                        p if p > 0.0 => p,
+                        _ => f(c, "mVariablePowerProductionFactor"),
+                    };
                     // fuel classes: modern Docs nests them in mFuel[].mFuelClass
                     let mut fuels: Vec<String> = Vec::new();
                     if let Some(list) = c.get("mFuel").and_then(Value::as_array) {
@@ -627,6 +638,34 @@ mod tests {
         assert_eq!(burn.ingredients, vec![("Desc_Coal_C".to_string(), 15.0)]);
         assert_eq!(burn.products, vec![(POWER_ITEM.to_string(), 75.0)]);
         assert_eq!(gd.items[POWER_ITEM].display_name, "Power");
+    }
+
+    #[test]
+    fn geothermal_parses_as_generator_at_variable_average() {
+        // Fuel-less variable-power generator: mPowerProduction is 0 in the
+        // real file and mVariablePowerProductionFactor carries the 200 MW
+        // normal-purity average. Missing this class made a real save's geo
+        // farm read 0 MW and name its clusters "IMPORTED WORKS".
+        let text = r#"[
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableGeneratorGeoThermal'",
+            "Classes": [
+              {
+                "ClassName": "Build_GeneratorGeoThermal_C",
+                "mDisplayName": "Geothermal Generator",
+                "mPowerProduction": "0.000000",
+                "mVariablePowerProductionFactor": "200.000000"
+              }
+            ]
+          }
+        ]"#;
+        let gd = parse_docs(text, "test").unwrap();
+        let m = &gd.machines["Build_GeneratorGeoThermal_C"];
+        assert!(
+            matches!(m.kind, MachineKind::Generator { power_production_mw } if power_production_mw == 200.0),
+            "geothermal is a generator at the variable-power average"
+        );
+        assert_eq!(m.display_name, "Geothermal Generator");
     }
 
     #[test]

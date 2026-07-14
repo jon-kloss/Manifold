@@ -1,243 +1,459 @@
 [
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGResourceDescriptor'",
-    "Classes": [
-      { "ClassName": "Desc_OreIron_C", "mDisplayName": "Iron Ore", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_OreCopper_C", "mDisplayName": "Copper Ore", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_Stone_C", "mDisplayName": "Limestone", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_Coal_C", "mDisplayName": "Coal", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE", "mEnergyValue": "300.000000" },
-      { "ClassName": "Desc_LiquidOil_C", "mDisplayName": "Crude Oil", "mForm": "RF_LIQUID", "mStackSize": "SS_FLUID", "mEnergyValue": "320.000000" }
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGResourceDescriptor'",
+  "Classes": [
+   {
+    "ClassName": "Desc_OreIron_C",
+    "mDisplayName": "Iron Ore",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_OreCopper_C",
+    "mDisplayName": "Copper Ore",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_Stone_C",
+    "mDisplayName": "Limestone",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_Coal_C",
+    "mDisplayName": "Coal",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE",
+    "mEnergyValue": "300.000000"
+   },
+   {
+    "ClassName": "Desc_LiquidOil_C",
+    "mDisplayName": "Crude Oil",
+    "mForm": "RF_LIQUID",
+    "mStackSize": "SS_FLUID",
+    "mEnergyValue": "320.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
+  "Classes": [
+   {
+    "ClassName": "Desc_IronIngot_C",
+    "mDisplayName": "Iron Ingot",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_IronRod_C",
+    "mDisplayName": "Iron Rod",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_IronScrew_C",
+    "mDisplayName": "Screw",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_HUGE"
+   },
+   {
+    "ClassName": "Desc_IronPlate_C",
+    "mDisplayName": "Iron Plate",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_IronPlateReinforced_C",
+    "mDisplayName": "Reinforced Iron Plate",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_MEDIUM"
+   },
+   {
+    "ClassName": "Desc_ModularFrame_C",
+    "mDisplayName": "Modular Frame",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_MEDIUM"
+   },
+   {
+    "ClassName": "Desc_CopperIngot_C",
+    "mDisplayName": "Copper Ingot",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_Wire_C",
+    "mDisplayName": "Wire",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_HUGE"
+   },
+   {
+    "ClassName": "Desc_Cable_C",
+    "mDisplayName": "Cable",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_Cement_C",
+    "mDisplayName": "Concrete",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_LARGE"
+   },
+   {
+    "ClassName": "Desc_LiquidFuel_C",
+    "mDisplayName": "Fuel",
+    "mForm": "RF_LIQUID",
+    "mStackSize": "SS_FLUID",
+    "mEnergyValue": "750.000000"
+   },
+   {
+    "ClassName": "Desc_Diamond_C",
+    "mDisplayName": "Diamonds",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_MEDIUM"
+   },
+   {
+    "ClassName": "Desc_DarkMatter_C",
+    "mDisplayName": "Dark Matter Crystal",
+    "mForm": "RF_SOLID",
+    "mStackSize": "SS_MEDIUM"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGRecipe'",
+  "Classes": [
+   {
+    "ClassName": "Recipe_IngotIron_C",
+    "mDisplayName": "Iron Ingot",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/OreIron/Desc_OreIron.Desc_OreIron_C'\",Amount=1))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=1))",
+    "mManufactoringDuration": "2.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/SmelterMk1/Build_SmelterMk1.Build_SmelterMk1_C\")",
+    "mVariablePowerConsumptionConstant": "0.000000",
+    "mVariablePowerConsumptionFactor": "1.000000"
+   },
+   {
+    "ClassName": "Recipe_IngotCopper_C",
+    "mDisplayName": "Copper Ingot",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/OreCopper/Desc_OreCopper.Desc_OreCopper_C'\",Amount=1))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/CopperIngot/Desc_CopperIngot.Desc_CopperIngot_C'\",Amount=1))",
+    "mManufactoringDuration": "2.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/SmelterMk1/Build_SmelterMk1.Build_SmelterMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_IronRod_C",
+    "mDisplayName": "Iron Rod",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=1))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronRod/Desc_IronRod.Desc_IronRod_C'\",Amount=1))",
+    "mManufactoringDuration": "4.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_Screw_C",
+    "mDisplayName": "Screw",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronRod/Desc_IronRod.Desc_IronRod_C'\",Amount=1))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'\",Amount=4))",
+    "mManufactoringDuration": "6.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_Alternate_Screw_C",
+    "mDisplayName": "Alternate: Cast Screw",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=5))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'\",Amount=20))",
+    "mManufactoringDuration": "24.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_IronPlate_C",
+    "mDisplayName": "Iron Plate",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=3))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'\",Amount=2))",
+    "mManufactoringDuration": "6.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_IronPlateReinforced_C",
+    "mDisplayName": "Reinforced Iron Plate",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'\",Amount=6),(ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'\",Amount=12))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlateReinforced/Desc_IronPlateReinforced.Desc_IronPlateReinforced_C'\",Amount=1))",
+    "mManufactoringDuration": "12.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/AssemblerMk1/Build_AssemblerMk1.Build_AssemblerMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_ModularFrame_C",
+    "mDisplayName": "Modular Frame",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlateReinforced/Desc_IronPlateReinforced.Desc_IronPlateReinforced_C'\",Amount=3),(ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronRod/Desc_IronRod.Desc_IronRod_C'\",Amount=12))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/ModularFrame/Desc_ModularFrame.Desc_ModularFrame_C'\",Amount=2))",
+    "mManufactoringDuration": "60.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/AssemblerMk1/Build_AssemblerMk1.Build_AssemblerMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_Wire_C",
+    "mDisplayName": "Wire",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/CopperIngot/Desc_CopperIngot.Desc_CopperIngot_C'\",Amount=1))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Wire/Desc_Wire.Desc_Wire_C'\",Amount=2))",
+    "mManufactoringDuration": "4.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_Cable_C",
+    "mDisplayName": "Cable",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Wire/Desc_Wire.Desc_Wire_C'\",Amount=2))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Cable/Desc_Cable.Desc_Cable_C'\",Amount=1))",
+    "mManufactoringDuration": "2.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_Concrete_C",
+    "mDisplayName": "Concrete",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/Stone/Desc_Stone.Desc_Stone_C'\",Amount=3))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Cement/Desc_Cement.Desc_Cement_C'\",Amount=1))",
+    "mManufactoringDuration": "4.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
+   },
+   {
+    "ClassName": "Recipe_LiquidFuel_C",
+    "mDisplayName": "Fuel",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/CrudeOil/Desc_LiquidOil.Desc_LiquidOil_C'\",Amount=6000))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Fuel/Desc_LiquidFuel.Desc_LiquidFuel_C'\",Amount=4000))",
+    "mManufactoringDuration": "6.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/OilRefinery/Build_OilRefinery.Build_OilRefinery_C\")"
+   },
+   {
+    "ClassName": "Recipe_Diamond_C",
+    "mDisplayName": "Diamonds",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/Coal/Desc_Coal.Desc_Coal_C'\",Amount=20))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Diamond/Desc_Diamond.Desc_Diamond_C'\",Amount=1))",
+    "mManufactoringDuration": "2.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/HadronCollider/Build_HadronCollider.Build_HadronCollider_C\")",
+    "mVariablePowerConsumptionConstant": "250.000000",
+    "mVariablePowerConsumptionFactor": "500.000000"
+   },
+   {
+    "ClassName": "Recipe_DarkMatter_C",
+    "mDisplayName": "Dark Matter Crystal",
+    "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Diamond/Desc_Diamond.Desc_Diamond_C'\",Amount=1))",
+    "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/DarkMatter/Desc_DarkMatter.Desc_DarkMatter_C'\",Amount=1))",
+    "mManufactoringDuration": "2.000000",
+    "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/HadronCollider/Build_HadronCollider.Build_HadronCollider_C\")",
+    "mVariablePowerConsumptionConstant": "500.000000",
+    "mVariablePowerConsumptionFactor": "1000.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableManufacturer'",
+  "Classes": [
+   {
+    "ClassName": "Build_SmelterMk1_C",
+    "mDisplayName": "Smelter",
+    "mPowerConsumption": "4.000000",
+    "mManufacturingSpeed": "1.000000"
+   },
+   {
+    "ClassName": "Build_ConstructorMk1_C",
+    "mDisplayName": "Constructor",
+    "mPowerConsumption": "4.000000",
+    "mManufacturingSpeed": "1.000000"
+   },
+   {
+    "ClassName": "Build_AssemblerMk1_C",
+    "mDisplayName": "Assembler",
+    "mPowerConsumption": "15.000000",
+    "mManufacturingSpeed": "1.000000"
+   },
+   {
+    "ClassName": "Build_FoundryMk1_C",
+    "mDisplayName": "Foundry",
+    "mPowerConsumption": "16.000000",
+    "mManufacturingSpeed": "1.000000"
+   },
+   {
+    "ClassName": "Build_OilRefinery_C",
+    "mDisplayName": "Refinery",
+    "mPowerConsumption": "30.000000",
+    "mManufacturingSpeed": "1.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableManufacturerVariablePower'",
+  "Classes": [
+   {
+    "ClassName": "Build_HadronCollider_C",
+    "mDisplayName": "Particle Accelerator",
+    "mPowerConsumption": "0.000000",
+    "mEstimatedMininumPowerConsumption": "250.000000",
+    "mEstimatedMaximumPowerConsumption": "750.000000",
+    "mManufacturingSpeed": "1.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableResourceExtractor'",
+  "Classes": [
+   {
+    "ClassName": "Build_MinerMk1_C",
+    "mDisplayName": "Miner Mk.1",
+    "mPowerConsumption": "5.000000",
+    "mItemsPerCycle": "1.000000",
+    "mExtractCycleTime": "1.000000"
+   },
+   {
+    "ClassName": "Build_MinerMk2_C",
+    "mDisplayName": "Miner Mk.2",
+    "mPowerConsumption": "12.000000",
+    "mItemsPerCycle": "2.000000",
+    "mExtractCycleTime": "1.000000"
+   },
+   {
+    "ClassName": "Build_MinerMk3_C",
+    "mDisplayName": "Miner Mk.3",
+    "mPowerConsumption": "30.000000",
+    "mItemsPerCycle": "4.000000",
+    "mExtractCycleTime": "1.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableGeneratorFuel'",
+  "Classes": [
+   {
+    "ClassName": "Build_GeneratorCoal_C",
+    "mDisplayName": "Coal-Powered Generator",
+    "mPowerProduction": "75.000000",
+    "mFuel": [
+     {
+      "mFuelClass": "Desc_Coal_C",
+      "mSupplementalResourceClass": "Desc_Water_C",
+      "mByproduct": ""
+     }
     ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
-    "Classes": [
-      { "ClassName": "Desc_IronIngot_C", "mDisplayName": "Iron Ingot", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_IronRod_C", "mDisplayName": "Iron Rod", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_IronScrew_C", "mDisplayName": "Screw", "mForm": "RF_SOLID", "mStackSize": "SS_HUGE" },
-      { "ClassName": "Desc_IronPlate_C", "mDisplayName": "Iron Plate", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_IronPlateReinforced_C", "mDisplayName": "Reinforced Iron Plate", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" },
-      { "ClassName": "Desc_ModularFrame_C", "mDisplayName": "Modular Frame", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" },
-      { "ClassName": "Desc_CopperIngot_C", "mDisplayName": "Copper Ingot", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_Wire_C", "mDisplayName": "Wire", "mForm": "RF_SOLID", "mStackSize": "SS_HUGE" },
-      { "ClassName": "Desc_Cable_C", "mDisplayName": "Cable", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_Cement_C", "mDisplayName": "Concrete", "mForm": "RF_SOLID", "mStackSize": "SS_LARGE" },
-      { "ClassName": "Desc_LiquidFuel_C", "mDisplayName": "Fuel", "mForm": "RF_LIQUID", "mStackSize": "SS_FLUID", "mEnergyValue": "750.000000" },
-      { "ClassName": "Desc_Diamond_C", "mDisplayName": "Diamonds", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" },
-      { "ClassName": "Desc_DarkMatter_C", "mDisplayName": "Dark Matter Crystal", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" }
+   },
+   {
+    "ClassName": "Build_GeneratorFuel_C",
+    "mDisplayName": "Fuel-Powered Generator",
+    "mPowerProduction": "250.000000",
+    "mFuel": [
+     {
+      "mFuelClass": "Desc_LiquidFuel_C",
+      "mSupplementalResourceClass": "",
+      "mByproduct": ""
+     }
     ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGRecipe'",
-    "Classes": [
-      {
-        "ClassName": "Recipe_IngotIron_C",
-        "mDisplayName": "Iron Ingot",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/OreIron/Desc_OreIron.Desc_OreIron_C'\",Amount=1))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=1))",
-        "mManufactoringDuration": "2.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/SmelterMk1/Build_SmelterMk1.Build_SmelterMk1_C\")",
-        "mVariablePowerConsumptionConstant": "0.000000",
-        "mVariablePowerConsumptionFactor": "1.000000"
-      },
-      {
-        "ClassName": "Recipe_IngotCopper_C",
-        "mDisplayName": "Copper Ingot",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/OreCopper/Desc_OreCopper.Desc_OreCopper_C'\",Amount=1))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/CopperIngot/Desc_CopperIngot.Desc_CopperIngot_C'\",Amount=1))",
-        "mManufactoringDuration": "2.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/SmelterMk1/Build_SmelterMk1.Build_SmelterMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_IronRod_C",
-        "mDisplayName": "Iron Rod",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=1))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronRod/Desc_IronRod.Desc_IronRod_C'\",Amount=1))",
-        "mManufactoringDuration": "4.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_Screw_C",
-        "mDisplayName": "Screw",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronRod/Desc_IronRod.Desc_IronRod_C'\",Amount=1))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'\",Amount=4))",
-        "mManufactoringDuration": "6.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_Alternate_Screw_C",
-        "mDisplayName": "Alternate: Cast Screw",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=5))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'\",Amount=20))",
-        "mManufactoringDuration": "24.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_IronPlate_C",
-        "mDisplayName": "Iron Plate",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronIngot/Desc_IronIngot.Desc_IronIngot_C'\",Amount=3))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'\",Amount=2))",
-        "mManufactoringDuration": "6.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_IronPlateReinforced_C",
-        "mDisplayName": "Reinforced Iron Plate",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'\",Amount=6),(ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronScrew/Desc_IronScrew.Desc_IronScrew_C'\",Amount=12))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlateReinforced/Desc_IronPlateReinforced.Desc_IronPlateReinforced_C'\",Amount=1))",
-        "mManufactoringDuration": "12.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/AssemblerMk1/Build_AssemblerMk1.Build_AssemblerMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_ModularFrame_C",
-        "mDisplayName": "Modular Frame",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlateReinforced/Desc_IronPlateReinforced.Desc_IronPlateReinforced_C'\",Amount=3),(ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronRod/Desc_IronRod.Desc_IronRod_C'\",Amount=12))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/ModularFrame/Desc_ModularFrame.Desc_ModularFrame_C'\",Amount=2))",
-        "mManufactoringDuration": "60.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/AssemblerMk1/Build_AssemblerMk1.Build_AssemblerMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_Wire_C",
-        "mDisplayName": "Wire",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/CopperIngot/Desc_CopperIngot.Desc_CopperIngot_C'\",Amount=1))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Wire/Desc_Wire.Desc_Wire_C'\",Amount=2))",
-        "mManufactoringDuration": "4.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_Cable_C",
-        "mDisplayName": "Cable",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Wire/Desc_Wire.Desc_Wire_C'\",Amount=2))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Cable/Desc_Cable.Desc_Cable_C'\",Amount=1))",
-        "mManufactoringDuration": "2.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_Concrete_C",
-        "mDisplayName": "Concrete",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/Stone/Desc_Stone.Desc_Stone_C'\",Amount=3))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Cement/Desc_Cement.Desc_Cement_C'\",Amount=1))",
-        "mManufactoringDuration": "4.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/ConstructorMk1/Build_ConstructorMk1.Build_ConstructorMk1_C\")"
-      },
-      {
-        "ClassName": "Recipe_LiquidFuel_C",
-        "mDisplayName": "Fuel",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/CrudeOil/Desc_LiquidOil.Desc_LiquidOil_C'\",Amount=6000))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Fuel/Desc_LiquidFuel.Desc_LiquidFuel_C'\",Amount=4000))",
-        "mManufactoringDuration": "6.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/OilRefinery/Build_OilRefinery.Build_OilRefinery_C\")"
-      },
-      {
-        "ClassName": "Recipe_Diamond_C",
-        "mDisplayName": "Diamonds",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/Coal/Desc_Coal.Desc_Coal_C'\",Amount=20))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Diamond/Desc_Diamond.Desc_Diamond_C'\",Amount=1))",
-        "mManufactoringDuration": "2.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/HadronCollider/Build_HadronCollider.Build_HadronCollider_C\")",
-        "mVariablePowerConsumptionConstant": "250.000000",
-        "mVariablePowerConsumptionFactor": "500.000000"
-      },
-      {
-        "ClassName": "Recipe_DarkMatter_C",
-        "mDisplayName": "Dark Matter Crystal",
-        "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Diamond/Desc_Diamond.Desc_Diamond_C'\",Amount=1))",
-        "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/DarkMatter/Desc_DarkMatter.Desc_DarkMatter_C'\",Amount=1))",
-        "mManufactoringDuration": "2.000000",
-        "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/HadronCollider/Build_HadronCollider.Build_HadronCollider_C\")",
-        "mVariablePowerConsumptionConstant": "500.000000",
-        "mVariablePowerConsumptionFactor": "1000.000000"
-      }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableManufacturer'",
-    "Classes": [
-      { "ClassName": "Build_SmelterMk1_C", "mDisplayName": "Smelter", "mPowerConsumption": "4.000000", "mManufacturingSpeed": "1.000000" },
-      { "ClassName": "Build_ConstructorMk1_C", "mDisplayName": "Constructor", "mPowerConsumption": "4.000000", "mManufacturingSpeed": "1.000000" },
-      { "ClassName": "Build_AssemblerMk1_C", "mDisplayName": "Assembler", "mPowerConsumption": "15.000000", "mManufacturingSpeed": "1.000000" },
-      { "ClassName": "Build_FoundryMk1_C", "mDisplayName": "Foundry", "mPowerConsumption": "16.000000", "mManufacturingSpeed": "1.000000" },
-      { "ClassName": "Build_OilRefinery_C", "mDisplayName": "Refinery", "mPowerConsumption": "30.000000", "mManufacturingSpeed": "1.000000" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableManufacturerVariablePower'",
-    "Classes": [
-      { "ClassName": "Build_HadronCollider_C", "mDisplayName": "Particle Accelerator", "mPowerConsumption": "0.000000", "mEstimatedMininumPowerConsumption": "250.000000", "mEstimatedMaximumPowerConsumption": "750.000000", "mManufacturingSpeed": "1.000000" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableResourceExtractor'",
-    "Classes": [
-      { "ClassName": "Build_MinerMk1_C", "mDisplayName": "Miner Mk.1", "mPowerConsumption": "5.000000", "mItemsPerCycle": "1.000000", "mExtractCycleTime": "1.000000" },
-      { "ClassName": "Build_MinerMk2_C", "mDisplayName": "Miner Mk.2", "mPowerConsumption": "12.000000", "mItemsPerCycle": "2.000000", "mExtractCycleTime": "1.000000" },
-      { "ClassName": "Build_MinerMk3_C", "mDisplayName": "Miner Mk.3", "mPowerConsumption": "30.000000", "mItemsPerCycle": "4.000000", "mExtractCycleTime": "1.000000" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableGeneratorFuel'",
-    "Classes": [
-      {
-        "ClassName": "Build_GeneratorCoal_C",
-        "mDisplayName": "Coal-Powered Generator",
-        "mPowerProduction": "75.000000",
-        "mFuel": [
-          { "mFuelClass": "Desc_Coal_C", "mSupplementalResourceClass": "Desc_Water_C", "mByproduct": "" }
-        ]
-      },
-      {
-        "ClassName": "Build_GeneratorFuel_C",
-        "mDisplayName": "Fuel-Powered Generator",
-        "mPowerProduction": "250.000000",
-        "mFuel": [
-          { "mFuelClass": "Desc_LiquidFuel_C", "mSupplementalResourceClass": "", "mByproduct": "" }
-        ]
-      }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableAttachmentSplitter'",
-    "Classes": [
-      { "ClassName": "Build_ConveyorAttachmentSplitter_C", "mDisplayName": "Conveyor Splitter" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableSplitterSmart'",
-    "Classes": [
-      { "ClassName": "Build_ConveyorAttachmentSplitterSmart_C", "mDisplayName": "Smart Splitter" },
-      { "ClassName": "Build_ConveyorAttachmentSplitterProgrammable_C", "mDisplayName": "Programmable Splitter" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableAttachmentMerger'",
-    "Classes": [
-      { "ClassName": "Build_ConveyorAttachmentMerger_C", "mDisplayName": "Conveyor Merger" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableStorage'",
-    "Classes": [
-      { "ClassName": "Build_StorageContainerMk1_C", "mDisplayName": "Storage Container" },
-      { "ClassName": "Build_StorageContainerMk2_C", "mDisplayName": "Industrial Storage Container" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableConveyorLift'",
-    "Classes": [
-      { "ClassName": "Build_ConveyorLiftMk1_C", "mDisplayName": "Conveyor Lift Mk.1", "mSpeed": "120.000000" },
-      { "ClassName": "Build_ConveyorLiftMk2_C", "mDisplayName": "Conveyor Lift Mk.2", "mSpeed": "240.000000" },
-      { "ClassName": "Build_ConveyorLiftMk3_C", "mDisplayName": "Conveyor Lift Mk.3", "mSpeed": "540.000000" }
-    ]
-  },
-  {
-    "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableConveyorBelt'",
-    "Classes": [
-      { "ClassName": "Build_ConveyorBeltMk1_C", "mDisplayName": "Conveyor Belt Mk.1", "mSpeed": "120.000000" },
-      { "ClassName": "Build_ConveyorBeltMk2_C", "mDisplayName": "Conveyor Belt Mk.2", "mSpeed": "240.000000" },
-      { "ClassName": "Build_ConveyorBeltMk3_C", "mDisplayName": "Conveyor Belt Mk.3", "mSpeed": "540.000000" },
-      { "ClassName": "Build_ConveyorBeltMk4_C", "mDisplayName": "Conveyor Belt Mk.4", "mSpeed": "960.000000" },
-      { "ClassName": "Build_ConveyorBeltMk5_C", "mDisplayName": "Conveyor Belt Mk.5", "mSpeed": "1560.000000" },
-      { "ClassName": "Build_ConveyorBeltMk6_C", "mDisplayName": "Conveyor Belt Mk.6", "mSpeed": "2400.000000" }
-    ]
-  }
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableAttachmentSplitter'",
+  "Classes": [
+   {
+    "ClassName": "Build_ConveyorAttachmentSplitter_C",
+    "mDisplayName": "Conveyor Splitter"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableSplitterSmart'",
+  "Classes": [
+   {
+    "ClassName": "Build_ConveyorAttachmentSplitterSmart_C",
+    "mDisplayName": "Smart Splitter"
+   },
+   {
+    "ClassName": "Build_ConveyorAttachmentSplitterProgrammable_C",
+    "mDisplayName": "Programmable Splitter"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableAttachmentMerger'",
+  "Classes": [
+   {
+    "ClassName": "Build_ConveyorAttachmentMerger_C",
+    "mDisplayName": "Conveyor Merger"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableStorage'",
+  "Classes": [
+   {
+    "ClassName": "Build_StorageContainerMk1_C",
+    "mDisplayName": "Storage Container"
+   },
+   {
+    "ClassName": "Build_StorageContainerMk2_C",
+    "mDisplayName": "Industrial Storage Container"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableConveyorLift'",
+  "Classes": [
+   {
+    "ClassName": "Build_ConveyorLiftMk1_C",
+    "mDisplayName": "Conveyor Lift Mk.1",
+    "mSpeed": "120.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorLiftMk2_C",
+    "mDisplayName": "Conveyor Lift Mk.2",
+    "mSpeed": "240.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorLiftMk3_C",
+    "mDisplayName": "Conveyor Lift Mk.3",
+    "mSpeed": "540.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableConveyorBelt'",
+  "Classes": [
+   {
+    "ClassName": "Build_ConveyorBeltMk1_C",
+    "mDisplayName": "Conveyor Belt Mk.1",
+    "mSpeed": "120.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorBeltMk2_C",
+    "mDisplayName": "Conveyor Belt Mk.2",
+    "mSpeed": "240.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorBeltMk3_C",
+    "mDisplayName": "Conveyor Belt Mk.3",
+    "mSpeed": "540.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorBeltMk4_C",
+    "mDisplayName": "Conveyor Belt Mk.4",
+    "mSpeed": "960.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorBeltMk5_C",
+    "mDisplayName": "Conveyor Belt Mk.5",
+    "mSpeed": "1560.000000"
+   },
+   {
+    "ClassName": "Build_ConveyorBeltMk6_C",
+    "mDisplayName": "Conveyor Belt Mk.6",
+    "mSpeed": "2400.000000"
+   }
+  ]
+ },
+ {
+  "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGBuildableGeneratorGeoThermal'",
+  "Classes": [
+   {
+    "ClassName": "Build_GeneratorGeoThermal_C",
+    "mDisplayName": "Geothermal Generator",
+    "mPowerProduction": "0.000000",
+    "mVariablePowerProductionFactor": "200.000000"
+   }
+  ]
+ }
 ]
