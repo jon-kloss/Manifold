@@ -131,11 +131,13 @@ pub fn chat(s: &mut Session, _scope: &ContextScope, message: &str) -> ChatReply 
         .or_else(|| msg.find("produce ").map(|i| &msg[i + "produce ".len()..]))
     {
         if let Some((item_part, rate_part)) = rest.split_once(" at ") {
+            // Take the first token, THEN strip "/min" — trailing words after the
+            // suffix ("… at 30/min please") must not defeat the strip. Accept a
+            // comma decimal ("22,5") as a courtesy.
             let rate: f64 = rate_part
-                .trim()
-                .trim_end_matches("/min")
                 .split_whitespace()
                 .next()
+                .map(|t| t.trim_end_matches("/min").replace(',', "."))
                 .and_then(|t| t.parse().ok())
                 .unwrap_or(0.0);
             let item = s
@@ -150,15 +152,26 @@ pub fn chat(s: &mut Session, _scope: &ContextScope, message: &str) -> ChatReply 
                         .find(|i| i.display_name.to_lowercase().contains(item_part.trim()))
                 })
                 .map(|i| (i.class_name.clone(), i.display_name.clone()));
-            if let (Some((class, display)), true) = (item, rate > 0.0) {
-                return intent_to_proposal(s, &class, &display, rate, engine);
-            }
-            return ChatReply {
-                reply: format!(
+            // Three distinct failures, three distinct replies: blaming the item
+            // when only the rate failed sends the user hunting for a naming
+            // problem that doesn't exist.
+            let reply = match (item, rate > 0.0) {
+                (Some((class, display)), true) => {
+                    return intent_to_proposal(s, &class, &display, rate, engine)
+                }
+                (Some((_, display)), false) => format!(
+                    "Matched \"{display}\", but I couldn't read a positive rate from \
+                     \"{}\". Try e.g. \"produce {display} at 30/min\".",
+                    rate_part.trim()
+                ),
+                (None, _) => format!(
                     "I couldn't match \"{}\" to an item in the catalog. Try the exact item name, \
                      e.g. \"produce Iron Rod at 30/min\".",
                     item_part.trim()
                 ),
+            };
+            return ChatReply {
+                reply,
                 causal: vec![],
                 entities: vec![],
                 proposal: None,

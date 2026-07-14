@@ -1457,3 +1457,51 @@ fn grid_split_does_not_double_count_before_demand() {
         cons.circuit_impacts
     );
 }
+
+// ---- accept fails loud on included dependency cycles (review minor M5) ----
+
+/// A dependency cycle among CHECKED items must abort accept (like unresolved
+/// aliases), never silently accept a subset the review screen showed included.
+/// Reachable only via raw CreateProposal payloads — in-repo generators emit
+/// acyclic deps — but accept must never guess.
+#[test]
+fn accept_fails_loud_on_included_dependency_cycle() {
+    let mut s = Session::in_memory(None).unwrap();
+    let a = bare_factory(&mut s, "A");
+    let b = bare_factory(&mut s, "B");
+    let mut i1 = power_route_item(&a, &b);
+    let mut i2 = power_route_item(&a, &b);
+    i1.depends_on = vec![i2.id.clone()];
+    i2.depends_on = vec![i1.id.clone()];
+    let pid = store_proposal(&mut s, vec![i1, i2]);
+
+    let err = s.accept_proposal(&pid).unwrap_err();
+    assert!(
+        format!("{err:?}").contains("dependency cycle"),
+        "names the cycle: {err:?}"
+    );
+    // Nothing applied, proposal still open for the user to fix/reject.
+    assert_eq!(s.state.proposals[&pid].status, ProposalStatus::Draft);
+    assert!(s.state.routes.is_empty(), "no partial materialization");
+}
+
+/// The documented skip stays intact: an included item whose dependency is
+/// UNCHECKED is silently skipped (that is reviewer intent, not a cycle).
+#[test]
+fn accept_still_skips_items_with_excluded_dependency() {
+    let mut s = Session::in_memory(None).unwrap();
+    let a = bare_factory(&mut s, "A");
+    let b = bare_factory(&mut s, "B");
+    let mut dep = power_route_item(&a, &b);
+    dep.included = false;
+    let mut item = power_route_item(&a, &b);
+    item.depends_on = vec![dep.id.clone()];
+    let pid = store_proposal(&mut s, vec![dep, item]);
+
+    s.accept_proposal(&pid).unwrap();
+    assert_eq!(s.state.proposals[&pid].status, ProposalStatus::Accepted);
+    assert!(
+        s.state.routes.is_empty(),
+        "excluded dep cascades the skip — nothing materialized"
+    );
+}

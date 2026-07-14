@@ -587,6 +587,16 @@ impl Session {
         if p.status == ProposalStatus::Accepted || p.status == ProposalStatus::Rejected {
             return Err(SessionError::Internal("proposal is closed".into()));
         }
+        // Fail loud instead of silently accepting a subset: a dependency cycle
+        // among CHECKED items would otherwise drop them all while the response
+        // still reads ACCEPTED (reachable via raw CreateProposal payloads).
+        let cycles = cycle_dropped(&p);
+        if !cycles.is_empty() {
+            return Err(SessionError::Internal(format!(
+                "cannot accept: dependency cycle among included items ({})",
+                cycles.join(", ")
+            )));
+        }
         let label = format!("accept proposal #{}", p.number);
         let mut tx = Transaction::new(label);
         let mut symbols: BTreeMap<String, Id> = BTreeMap::new();
@@ -1310,7 +1320,26 @@ impl Session {
             items,
             milestone: None,
         };
-        let response = self.edit(vec![Command::CreateProposal { proposal }])?;
+        // Each new drift diff supersedes every still-open one (a newer diff is a
+        // cumulative superset): reject stale SaveReimport proposals in the same
+        // edit, so the review surface and PLAN DRIFT tab never offer obsolete
+        // SyncOps whose accept would rewrite the ◆ layer with old counts. One
+        // batch → one undoable step.
+        let mut cmds: Vec<Command> = self
+            .state
+            .proposals
+            .values()
+            .filter(|q| {
+                q.source == planner_core::proposals::ProposalSource::SaveReimport
+                    && matches!(q.status, ProposalStatus::Draft | ProposalStatus::Reviewing)
+            })
+            .map(|q| Command::SetProposalStatus {
+                id: q.id.clone(),
+                status: ProposalStatus::Rejected,
+            })
+            .collect();
+        cmds.push(Command::CreateProposal { proposal });
+        let response = self.edit(cmds)?;
         let proposal_id = response.created[0].clone();
         self.write_last_import(&snapshot.save_name, "drift", 0, drift_count);
         Ok(ImportOutcome::Drift {
@@ -1751,13 +1780,16 @@ impl Session {
                 }
                 // Clamp write-back only for the port the user actually edited —
                 // an upstream dip must surface as a deficit, never silently
-                // rewrite a downstream target.
+                // rewrite a downstream target. Out ports only: for an In-port
+                // trigger, result.ports carries the solved INTAKE (not a clamped
+                // target), and writing that back would replace the value the same
+                // command batch just set with an unrelated flow figure.
                 if result.clamped {
                     if let T0Edit::SetTarget { port, .. } = trigger {
                         if let (Some(p), Some(rate)) =
                             (self.state.ports.get(port), result.ports.get(port))
                         {
-                            if (p.rate - rate).abs() > 1e-9 {
+                            if p.direction == PortDirection::Out && (p.rate - rate).abs() > 1e-9 {
                                 let mut p = p.clone();
                                 p.rate = *rate;
                                 let ops = self.state.upsert(Entity::Port(p));
@@ -2268,6 +2300,45 @@ fn ordered_included(p: &Proposal) -> Vec<&ProposalItem> {
         }
     }
     out
+}
+
+/// Included items `ordered_included` could NOT place for any reason other than
+/// a legitimately excluded dependency — i.e. a dependency cycle among included
+/// items. Skipping an item whose dependency (direct or transitive) is unchecked
+/// is documented intent; dropping a cyclic pair while reporting ACCEPTED is
+/// silent data loss, so accept fails loud on these (the same abort-before-commit
+/// policy unresolved aliases follow).
+fn cycle_dropped(p: &Proposal) -> Vec<&str> {
+    let placeable: std::collections::BTreeSet<&str> =
+        ordered_included(p).iter().map(|i| i.id.as_str()).collect();
+    // Excluded-tainted closure: an included item is a legitimate skip when any
+    // dependency is an existing unchecked item, or is itself legitimately skipped.
+    let mut tainted: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    loop {
+        let mut grew = false;
+        for item in p.items.iter().filter(|i| i.included) {
+            if tainted.contains(item.id.as_str()) {
+                continue;
+            }
+            let hit = item.depends_on.iter().any(|d| {
+                tainted.contains(d.as_str()) || p.item(d).map(|i| !i.included).unwrap_or(false)
+            });
+            if hit {
+                tainted.insert(item.id.as_str());
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+    p.items
+        .iter()
+        .filter(|i| {
+            i.included && !placeable.contains(i.id.as_str()) && !tainted.contains(i.id.as_str())
+        })
+        .map(|i| i.label.as_str())
+        .collect()
 }
 
 /// Stack size for transport math: SS_* → items per inventory slot.

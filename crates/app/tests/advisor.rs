@@ -347,3 +347,61 @@ fn failed_edit_persists_no_advisor_cards() {
     assert!(resp.advisor.cards.iter().any(|c| c.rule == "new_deficit"));
     assert!(s.file.load_advisor_cards().unwrap().len() > disk_cards_before);
 }
+
+/// Review minor M12: rate-parse failures must not be misreported as item-match
+/// failures, and trailing words / comma decimals must not defeat the parse.
+#[test]
+fn chat_rate_parse_is_forgiving_and_errors_name_the_right_culprit() {
+    let mut s = Session::in_memory(None).unwrap();
+
+    // Trailing words after the rate no longer defeat the "/min" strip.
+    let reply = app::chat::chat(
+        &mut s,
+        &app::chat::ContextScope::Empire,
+        "produce iron rod at 30/min please",
+    );
+    assert!(
+        reply.proposal.is_some(),
+        "trailing words parse: {}",
+        reply.reply
+    );
+
+    // Comma decimal is accepted as a courtesy.
+    let reply = app::chat::chat(
+        &mut s,
+        &app::chat::ContextScope::Empire,
+        "produce iron rod at 22,5/min",
+    );
+    assert!(
+        reply.proposal.is_some(),
+        "comma decimal parses: {}",
+        reply.reply
+    );
+
+    // Item matched but rate garbage → the reply blames the RATE, not the item.
+    let reply = app::chat::chat(
+        &mut s,
+        &app::chat::ContextScope::Empire,
+        "produce iron rod at lots/min",
+    );
+    assert!(reply.proposal.is_none());
+    assert!(
+        reply.reply.contains("rate") || reply.reply.contains("positive"),
+        "blames the rate: {}",
+        reply.reply
+    );
+    assert!(
+        !reply.reply.contains("couldn't match"),
+        "must not blame the item: {}",
+        reply.reply
+    );
+
+    // Item genuinely unknown → the item-match reply is still the right one.
+    let reply = app::chat::chat(
+        &mut s,
+        &app::chat::ContextScope::Empire,
+        "produce unobtainium at 30/min",
+    );
+    assert!(reply.proposal.is_none());
+    assert!(reply.reply.contains("couldn't match"), "{}", reply.reply);
+}

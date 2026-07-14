@@ -2382,3 +2382,105 @@ fn accept_refactor_is_one_undo_step_and_old_built_untouched() {
     );
     assert_eq!(s.state.factories[&old], old_before, "◆ still untouched");
 }
+
+/// Review minor M8: the clamp write-back must only ever rewrite an OUT port's
+/// target. For an In-port SetPortRate under a clamped solve, result.ports
+/// carries the solved INTAKE — writing that back would replace the value the
+/// same command batch just set with an unrelated flow figure (reachable via the
+/// raw command API; no shipped UI edits In-port rates).
+#[test]
+fn in_port_rate_survives_clamped_solve_write_back() {
+    let mut s = Session::in_memory(None).unwrap();
+    let fid = s
+        .edit(vec![Command::CreateFactory {
+            name: "CLAMP WORKS".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: "GRASS FIELDS".into(),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let inp = s
+        .edit(vec![Command::AddPort {
+            factory: fid.clone(),
+            direction: PortDirection::In,
+            item: "Desc_OreIron_C".into(),
+            rate: 0.0,
+            rate_ceiling: Some(300.0),
+            graph_pos: GraphPos { x: 0.0, y: 100.0 },
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let out = s
+        .edit(vec![Command::AddPort {
+            factory: fid.clone(),
+            direction: PortDirection::Out,
+            item: "Desc_IronIngot_C".into(),
+            rate: 0.0,
+            rate_ceiling: None,
+            graph_pos: GraphPos { x: 600.0, y: 100.0 },
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let g = add_group(
+        &mut s,
+        &fid,
+        "Build_SmelterMk1_C",
+        "Recipe_IngotIron_C",
+        gp(300.0, 100.0),
+    );
+    connect_in(
+        &mut s,
+        &fid,
+        EdgeEnd::Port(inp.clone()),
+        EdgeEnd::Group(g.clone()),
+        "Desc_OreIron_C",
+        6,
+    );
+    connect_in(
+        &mut s,
+        &fid,
+        EdgeEnd::Group(g),
+        EdgeEnd::Port(out.clone()),
+        "Desc_IronIngot_C",
+        6,
+    );
+
+    // Achievable target at the generous ceiling…
+    s.edit(vec![Command::SetPortRate {
+        id: out.clone(),
+        rate: 300.0,
+    }])
+    .unwrap();
+    assert!((s.state.ports[&out].rate - 300.0).abs() < 1e-6);
+    // …then the ceiling drops (Recompute trigger — no target write-back), so
+    // the stored out target now permanently exceeds the achievable ceiling.
+    s.edit(vec![Command::SetPortCeiling {
+        id: inp.clone(),
+        rate_ceiling: Some(120.0),
+    }])
+    .unwrap();
+    assert!(
+        (s.state.ports[&out].rate - 300.0).abs() < 1e-6,
+        "stored target kept"
+    );
+
+    // Editing the In port's rate under this clamped solve must keep the value
+    // the user set — not the solver's intake figure.
+    s.edit(vec![Command::SetPortRate {
+        id: inp.clone(),
+        rate: 100.0,
+    }])
+    .unwrap();
+    assert!(
+        (s.state.ports[&inp].rate - 100.0).abs() < 1e-6,
+        "In-port rate sticks: {}",
+        s.state.ports[&inp].rate
+    );
+}

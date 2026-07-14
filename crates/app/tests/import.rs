@@ -934,3 +934,53 @@ fn fixture_yields_empty_unlocked() {
     );
     assert!(s.hydrate()["unlocked"].as_array().unwrap().is_empty());
 }
+
+/// Review minor M13: each new drift diff supersedes every still-open one (a
+/// newer diff is a cumulative superset). Stale open SaveReimport proposals are
+/// rejected in the same edit that drafts the new one, so the review surface and
+/// PLAN DRIFT tab can never offer obsolete SyncOps whose accept would rewrite
+/// the ◆ layer with old counts.
+#[test]
+fn reimport_supersedes_stale_open_drift_proposals() {
+    use planner_core::proposals::ProposalStatus;
+    let mut s = Session::in_memory(None).unwrap();
+    let base = vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 60.0, 40.0),
+    ];
+    s.import_save(snapshot(base)).unwrap();
+
+    // Drift #1: the bank grew to 3.
+    let drift1 = vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 60.0, 40.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 110.0, 80.0),
+    ];
+    let ImportOutcome::Drift { proposal: p1, .. } = s.import_save(snapshot(drift1)).unwrap() else {
+        panic!("expected drift #1");
+    };
+    assert_eq!(s.state.proposals[&p1].status, ProposalStatus::Draft);
+
+    // Drift #2 (user kept playing): the bank grew to 4.
+    let drift2 = vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 60.0, 40.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 110.0, 80.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 30.0, 90.0),
+    ];
+    let ImportOutcome::Drift { proposal: p2, .. } = s.import_save(snapshot(drift2)).unwrap() else {
+        panic!("expected drift #2");
+    };
+    // The stale diff is closed; only the newest is open — and accepting the
+    // stale one is refused outright.
+    assert_eq!(s.state.proposals[&p1].status, ProposalStatus::Rejected);
+    assert_eq!(s.state.proposals[&p2].status, ProposalStatus::Draft);
+    assert!(
+        s.accept_proposal(&p1).is_err(),
+        "stale drift cannot be applied"
+    );
+    // One undo unwinds the supersede + new draft together (one edit batch).
+    s.undo().unwrap().unwrap();
+    assert_eq!(s.state.proposals[&p1].status, ProposalStatus::Draft);
+    assert!(!s.state.proposals.contains_key(&p2));
+}
