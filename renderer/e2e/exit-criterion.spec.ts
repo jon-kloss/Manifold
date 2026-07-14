@@ -110,6 +110,15 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
   await expect(page.getByTestId("graph-root")).toBeVisible();
   await expect(page.getByTestId("port-in-Desc_OreIron_C")).toBeVisible();
 
+  // empty factory teaches the add gesture; + MACHINE opens the same menu
+  await expect(page.getByTestId("graph-empty-hint")).toBeVisible();
+  await page.getByTestId("btn-add-machine").click();
+  await expect(page.locator(".addgroup-menu input")).toBeVisible();
+  // generators are placeable like any machine: burn recipes carry an MW tag
+  await page.locator(".addgroup-menu input").fill("coal");
+  await expect(page.locator(".addgroup-item").first()).toContainText("MW");
+  await page.keyboard.press("Escape");
+
   // ---- output port for Modular Frames ----
   await page.getByRole("button", { name: "+ OUT PORT" }).click();
   await page.locator(".addgroup-menu input").fill("modular frame");
@@ -125,6 +134,7 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
   await addGroup(page, "iron plate", { x: 200, y: 620 });
   await addGroup(page, "reinforced", { x: 760, y: 620 });
   await addGroup(page, "modular frame", { x: 1320, y: 620 });
+  await expect(page.getByTestId("graph-empty-hint")).toBeHidden();
 
   // ---- wire the chain (deselect first so the inspector doesn't cover ports) ----
   await page.keyboard.press("Escape");

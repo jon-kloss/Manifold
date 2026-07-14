@@ -639,6 +639,22 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         >
           FLOW
         </button>
+        <button
+          className="btn btn-ghost"
+          data-testid="btn-add-machine"
+          title="Add a machine group — same as double-clicking the canvas"
+          onClick={() => {
+            const rect = flowRef.current!.getBoundingClientRect();
+            setAddMenu({
+              x: rect.width / 2 - 110,
+              y: rect.height / 3,
+              flowX: rect.left + rect.width / 2,
+              flowY: rect.top + rect.height / 3,
+            });
+          }}
+        >
+          + MACHINE
+        </button>
         <div style={{ position: "relative" }}>
           <button className="btn btn-ghost" onClick={() => setLogisticMenu((o) => !o)} data-testid="btn-logistic">
             + LOGISTIC
@@ -711,6 +727,15 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
           setAddMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, flowX: e.clientX, flowY: e.clientY });
         }}
       >
+        {(plan.factories[factoryId]?.groups ?? []).length === 0 && !addMenu && (
+          // Empty factory: teach the add gesture — the canvas has no visible
+          // affordance for it otherwise. pointer-events: none, so the taught
+          // double-click lands on the pane straight through this hint.
+          <div className="graph-empty-hint mono" data-testid="graph-empty-hint">
+            <span className="t-label">DOUBLE-CLICK THE CANVAS TO ADD A MACHINE GROUP</span>
+            <span>pick what to make — the machine follows · or use + MACHINE above</span>
+          </div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
