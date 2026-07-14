@@ -29,6 +29,13 @@ test("wizard → reviewable proposal → partial accept → undo", async ({ page
   const items = await page.getByTestId("proposal-item").count();
   expect(items).toBeGreaterThanOrEqual(2);
 
+  // power-forward: the per-circuit banner is pinned above the footer — a grid
+  // line with a live headroom figure, and a generator-sizing line — both
+  // visible without scrolling the change list
+  await expect(page.getByTestId("proposal-power-line").first()).toContainText("headroom");
+  await expect(page.getByTestId("proposal-gen-line").first()).toBeVisible();
+  await expect(page.getByTestId("proposal-gen-line").first()).toContainText("generation");
+
   // partial accept: SPACE on the first CLAIM/ROUTE row strikes it + recomputes
   const acceptBtn = page.getByTestId("btn-accept-proposal");
   await expect(acceptBtn).toContainText(`ACCEPT ${items} AS PLANNED`);
@@ -80,7 +87,13 @@ test("priority switch on the grid: sheds-at + brownout sim", async ({ page }) =>
 
   // select the COAL PLANT → ROD CITY power line by clicking its midpoint
   const pin = async (name: string) => {
-    const box = await page.locator(`.pin-wrap:has(.pin-chip:has-text("${name}")) svg`).boundingBox();
+    // poll: a one-shot boundingBox races map init / zoom animation
+    const loc = page.locator(`.pin-wrap:has(.pin-chip:has-text("${name}")) svg`);
+    let box = null;
+    for (let i = 0; i < 25 && !box; i++) {
+      box = await loc.boundingBox().catch(() => null);
+      if (!box) await page.waitForTimeout(200);
+    }
     if (!box) throw new Error(`pin ${name}`);
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   };
@@ -113,4 +126,39 @@ test("priority switch on the grid: sheds-at + brownout sim", async ({ page }) =>
   await expect(page.getByTestId("switch-drawer")).toBeVisible();
   await page.getByRole("button", { name: "DELETE SWITCH" }).click();
   await expect(page.getByTestId("switch-drawer")).not.toBeVisible();
+});
+
+test("total-quantity goal: milestone ladder + carried proposal chip", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("map-root")).toBeVisible();
+
+  // P opens the wizard; pick a craftable item + rate
+  await page.keyboard.press("p");
+  await expect(page.getByTestId("wizard-modal")).toBeVisible();
+  await page.selectOption('[data-testid="wizard-item"]', "Desc_IronPlate_C");
+  await page.fill('[data-testid="wizard-rate"]', "8");
+
+  // toggle TOTAL-QUANTITY GOAL on and set the huge total the game hands out
+  await page.getByTestId("wizard-total-toggle").check();
+  await page.fill('[data-testid="wizard-total"]', "2500");
+
+  // the ladder computes time-at-rate purely in UI (2500 / 8 = 5h 12m)
+  await expect(page.getByTestId("wizard-ladder")).toBeVisible();
+  await expect(page.getByTestId("wizard-ladder")).toContainText("5h 12m");
+
+  await page.click('[data-testid="wizard-solve"]');
+
+  // the proposal carries the milestone: a static chip with the thousands-
+  // separated total, the item, and the ETA — under the title
+  await expect(page.getByTestId("proposal-review")).toBeVisible({ timeout: 10_000 });
+  const chip = page.getByTestId("proposal-milestone");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("2,500");
+  await expect(chip).toContainText("IRON PLATE");
+  await expect(chip).toContainText("5h 12m");
+
+  // end clean: exit review WITHOUT accepting — leave no proposal open and no
+  // new factory in the shared serial state
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("proposal-review")).not.toBeVisible();
 });

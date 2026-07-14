@@ -1,8 +1,11 @@
 //! Ambient advisor (SDD §9, UI spec screen 3). Heuristic rules are pure
 //! functions over derived state; the gate keeps it quiet: a card fires only
-//! when a condition BECOMES true (new-event arming), at most once per rule per
-//! 30 s (debounce), never for a muted rule, never while paused. Offline / no
-//! key, the same heuristics feed the same cards — a model call would only
+//! when a condition BECOMES true (new-event arming), and each such true-edge
+//! is reported at most once — the per-rule 30 s debounce and pause DELAY the
+//! report to a later gate pass, they never cancel it. Muting a rule
+//! permanently silences its conditions (they count as seen, so unmuting never
+//! ambushes with cards for conditions that were true the whole time). Offline
+//! / no key, the same heuristics feed the same cards — a model call would only
 //! rewrite the prose, so the budget is tracked and displayed but unspent.
 //! Silence is a feature: the advisor's loudest voice is a badge count.
 
@@ -155,15 +158,9 @@ pub fn evaluate(state: &PlanState, derived: &Derived) -> Vec<Event> {
 
     // PowerSwing — circuit margin dips under 20% headroom
     for c in &derived.circuits {
-        let headroom = if c.generation_mw > 0.0 {
-            (c.generation_mw - c.demand_mw) / c.generation_mw
-        } else if c.demand_mw > 0.0 {
-            -1.0
-        } else {
-            1.0
-        };
-        if headroom < 0.20 {
-            let crit = headroom < 0.05;
+        let (headroom, level) = crate::session::circuit_level(c.generation_mw, c.demand_mw);
+        if level != "ok" {
+            let crit = level == "crit";
             events.push(Event {
                 key: format!("power:{}", c.name),
                 rule: "power_swing",
@@ -222,13 +219,16 @@ pub fn evaluate(state: &PlanState, derived: &Derived) -> Vec<Event> {
 }
 
 /// The gate: new-event arming + per-rule debounce + mutes + pause. Owned by
-/// the session; persistence hooks live there.
+/// the session; persistence hooks live there. Arming state survives restarts
+/// via [`GateSnapshot`] so still-true conditions don't re-fire every launch.
 #[derive(Default)]
 pub struct AdvisorState {
     pub cards: Vec<AdvisorCard>,
     pub muted: BTreeSet<String>,
     pub paused: bool,
-    /// Condition keys active on the previous evaluation (arming edge detect).
+    /// Condition keys whose true-edge has been ACCOUNTED FOR — reported
+    /// (card fired) or muted-away. Keys suppressed by debounce or pause are
+    /// deliberately absent so they re-arm and report on a later gate pass.
     active_keys: BTreeSet<String>,
     /// rule → last fire epoch-seconds (debounce).
     last_fire: BTreeMap<String, u64>,
@@ -249,9 +249,26 @@ pub struct AdvisorFeed {
     pub ai_status: String,
 }
 
+/// The gate's durable arming state: which condition true-edges have been
+/// accounted for, plus each rule's last fire time. Persisted outside the
+/// undo journal like cards/mutes — undoing a plan edit must not re-arm what
+/// the advisor already reported. `calls_this_hour`/`hour_started` are
+/// deliberately excluded: the budget is a display courtesy tied to a wall
+/// clock, and it self-heals on the first gate after restart.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct GateSnapshot {
+    active_keys: BTreeSet<String>,
+    last_fire: BTreeMap<String, u64>,
+}
+
 impl AdvisorState {
     /// Run the gate over fresh events. Returns newly created cards (already
     /// appended to `self.cards`); the caller persists them.
+    ///
+    /// Each true-edge is reported at most once: a key enters `active_keys`
+    /// only when its card fired or its rule is muted. Debounce and pause
+    /// leave the key un-seen, so the report is delayed to a later gate pass
+    /// — never cancelled, never duplicated.
     pub fn gate(
         &mut self,
         events: Vec<Event>,
@@ -263,37 +280,76 @@ impl AdvisorState {
             self.hour_started = now_epoch_s;
             self.calls_this_hour = 0;
         }
-        let current: BTreeSet<String> = events.iter().map(|e| e.key.clone()).collect();
-        let mut created = Vec::new();
-        if !self.paused {
-            for e in events {
-                let newly_armed = !self.active_keys.contains(&e.key);
-                let debounced = self
-                    .last_fire
-                    .get(e.rule)
-                    .map(|t| now_epoch_s.saturating_sub(*t) < DEBOUNCE_S)
-                    .unwrap_or(false);
-                if !newly_armed || debounced || self.muted.contains(e.rule) {
-                    continue;
-                }
-                self.last_fire.insert(e.rule.to_string(), now_epoch_s);
-                let card = AdvisorCard {
-                    id: planner_core::entities::new_id(),
-                    severity: e.severity,
-                    title: e.title,
-                    body: e.body,
-                    rule: e.rule.to_string(),
-                    saw: e.saw,
-                    at: now_rfc3339.to_string(),
-                    dismissed: false,
-                    cta: e.cta,
-                };
-                self.cards.push(card.clone());
-                created.push(card);
-            }
+        if self.paused {
+            // Prune conditions that cleared while paused; arm nothing new —
+            // edges suppressed here stay un-seen and report on the first
+            // gate after unpause.
+            let current: BTreeSet<String> = events.into_iter().map(|e| e.key).collect();
+            self.active_keys.retain(|k| current.contains(k));
+            return Vec::new();
         }
-        self.active_keys = current;
+        let mut next_active = BTreeSet::new();
+        let mut created = Vec::new();
+        for e in events {
+            if self.active_keys.contains(&e.key) {
+                // Edge already accounted for — never re-report.
+                next_active.insert(e.key);
+                continue;
+            }
+            if self.muted.contains(e.rule) {
+                // Mute = never report. Counting the edge as seen means
+                // unmuting doesn't ambush with cards for conditions that
+                // were true the whole time; a clear-and-reappear after
+                // unmute is a fresh edge and fires normally.
+                next_active.insert(e.key);
+                continue;
+            }
+            let debounced = self
+                .last_fire
+                .get(e.rule)
+                .map(|t| now_epoch_s.saturating_sub(*t) < DEBOUNCE_S)
+                .unwrap_or(false);
+            if debounced {
+                // Suppressed AND un-seen: the key re-arms next gate, so the
+                // report lands once the window passes.
+                continue;
+            }
+            self.last_fire.insert(e.rule.to_string(), now_epoch_s);
+            let card = AdvisorCard {
+                id: planner_core::entities::new_id(),
+                severity: e.severity,
+                title: e.title,
+                body: e.body,
+                rule: e.rule.to_string(),
+                saw: e.saw,
+                at: now_rfc3339.to_string(),
+                dismissed: false,
+                cta: e.cta,
+            };
+            self.cards.push(card.clone());
+            created.push(card);
+            next_active.insert(e.key);
+        }
+        self.active_keys = next_active;
         created
+    }
+
+    /// Serialize the arming state for persistence (see [`GateSnapshot`]).
+    pub fn gate_snapshot_json(&self) -> String {
+        serde_json::to_string(&GateSnapshot {
+            active_keys: self.active_keys.clone(),
+            last_fire: self.last_fire.clone(),
+        })
+        .unwrap_or_default()
+    }
+
+    /// Hydrate the arming state from a persisted snapshot. Malformed input
+    /// is ignored — the gate falls back to empty (pre-persistence) behavior.
+    pub fn restore_gate_snapshot(&mut self, json: &str) {
+        if let Ok(snap) = serde_json::from_str::<GateSnapshot>(json) {
+            self.active_keys = snap.active_keys;
+            self.last_fire = snap.last_fire;
+        }
     }
 
     pub fn feed(&self, ai_ready: bool) -> AdvisorFeed {
@@ -328,7 +384,7 @@ mod tests {
             severity: Severity::Tip,
             title: "t".into(),
             body: "b".into(),
-            saw: "s".into(),
+            saw: format!("saw:{key}"),
             cta: None,
         }
     }
@@ -364,5 +420,78 @@ mod tests {
         st.gate(vec![], 4000, "t");
         let made = st.gate(vec![ev("d", "r2")], 5000, "t");
         assert!(made.is_empty(), "paused advisor is silent");
+    }
+
+    #[test]
+    fn debounced_condition_fires_after_window() {
+        let mut st = AdvisorState::default();
+        // two same-rule conditions in one call → only the first fires
+        let made = st.gate(vec![ev("a", "r1"), ev("b", "r1")], 1000, "t");
+        assert_eq!(made.len(), 1);
+        assert_eq!(made[0].saw, "saw:a");
+        // still inside the 30 s window → b stays suppressed but un-seen
+        let made = st.gate(vec![ev("a", "r1"), ev("b", "r1")], 1010, "t");
+        assert!(made.is_empty(), "debounce window still holds");
+        // window passed → the delayed report lands, exactly once, and it's b
+        let made = st.gate(vec![ev("a", "r1"), ev("b", "r1")], 1031, "t");
+        assert_eq!(made.len(), 1, "debounced edge fires after the window");
+        assert_eq!(made[0].saw, "saw:b", "the fired condition never re-fires");
+        // both now seen → silence
+        let made = st.gate(vec![ev("a", "r1"), ev("b", "r1")], 2000, "t");
+        assert!(made.is_empty(), "both edges reported exactly once");
+    }
+
+    #[test]
+    fn condition_arising_while_paused_fires_on_unpause() {
+        let mut st = AdvisorState::default();
+        // a fires pre-pause and stays seen through the pause
+        let made = st.gate(vec![ev("a", "r1")], 1000, "t");
+        assert_eq!(made.len(), 1);
+        st.paused = true;
+        let made = st.gate(vec![ev("a", "r1"), ev("b", "r2")], 2000, "t");
+        assert!(made.is_empty(), "paused advisor is silent");
+        st.paused = false;
+        let made = st.gate(vec![ev("a", "r1"), ev("b", "r2")], 3000, "t");
+        assert_eq!(made.len(), 1, "edge suppressed by pause fires on unpause");
+        assert_eq!(made[0].saw, "saw:b");
+        assert_eq!(made[0].rule, "r2");
+    }
+
+    #[test]
+    fn muted_condition_does_not_fire_on_unmute() {
+        let mut st = AdvisorState::default();
+        st.muted.insert("r1".into());
+        let made = st.gate(vec![ev("a", "r1")], 1000, "t");
+        assert!(made.is_empty(), "muted rule never fires");
+        st.muted.clear();
+        let made = st.gate(vec![ev("a", "r1")], 2000, "t");
+        assert!(
+            made.is_empty(),
+            "seen-while-muted edge does not ambush on unmute"
+        );
+        // clear, then reappear → a fresh edge fires normally
+        st.gate(vec![], 3000, "t");
+        let made = st.gate(vec![ev("a", "r1")], 4000, "t");
+        assert_eq!(made.len(), 1, "clear-and-reappear after unmute fires");
+    }
+
+    #[test]
+    fn gate_snapshot_restart_roundtrip() {
+        let mut st = AdvisorState::default();
+        let made = st.gate(vec![ev("a", "r1")], 1000, "t");
+        assert_eq!(made.len(), 1);
+        let json = st.gate_snapshot_json();
+
+        // "restart": fresh state hydrated from the snapshot
+        let mut st2 = AdvisorState::default();
+        st2.restore_gate_snapshot(&json);
+        let made = st2.gate(vec![ev("a", "r1")], 5000, "t");
+        assert!(
+            made.is_empty(),
+            "still-true condition is silent after restart"
+        );
+        let made = st2.gate(vec![ev("a", "r1"), ev("b", "r2")], 5000, "t");
+        assert_eq!(made.len(), 1, "genuinely new condition fires after restart");
+        assert_eq!(made[0].rule, "r2");
     }
 }

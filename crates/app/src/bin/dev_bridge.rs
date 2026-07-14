@@ -92,6 +92,7 @@ fn main() -> anyhow::Result<()> {
                                 s.gamedata.clone(),
                                 s.world.clone(),
                                 goal,
+                                s.unlocked.clone(),
                                 s.plan_hash(),
                                 now_rfc3339(),
                             );
@@ -117,7 +118,8 @@ fn main() -> anyhow::Result<()> {
                 (Method::Post, "/api/t2/optimize") => {
                     let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
                     let fid = req["factory"].as_str().unwrap_or_default().to_string();
-                    let mut proposal = app::wizard::t2_optimize(&s.state, &s.gamedata, &fid);
+                    let mut proposal =
+                        app::wizard::t2_optimize(&s.state, &s.gamedata, &s.unlocked, &fid);
                     if let Some(p) = proposal.as_mut() {
                         p.input_hash = s.plan_hash();
                         p.snapshot_time = now_rfc3339();
@@ -167,6 +169,74 @@ fn main() -> anyhow::Result<()> {
                     match s.accept_proposal(req["id"].as_str().unwrap_or_default()) {
                         Ok(resp) => ok(&resp),
                         Err(e) => err(422, e),
+                    }
+                }
+                // ---- W2a refactor/cutover ----
+                // Plan a whole-factory replacement → store the Draft proposal and
+                // return { response, proposal } so the renderer opens review.
+                (Method::Post, "/api/cutover/plan") => {
+                    let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let fid = req["factory"].as_str().unwrap_or_default().to_string();
+                    match s.plan_replacement(fid, None) {
+                        Ok(proposal) => match s.edit(vec![Command::CreateProposal { proposal }]) {
+                            Ok(resp) => {
+                                let pid = resp.created.first().cloned().unwrap_or_default();
+                                ok(&serde_json::json!({ "response": resp, "proposal": pid }))
+                            }
+                            Err(e) => err(422, e),
+                        },
+                        Err(e) => err(422, e),
+                    }
+                }
+                // Price the downtime of a cutover on demand (scratch-solved).
+                (Method::Post, "/api/cutover/downtime") => {
+                    let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let fid = req["factory"].as_str().unwrap_or_default().to_string();
+                    match s.cutover_plan(fid) {
+                        Ok(plan) => ok(&plan),
+                        Err(e) => err(422, e),
+                    }
+                }
+                // ---- W2b-D empire alternate-recipe optimizer ----
+                // Read-only ranked opportunities (empty in the fixture — no
+                // unlocked alternates, honest degradation).
+                (Method::Get, "/api/optimize/empire") => ok(&app::altopt::empire_optimize(
+                    &s.state,
+                    &s.gamedata,
+                    &s.unlocked,
+                )),
+                // Adopt one alternate empire-wide → draft the review proposal(s)
+                // (T2 for ◇, W2a Refactor for ◆; ◆ never mutated).
+                (Method::Post, "/api/optimize/adopt") => {
+                    let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let recipe = req["recipe"].as_str().unwrap_or_default().to_string();
+                    match s.optimize_adopt(&recipe) {
+                        Ok(outcome) => ok(&outcome),
+                        Err(e) => err(422, e),
+                    }
+                }
+                // ---- task #49 train answer-sheet ----
+                // Read-only trains-needed calc for a PROSPECTIVE route (no
+                // route is created). Mirrors the Tauri `route_calc` command.
+                (Method::Post, "/api/route/calc") => {
+                    #[derive(serde::Deserialize)]
+                    #[serde(rename_all = "camelCase")]
+                    struct Req {
+                        from: String,
+                        to: String,
+                        kind: planner_core::entities::RouteKind,
+                        demand_per_min: f64,
+                        item: Option<String>,
+                    }
+                    match serde_json::from_str::<Req>(&body) {
+                        Ok(req) => ok(&s.route_calc(
+                            &req.from,
+                            &req.to,
+                            &req.kind,
+                            req.demand_per_min,
+                            req.item.as_deref(),
+                        )),
+                        Err(e) => err(400, e),
                     }
                 }
                 (Method::Post, "/api/proposal/eval") => {

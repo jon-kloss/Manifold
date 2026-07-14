@@ -14,6 +14,7 @@ fn m(class: &str, recipe: &str, x: f64, y: f64) -> ImportMachine {
         x,
         y,
         z: 0.0,
+        ..Default::default()
     }
 }
 
@@ -792,4 +793,144 @@ fn perf_strict_20k_chained_grid() {
     let dt = t.elapsed();
     assert_eq!(clusters.len(), 1);
     assert!(dt < std::time::Duration::from_millis(250), "took {dt:?}");
+}
+
+// ---- W2b-A: snapshot carries unlocked schematics + extractor node context ----
+
+/// A legacy snapshot JSON lacking every W2b-A field still deserializes: the new
+/// fields are serde-default (empty schematics, `None` node context). Proves old
+/// snapshots/plan files load with no migration.
+#[test]
+fn old_snapshot_without_new_fields_deserializes() {
+    let json = r#"{
+        "saveName": "LEGACY",
+        "machines": [
+            { "class": "Build_SmelterMk1_C", "recipe": "Recipe_IngotIron_C", "x": 0.0, "y": 0.0 }
+        ]
+    }"#;
+    let snap: ImportSnapshot = serde_json::from_str(json).unwrap();
+    assert!(snap.unlocked_schematics.is_empty());
+    assert_eq!(snap.machines.len(), 1);
+    let mc = &snap.machines[0];
+    assert_eq!(mc.node_actor_id, None);
+    assert_eq!(mc.resource, None);
+    assert_eq!(mc.purity, None);
+    assert_eq!(mc.extraction_rate, None);
+    // serde default clock still applies.
+    assert_eq!(mc.clock, 1.0);
+}
+
+/// A snapshot WITH the new extractor fields + unlocked schematics round-trips.
+#[test]
+fn new_extractor_fields_round_trip() {
+    let json = r#"{
+        "saveName": "W2B",
+        "machines": [],
+        "extractors": [
+            {
+                "class": "Build_MinerMk2_C",
+                "recipe": null,
+                "clock": 2.5,
+                "x": 12.0,
+                "y": 34.0,
+                "nodeActorId": "Persistent_Level:PersistentLevel.BP_ResourceNode109",
+                "resource": null,
+                "purity": null
+            }
+        ],
+        "unlockedSchematics": ["Schematic_1-2_C", "Recipe_Alternate_Screw_C"]
+    }"#;
+    let snap: ImportSnapshot = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        snap.unlocked_schematics,
+        vec![
+            "Schematic_1-2_C".to_string(),
+            "Recipe_Alternate_Screw_C".to_string()
+        ]
+    );
+    let e = &snap.extractors[0];
+    assert_eq!(
+        e.node_actor_id.as_deref(),
+        Some("Persistent_Level:PersistentLevel.BP_ResourceNode109")
+    );
+    assert_eq!(e.purity, None);
+    assert_eq!(e.clock, 2.5);
+    // Round-trip: serialize back and re-read the node ref survives.
+    let round = serde_json::to_string(&snap).unwrap();
+    let snap2: ImportSnapshot = serde_json::from_str(&round).unwrap();
+    assert_eq!(snap2.extractors[0].node_actor_id, e.node_actor_id);
+    assert_eq!(snap2.unlocked_schematics, snap.unlocked_schematics);
+}
+
+/// W2b: import resolves the unlocked recipe set from mPurchasedSchematics ×
+/// FGSchematic unlocks, persists it as a META fact (outside the undo journal),
+/// reloads it on reopen, and surfaces it through hydrate as `unlocked`.
+#[test]
+fn unlocked_set_resolves_from_schematics() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("world.ficsit");
+    {
+        let mut s = app::Session::open(&path, None, "fixture").unwrap();
+        // synthetic FGSchematic mapping — the trimmed fixture ships none.
+        s.gamedata.schematics.insert(
+            "Schematic_Alt_C".into(),
+            vec!["Recipe_Alternate_Screw_C".into()],
+        );
+        let snap = ImportSnapshot {
+            save_name: "UNLOCK-01".into(),
+            machines: vec![m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0)],
+            unlocked_schematics: vec![
+                "Schematic_Alt_C".into(),
+                "Schematic_Unmapped_C".into(), // no mapping → contributes nothing
+            ],
+            ..Default::default()
+        };
+        s.import_save(snap).unwrap();
+        assert!(
+            s.unlocked.contains("Recipe_Alternate_Screw_C"),
+            "purchased schematic resolves to its unlocked recipe"
+        );
+        assert_eq!(
+            s.unlocked.len(),
+            1,
+            "unmapped schematics contribute nothing"
+        );
+        let h = s.hydrate();
+        let arr = h["unlocked"]
+            .as_array()
+            .expect("hydrate carries an unlocked array");
+        assert!(arr
+            .iter()
+            .any(|v| v.as_str() == Some("Recipe_Alternate_Screw_C")));
+    }
+    // reopen: the META blob round-trips through the persist layer.
+    let mut s2 = app::Session::open(&path, None, "fixture").unwrap();
+    assert!(
+        s2.unlocked.contains("Recipe_Alternate_Screw_C"),
+        "unlocked set survives reopen"
+    );
+    assert_eq!(s2.hydrate()["unlocked"].as_array().unwrap().len(), 1);
+}
+
+/// The trimmed fixture catalog ships no schematics → import resolves an empty
+/// unlocked set → alternates behave exactly as before (no-regression guard).
+#[test]
+fn fixture_yields_empty_unlocked() {
+    let mut s = Session::in_memory(None).unwrap();
+    assert!(
+        s.gamedata.schematics.is_empty(),
+        "fixture has no schematics"
+    );
+    let snap = ImportSnapshot {
+        save_name: "FIX-01".into(),
+        machines: vec![m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0)],
+        unlocked_schematics: vec!["Schematic_Whatever_C".into()],
+        ..Default::default()
+    };
+    s.import_save(snap).unwrap();
+    assert!(
+        s.unlocked.is_empty(),
+        "no schematic catalog → nothing unlocks"
+    );
+    assert!(s.hydrate()["unlocked"].as_array().unwrap().is_empty());
 }

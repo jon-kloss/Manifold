@@ -169,10 +169,37 @@
   white-space: nowrap;
   color: var(--ink-300);
 }
+.pin-chip.chip-culled {
+  display: none;
+}
+.pin-wrap:hover .pin-chip.chip-culled {
+  display: block; /* culled chips reveal on hover */
+  position: relative;
+  z-index: 30;
+}
 .pin-chip.planned {
   color: var(--bp-400);
   border-color: var(--bp-600);
   font-style: italic;
+}
+/* W2a cutover tags: RETIRING (◆ being replaced) / INCOMING (◇ replacement) */
+.pin-tag {
+  margin-top: 2px;
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.pin-tag.retiring {
+  color: var(--flow-warn);
+  border: 1px solid var(--flow-warn);
+  background: rgba(138, 100, 35, 0.18);
+}
+.pin-tag.incoming {
+  color: var(--bp-400);
+  border: 1px dashed var(--bp-600);
+  background: rgba(86, 168, 255, 0.1);
 }
 
 .node-tooltip {
@@ -220,6 +247,9 @@
   border-top: 1px dashed var(--steel-600);
   margin-right: 2px;
   vertical-align: middle;
+}
+.legend-tether.replaces {
+  border-top: 1.5px dashed var(--bp-400);
 }
 .legend-node {
   width: 10px;
@@ -362,6 +392,29 @@
   border: 1px solid var(--flow-crit-dark);
   border-radius: var(--radius);
 }
+/* Replacement infeasible — an EXPECTED planning outcome, warn (not crit). */
+.refactor-infeasible {
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--flow-warn);
+  background: var(--steel-800);
+  border: 1px solid var(--flow-warn-dark);
+  border-radius: var(--radius);
+}
+.refactor-infeasible-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.refactor-infeasible-head > span {
+  flex: 1;
+}
+.refactor-infeasible-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ink-500);
+}
 .minibar {
   width: 44px;
   height: 5px;
@@ -449,4 +502,45 @@
   height: 18px;
   text-align: right;
   font-size: 10px;
+}
+
+/* ---- task #49 train answer-sheet (trains-needed, headline answer) ---- */
+.train-answer {
+  margin-top: 8px;
+}
+.ta-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ta-count {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink-100);
+  line-height: 1;
+}
+.ta-count.warn {
+  color: var(--flow-warn);
+}
+.ta-count.ok {
+  color: var(--flow-ok);
+}
+.ta-unit {
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+}
+.ta-math .math-row.math-total.warn {
+  color: var(--flow-warn);
+}
+.ta-math .math-row.math-total.ok {
+  color: var(--flow-ok);
+}
+.ta-demand {
+  width: 56px;
+}
+.ta-copy {
+  margin-top: 8px;
+  width: 100%;
 }

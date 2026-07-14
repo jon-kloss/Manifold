@@ -145,6 +145,51 @@ pub fn drone_math(path_len_m: f64, spec: &DroneSpec, stack_size: f64) -> Transpo
     }
 }
 
+/// The train answer-sheet (task #49): how many consists/trucks/drones a route
+/// needs to serve a demand, computed from the SAME math block the inspector
+/// renders. Pure and read-only — the renderer surfaces this for a PROSPECTIVE
+/// route (before any rail is laid) as well as for an existing one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrainAnswer {
+    pub math: TransportMath,
+    /// Throughput of ONE consist/truck/drone at these specs (items/min).
+    pub per_train_per_min: f64,
+    /// ceil(demand ÷ per-train) — the headline answer. 0 when demand is 0 or a
+    /// single unit can move nothing.
+    pub trains_needed: u32,
+    pub demand_per_min: f64,
+    /// Throughput at the CONFIGURED unit count − demand; negative ⇒ short.
+    pub surplus_per_min: f64,
+    /// The configured fleet can't meet demand (throughput < demand).
+    pub short: bool,
+}
+
+/// ceil(demand ÷ per-train), guarding non-positive inputs (nothing to move, or
+/// a unit that moves nothing → 0 trains).
+pub fn trains_needed(demand_per_min: f64, per_train_per_min: f64) -> u32 {
+    if demand_per_min <= 0.0 || per_train_per_min <= 0.0 {
+        return 0;
+    }
+    (demand_per_min / per_train_per_min).ceil() as u32
+}
+
+/// Fold a computed math block, its unit count, and a demand into the answer.
+/// `units` is the consist/truck count the math represents (drone = 1); dividing
+/// it back out gives the per-train figure trains-needed ceils against.
+pub fn train_answer(math: TransportMath, units: u32, demand_per_min: f64) -> TrainAnswer {
+    let per_train = math.throughput_per_min / units.max(1) as f64;
+    let surplus = math.throughput_per_min - demand_per_min;
+    TrainAnswer {
+        per_train_per_min: per_train,
+        trains_needed: trains_needed(demand_per_min, per_train),
+        demand_per_min,
+        surplus_per_min: surplus,
+        short: demand_per_min > math.throughput_per_min + 1e-6,
+        math,
+    }
+}
+
 /// Wizard transport pick (A3.3): belt under 800m; rail at distance or high
 /// rate; drone for trickles over long hauls.
 pub fn pick_transport(dist_m: f64, rate_per_min: f64) -> &'static str {
@@ -218,6 +263,34 @@ mod tests {
         assert!(m.throughput_per_min > 0.0);
         // straight-line: no terrain factor
         assert!((m.effective_length_m - 2000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn trains_needed_is_ceil_division() {
+        // 1000/min demand, a consist that moves 300/min → 4 trains (ceil 3.33).
+        assert_eq!(trains_needed(1000.0, 300.0), 4);
+        // an exact multiple never rounds up.
+        assert_eq!(trains_needed(900.0, 300.0), 3);
+        // no demand, or a unit that can't move anything → zero trains.
+        assert_eq!(trains_needed(0.0, 300.0), 0);
+        assert_eq!(trains_needed(500.0, 0.0), 0);
+    }
+
+    #[test]
+    fn train_answer_classifies_short_and_surplus() {
+        let m = rail_math(3400.0 / PARAMS.terrain_factor, &spec(), 100.0);
+        let per_train = m.throughput_per_min; // spec() is a single consist
+                                              // demand just over one train → SHORT at the configured 1 consist, needs 2.
+        let a = train_answer(m.clone(), 1, per_train + 10.0);
+        assert!(a.short);
+        assert!(a.surplus_per_min < 0.0);
+        assert_eq!(a.trains_needed, 2);
+        assert!((a.per_train_per_min - per_train).abs() < 1e-6);
+        // demand under one train → surplus, one train suffices.
+        let b = train_answer(m, 1, per_train - 10.0);
+        assert!(!b.short);
+        assert!(b.surplus_per_min > 0.0);
+        assert_eq!(b.trains_needed, 1);
     }
 
     #[test]

@@ -15,6 +15,7 @@ export function applyPatches(plan: Plan, ops: PatchOp[]): Plan {
     proposals: { ...plan.proposals },
     switches: { ...plan.switches },
     styleGuides: { ...plan.styleGuides },
+    buildOverrides: { ...plan.buildOverrides },
     meta: { ...plan.meta },
   };
   for (const op of ops) {

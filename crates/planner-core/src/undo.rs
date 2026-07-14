@@ -89,30 +89,36 @@ impl UndoLog {
     }
 
     /// Apply the inverse of the newest applied entry. Returns the batch the
-    /// renderer needs (already applied to canonical state).
-    pub fn undo(&mut self, state: &mut PlanState) -> Option<PatchBatch> {
+    /// renderer needs (already applied to canonical state), or `Ok(None)`
+    /// when there is nothing to undo.
+    ///
+    /// On `Err` (a corrupt entry — e.g. a damaged persisted journal) the log
+    /// is untouched: the cursor only moves after the batch applied cleanly,
+    /// so a failed undo is a no-op on the log. Caveat: `apply_batch` applies
+    /// ops sequentially and can fail mid-batch, so `state` may hold a partial
+    /// application — callers owning a durable source of truth (the plan file)
+    /// must restore state from it on `Err`.
+    pub fn undo(&mut self, state: &mut PlanState) -> Result<Option<PatchBatch>, String> {
         if self.cursor == 0 {
-            return None;
+            return Ok(None);
         }
+        let batch = self.entries[self.cursor - 1].inverse.clone();
+        state.apply_batch(&batch)?;
         self.cursor -= 1;
-        let batch = self.entries[self.cursor].inverse.clone();
-        state
-            .apply_batch(&batch)
-            .expect("inverse patch must apply cleanly — undo log corrupt otherwise");
-        Some(batch)
+        Ok(Some(batch))
     }
 
-    /// Re-apply the next redo entry.
-    pub fn redo(&mut self, state: &mut PlanState) -> Option<PatchBatch> {
+    /// Re-apply the next redo entry. Same contract as [`UndoLog::undo`]:
+    /// `Ok(None)` when there is no redo tail; on `Err` the log is untouched
+    /// but `state` may hold a partial application.
+    pub fn redo(&mut self, state: &mut PlanState) -> Result<Option<PatchBatch>, String> {
         if self.cursor >= self.entries.len() {
-            return None;
+            return Ok(None);
         }
         let batch = self.entries[self.cursor].forward.clone();
+        state.apply_batch(&batch)?;
         self.cursor += 1;
-        state
-            .apply_batch(&batch)
-            .expect("forward patch must apply cleanly — undo log corrupt otherwise");
-        Some(batch)
+        Ok(Some(batch))
     }
 }
 
@@ -159,15 +165,15 @@ mod tests {
         log.commit(tx);
         assert_eq!(state.factories[&fid].name, "IRON WORKS");
 
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         assert_eq!(state.factories[&fid].name, "NORTHERN FORGE");
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         assert!(!state.factories.contains_key(&fid));
         assert!(!log.can_undo());
 
-        log.redo(&mut state).unwrap();
+        log.redo(&mut state).unwrap().unwrap();
         assert!(state.factories.contains_key(&fid));
-        log.redo(&mut state).unwrap();
+        log.redo(&mut state).unwrap().unwrap();
         assert_eq!(state.factories[&fid].name, "IRON WORKS");
         assert!(!log.can_redo());
     }
@@ -205,8 +211,8 @@ mod tests {
         assert_eq!(log_a.can_undo(), log_b.can_undo());
         assert_eq!(log_a.can_redo(), log_b.can_redo());
         // Push truncates a redo tail exactly like commit does.
-        log_a.undo(&mut state_a).unwrap();
-        log_b.undo(&mut state_b).unwrap();
+        log_a.undo(&mut state_a).unwrap().unwrap();
+        log_b.undo(&mut state_b).unwrap().unwrap();
         assert!(log_a.can_redo() && log_b.can_redo());
         let cmd2 = Command::CreateFactory {
             name: "TAIL".into(),
@@ -241,7 +247,7 @@ mod tests {
         )
         .unwrap();
         log.commit(tx);
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         let tx = apply(
             &mut state,
             &Command::RenameFactory {
@@ -281,7 +287,7 @@ mod tests {
         assert!(state.factories.is_empty());
         assert!(state.groups.is_empty());
 
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         assert!(state.factories.contains_key(&fid));
         assert!(state.groups.contains_key(&gid));
         assert_eq!(state.factories[&fid].groups, vec![gid]);
@@ -340,7 +346,7 @@ mod tests {
         assert!(state.switches.contains_key(&switch_bc));
 
         // One undo restores factory, route, and switch with identity intact.
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         assert!(state.factories.contains_key(&a));
         assert!(state.routes.contains_key(&route_ab));
         let sw = &state.switches[&switch_ab];
@@ -348,7 +354,7 @@ mod tests {
         assert_eq!(sw.priority, 3);
 
         // Redo removes all three again, still sparing the control pair.
-        log.redo(&mut state).unwrap();
+        log.redo(&mut state).unwrap().unwrap();
         assert!(!state.factories.contains_key(&a));
         assert!(!state.routes.contains_key(&route_ab));
         assert!(!state.switches.contains_key(&switch_ab));
@@ -381,6 +387,378 @@ mod tests {
             err,
             Err(crate::commands::DomainError::BuiltImmutable { .. })
         ));
+    }
+
+    fn create_factory_at(state: &mut PlanState, log: &mut UndoLog, x: f64, y: f64) -> Id {
+        let tx = apply(
+            state,
+            &Command::CreateFactory {
+                name: "SITE".into(),
+                position: MapPos { x, y, z: 0.0 },
+                region: "GRASS FIELDS".into(),
+            },
+        )
+        .unwrap();
+        let id = tx.created[0].clone();
+        log.commit(tx);
+        id
+    }
+
+    /// Power line with a real pin-to-pin path plus one switch on it.
+    fn add_power_line_with_switch(
+        state: &mut PlanState,
+        log: &mut UndoLog,
+        from: &Id,
+        to: &Id,
+    ) -> (Id, Id) {
+        let a = state.factories[from].position;
+        let b = state.factories[to].position;
+        let tx = apply(
+            state,
+            &Command::AddRoute {
+                kind: RouteKind::Power,
+                from: from.clone(),
+                to: to.clone(),
+                path: vec![a, b],
+            },
+        )
+        .unwrap();
+        let rid = tx.created[0].clone();
+        log.commit(tx);
+        let tx = apply(
+            state,
+            &Command::AddPrioritySwitch {
+                route: rid.clone(),
+                priority: 2,
+            },
+        )
+        .unwrap();
+        let sid = tx.created[0].clone();
+        log.commit(tx);
+        (rid, sid)
+    }
+
+    #[test]
+    fn move_factory_pin_snaps_switches_to_the_new_midpoint() {
+        let mut state = PlanState::default();
+        let mut log = UndoLog::new();
+        let a = create_factory_at(&mut state, &mut log, 0.0, 0.0);
+        let b = create_factory_at(&mut state, &mut log, 100.0, 0.0);
+        let c = create_factory_at(&mut state, &mut log, 100.0, 200.0);
+        let (route_ab, switch_ab) = add_power_line_with_switch(&mut state, &mut log, &a, &b);
+        let (_route_bc, switch_bc) = add_power_line_with_switch(&mut state, &mut log, &b, &c);
+        let mid_ab = MapPos {
+            x: 50.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        assert_eq!(state.switches[&switch_ab].position, mid_ab);
+        let mid_bc = state.switches[&switch_bc].position;
+
+        // Move A (x/y and elevation): its line refreshes and the switch snaps
+        // to the recomputed midpoint; B—C never moved, so its switch stays.
+        let tx = apply(
+            &mut state,
+            &Command::MoveFactoryPin {
+                id: a.clone(),
+                position: MapPos {
+                    x: 40.0,
+                    y: 80.0,
+                    z: 10.0,
+                },
+            },
+        )
+        .unwrap();
+        log.commit(tx);
+        assert_eq!(
+            state.routes[&route_ab].path[0],
+            MapPos {
+                x: 40.0,
+                y: 80.0,
+                z: 10.0,
+            }
+        );
+        assert_eq!(
+            state.switches[&switch_ab].position,
+            MapPos {
+                x: 70.0,
+                y: 40.0,
+                z: 5.0,
+            }
+        );
+        assert_eq!(state.switches[&switch_bc].position, mid_bc);
+
+        // One undo restores the pin, the route path, and the switch together.
+        log.undo(&mut state).unwrap().unwrap();
+        assert_eq!(
+            state.routes[&route_ab].path[0],
+            MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }
+        );
+        assert_eq!(state.switches[&switch_ab].position, mid_ab);
+    }
+
+    #[test]
+    fn add_edge_rejects_dangling_cross_factory_and_self_loop_ends() {
+        let mut state = PlanState::default();
+        let mut log = UndoLog::new();
+        let f1 = create_factory(&mut state, &mut log);
+        let f2 = create_factory(&mut state, &mut log);
+        let tx = apply(
+            &mut state,
+            &Command::AddGroup {
+                factory: f1.clone(),
+                machine: "Build_SmelterMk1_C".into(),
+                recipe: "Recipe_IngotIron_C".into(),
+                count: 1,
+                clock: 1.0,
+                graph_pos: GraphPos { x: 0.0, y: 0.0 },
+                floor: 0,
+            },
+        )
+        .unwrap();
+        let g1 = tx.created[0].clone();
+        log.commit(tx);
+        let tx = apply(
+            &mut state,
+            &Command::AddPort {
+                factory: f1.clone(),
+                direction: PortDirection::Out,
+                item: "Desc_IronIngot_C".into(),
+                rate: 30.0,
+                rate_ceiling: None,
+                graph_pos: GraphPos { x: 100.0, y: 0.0 },
+            },
+        )
+        .unwrap();
+        let p1 = tx.created[0].clone();
+        log.commit(tx);
+        let tx = apply(
+            &mut state,
+            &Command::AddPort {
+                factory: f2.clone(),
+                direction: PortDirection::In,
+                item: "Desc_IronIngot_C".into(),
+                rate: 30.0,
+                rate_ceiling: None,
+                graph_pos: GraphPos { x: 0.0, y: 0.0 },
+            },
+        )
+        .unwrap();
+        let p2 = tx.created[0].clone();
+        log.commit(tx);
+        let tx = apply(
+            &mut state,
+            &Command::AddJunction {
+                factory: f2.clone(),
+                kind: JunctionKind::Splitter,
+                graph_pos: GraphPos { x: 50.0, y: 0.0 },
+                floor: 0,
+            },
+        )
+        .unwrap();
+        let j2 = tx.created[0].clone();
+        log.commit(tx);
+
+        let edge = |from: EdgeEnd, to: EdgeEnd| Command::AddEdge {
+            factory: f1.clone(),
+            from,
+            to,
+            item: "Desc_IronIngot_C".into(),
+            tier: 1,
+        };
+        // Dangling references → NotFound (every variant).
+        for end in [
+            EdgeEnd::Group("nope".into()),
+            EdgeEnd::Port("nope".into()),
+            EdgeEnd::Junction("nope".into()),
+        ] {
+            let err = apply(&mut state, &edge(EdgeEnd::Group(g1.clone()), end));
+            assert!(matches!(
+                err,
+                Err(crate::commands::DomainError::NotFound { .. })
+            ));
+        }
+        // Cross-factory ends → Invalid (port and junction of f2 on an f1 edge).
+        for end in [EdgeEnd::Port(p2.clone()), EdgeEnd::Junction(j2.clone())] {
+            let err = apply(&mut state, &edge(EdgeEnd::Group(g1.clone()), end));
+            assert!(matches!(
+                err,
+                Err(crate::commands::DomainError::Invalid { .. })
+            ));
+        }
+        // Self-loop → Invalid.
+        let err = apply(
+            &mut state,
+            &edge(EdgeEnd::Group(g1.clone()), EdgeEnd::Group(g1.clone())),
+        );
+        assert!(matches!(
+            err,
+            Err(crate::commands::DomainError::Invalid { .. })
+        ));
+        assert!(state.edges.is_empty());
+        // A valid same-factory Group→Port edge still connects.
+        let tx = apply(
+            &mut state,
+            &edge(EdgeEnd::Group(g1.clone()), EdgeEnd::Port(p1.clone())),
+        )
+        .unwrap();
+        log.commit(tx);
+        assert_eq!(state.edges.len(), 1);
+    }
+
+    #[test]
+    fn built_tiers_are_immutable_but_rename_stays_allowed() {
+        let mut state = PlanState::default();
+        let mut log = UndoLog::new();
+        let f1 = create_factory(&mut state, &mut log);
+        let f2 = create_factory(&mut state, &mut log);
+        let gid = add_built_group(&mut state, &mut log, &f1);
+        // Built belt edge (import creates these): tier is locked.
+        let add_port =
+            |state: &mut PlanState, log: &mut UndoLog, fid: &Id, dir: PortDirection| -> Id {
+                let tx = apply(
+                    state,
+                    &Command::AddPort {
+                        factory: fid.clone(),
+                        direction: dir,
+                        item: "Desc_IronIngot_C".into(),
+                        rate: 30.0,
+                        rate_ceiling: None,
+                        graph_pos: GraphPos { x: 0.0, y: 0.0 },
+                    },
+                )
+                .unwrap();
+                let id = tx.created[0].clone();
+                log.commit(tx);
+                id
+            };
+        let out1 = add_port(&mut state, &mut log, &f1, PortDirection::Out);
+        let in2 = add_port(&mut state, &mut log, &f2, PortDirection::In);
+        let tx = apply(
+            &mut state,
+            &Command::AddEdge {
+                factory: f1.clone(),
+                from: EdgeEnd::Group(gid.clone()),
+                to: EdgeEnd::Port(out1.clone()),
+                item: "Desc_IronIngot_C".into(),
+                tier: 1,
+            },
+        )
+        .unwrap();
+        let eid = tx.created[0].clone();
+        log.commit(tx);
+        state.edges.get_mut(&eid).unwrap().status = Status::Built;
+        let err = apply(
+            &mut state,
+            &Command::SetEdgeTier {
+                id: eid.clone(),
+                tier: 3,
+            },
+        );
+        assert!(matches!(
+            err,
+            Err(crate::commands::DomainError::BuiltImmutable { .. })
+        ));
+        assert_eq!(state.edges[&eid].tier, 1);
+
+        // Built belt route: SetRouteTier and SetRouteSpec agree (they mutate
+        // the identical field).
+        let tx = apply(
+            &mut state,
+            &Command::AddRoute {
+                kind: RouteKind::Belt { tier: 1 },
+                from: out1.clone(),
+                to: in2.clone(),
+                path: vec![],
+            },
+        )
+        .unwrap();
+        let rid = tx.created[0].clone();
+        log.commit(tx);
+        state.routes.get_mut(&rid).unwrap().status = Status::Built;
+        for cmd in [
+            Command::SetRouteTier {
+                id: rid.clone(),
+                tier: 3,
+            },
+            Command::SetRouteSpec {
+                id: rid.clone(),
+                kind: RouteKind::Belt { tier: 3 },
+            },
+        ] {
+            let err = apply(&mut state, &cmd);
+            assert!(
+                matches!(
+                    err,
+                    Err(crate::commands::DomainError::BuiltImmutable { .. })
+                ),
+                "{cmd:?} must reject on ◆"
+            );
+        }
+
+        // Renaming a ◆ factory SUCCEEDS — names are planner-side labels, not
+        // game ground truth (deliberate §3.1.1 exemption, DECISIONS matrix).
+        state.factories.get_mut(&f1).unwrap().status = Status::Built;
+        let tx = apply(
+            &mut state,
+            &Command::RenameFactory {
+                id: f1.clone(),
+                name: "MY IRON WORKS".into(),
+            },
+        )
+        .unwrap();
+        log.commit(tx);
+        assert_eq!(state.factories[&f1].name, "MY IRON WORKS");
+    }
+
+    #[test]
+    fn corrupt_inverse_fails_undo_and_leaves_the_log_untouched() {
+        use crate::patch::PatchOp;
+        let mut state = PlanState::default();
+        let corrupt = UndoEntry {
+            label: "corrupt".into(),
+            forward: vec![],
+            inverse: vec![PatchOp::Add {
+                path: "/wizzles/x".into(),
+                value: serde_json::json!({}),
+            }],
+        };
+        let mut log = UndoLog::hydrate(vec![corrupt]);
+        assert!(log.can_undo());
+        assert!(log.undo(&mut state).is_err());
+        assert!(log.can_undo(), "failed undo is a no-op on the log");
+        assert_eq!(log.entries().len(), 1);
+
+        // The log stays usable: a fresh valid entry undoes cleanly on top,
+        // and the corrupt entry below re-fails instead of panicking.
+        let fid = create_factory(&mut state, &mut log);
+        log.undo(&mut state).unwrap().unwrap();
+        assert!(!state.factories.contains_key(&fid));
+        assert!(log.undo(&mut state).is_err());
+    }
+
+    #[test]
+    fn corrupt_forward_fails_redo_and_leaves_the_log_untouched() {
+        use crate::patch::PatchOp;
+        let mut state = PlanState::default();
+        let corrupt = UndoEntry {
+            label: "corrupt".into(),
+            forward: vec![PatchOp::Add {
+                path: "/wizzles/x".into(),
+                value: serde_json::json!({}),
+            }],
+            inverse: vec![],
+        };
+        let mut log = UndoLog::hydrate_with_cursor(vec![corrupt], 0);
+        assert!(log.can_redo());
+        assert!(!log.can_undo());
+        assert!(log.redo(&mut state).is_err());
+        assert!(log.can_redo(), "failed redo is a no-op on the log");
+        assert!(!log.can_undo());
     }
 
     fn add_built_group(state: &mut PlanState, log: &mut UndoLog, fid: &Id) -> Id {
@@ -453,7 +831,7 @@ mod tests {
         );
 
         // Each edit is one undoable step; undoing both restores None.
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         assert_eq!(
             state.groups[&gid].planned_delta,
             Some(GroupDelta {
@@ -461,10 +839,10 @@ mod tests {
                 clock: None,
             })
         );
-        log.undo(&mut state).unwrap();
+        log.undo(&mut state).unwrap().unwrap();
         assert_eq!(state.groups[&gid].planned_delta, None);
         assert_eq!(state.groups[&gid].count, 4);
-        log.redo(&mut state).unwrap();
+        log.redo(&mut state).unwrap().unwrap();
         assert_eq!(
             state.groups[&gid].planned_delta,
             Some(GroupDelta {
@@ -561,7 +939,7 @@ mod tests {
         let entry = log.commit(tx);
         crate::patch::apply(&mut projected, &entry.forward).unwrap();
         assert_eq!(projected, state.project());
-        let batch = log.undo(&mut state).unwrap();
+        let batch = log.undo(&mut state).unwrap().unwrap();
         crate::patch::apply(&mut projected, &batch).unwrap();
         assert_eq!(projected, state.project());
     }

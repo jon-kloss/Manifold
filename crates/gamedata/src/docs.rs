@@ -107,6 +107,11 @@ pub struct GameData {
     pub belts: BTreeMap<String, Belt>,
     #[serde(default)]
     pub buildables: BTreeMap<String, Buildable>,
+    /// Schematic class → recipe classes it unlocks (W2b unlocked-alt awareness).
+    /// Empty when Docs.json ships no FGSchematic section (the trimmed fixture),
+    /// so old catalogs load unchanged.
+    #[serde(default)]
+    pub schematics: BTreeMap<String, Vec<String>>,
 }
 
 /// Decode raw Docs.json bytes: UTF-16LE when BOM'd (real installs), UTF-8 otherwise.
@@ -165,6 +170,26 @@ fn parse_class_list(raw: &str) -> Vec<String> {
         .filter(|c| !c.is_empty())
         .map(|s| s.to_string())
         .collect()
+}
+
+/// Walk a schematic's `mUnlocks` value (JSON array of unlock objects, or a
+/// flat FG string, depending on the Docs.json exporter) and collect every
+/// `Recipe_*` class it references, de-duplicated in first-seen order. The
+/// `Recipe_` prefix isolates recipe unlocks from item/scanner/inventory
+/// unlocks that share the same block. Tolerant of any nesting/shape.
+fn collect_recipe_classes(v: &Value, out: &mut Vec<String>) {
+    match v {
+        Value::String(raw) => {
+            for c in parse_class_list(raw) {
+                if c.starts_with("Recipe_") && !out.contains(&c) {
+                    out.push(c);
+                }
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|e| collect_recipe_classes(e, out)),
+        Value::Object(o) => o.values().for_each(|e| collect_recipe_classes(e, out)),
+        _ => {}
+    }
 }
 
 fn s(v: &Value, key: &str) -> String {
@@ -367,6 +392,19 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
                         },
                     );
                     generator_fuels.push((class_name, mw, fuels));
+                }
+            }
+            "FGSchematic" => {
+                for c in &classes {
+                    let class_name = s(c, "ClassName");
+                    if class_name.is_empty() {
+                        continue;
+                    }
+                    let mut recipes: Vec<String> = Vec::new();
+                    if let Some(unlocks) = c.get("mUnlocks") {
+                        collect_recipe_classes(unlocks, &mut recipes);
+                    }
+                    gd.schematics.insert(class_name, recipes);
                 }
             }
             "FGBuildableConveyorBelt" => {
@@ -582,6 +620,41 @@ mod tests {
         assert_eq!(burn.ingredients, vec![("Desc_Coal_C".to_string(), 15.0)]);
         assert_eq!(burn.products, vec![(POWER_ITEM.to_string(), 75.0)]);
         assert_eq!(gd.items[POWER_ITEM].display_name, "Power");
+    }
+
+    #[test]
+    fn parses_fgschematic_recipe_unlocks() {
+        // One schematic unlocking a recipe (plus a non-recipe unlock that must
+        // be ignored). mUnlocks as a JSON array of unlock objects — the modern
+        // Docs.json shape. The recipe-class ref uses the standard FG path form.
+        let text = r#"[
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGSchematic'",
+            "Classes": [
+              {
+                "ClassName": "Schematic_TestAlt_C",
+                "mUnlocks": [
+                  { "mRecipes": "((/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Recipes/Alternate/Recipe_Alternate_Screw.Recipe_Alternate_Screw_C'))" },
+                  { "mInventorySlotsToUnlock": 1 }
+                ]
+              }
+            ]
+          }
+        ]"#;
+        let gd = parse_docs(text, "test").unwrap();
+        assert_eq!(
+            gd.schematics.get("Schematic_TestAlt_C"),
+            Some(&vec!["Recipe_Alternate_Screw_C".to_string()]),
+            "recipe unlock is captured; the slot-unlock is ignored"
+        );
+    }
+
+    #[test]
+    fn fixture_without_fgschematic_yields_empty_schematics() {
+        // The trimmed fixture ships no FGSchematic section — the map stays
+        // empty and the catalog loads unchanged (tolerant default).
+        let gd = parse_docs(include_str!("../assets/docs-fixture.json"), "test").unwrap();
+        assert!(gd.schematics.is_empty());
     }
 
     #[test]

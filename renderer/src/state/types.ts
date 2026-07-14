@@ -18,6 +18,10 @@ export interface Factory {
   groups: Id[];
   ports: Id[];
   styleGuide: Id | null;
+  /** W2a refactor link: when this ◇ factory is a planned replacement for a
+   *  running ◆ factory, `replaces` names that old factory's id (a planner-side
+   *  label; the cutover/downtime are DERIVED, the ◆ is never mutated). */
+  replaces?: Id | null;
   status: Status;
   createdBy: CreatedBy;
 }
@@ -155,12 +159,25 @@ export interface PrioritySwitch {
 
 export interface NodeClaim {
   id: Id;
+  /** resolved node id: a bundled-snapshot WorldNode id, or `save:<id>` for a
+   *  miner on no known catalog node (W2b-C). */
   node: string;
   factory: Id;
   extractor: string;
   clock: number;
+  /** the save's stable node ref this claim was bound from (re-match key). */
+  saveNodeId?: string | null;
   status: Status;
   createdBy: CreatedBy;
+}
+
+/** Plan-local correction of a resource node's geometry (W2b-C). Sparse overlay
+ *  keyed by node id; the bundled catalog stays an ambient default (resolved =
+ *  snapshot ⊕ override). Purity is NOT correctable — snapshot-primary. */
+export interface NodeOverride {
+  id: string;
+  pos?: MapPos | null;
+  saveActor?: string | null;
 }
 
 export interface PlanMeta {
@@ -193,6 +210,17 @@ export interface Plan {
   proposals: Record<Id, Proposal>;
   switches: Record<Id, PrioritySwitch>;
   styleGuides: Record<Id, StyleGuide>;
+  /** W1c manual build-queue completion overrides (sparse assertion overlay) */
+  buildOverrides: Record<Id, BuildOverride>;
+  /** W2b-C plan-local resource-node corrections (snapshot ⊕ override) */
+  nodeOverrides: Record<string, NodeOverride>;
+}
+
+/** Manual completion assertion for a build-queue step (W1c) — present only
+ *  when the user hand-checked/unchecked a step; auto-dissolves on re-import. */
+export interface BuildOverride {
+  id: Id;
+  done: boolean;
 }
 
 // ---- gamedata ----
@@ -220,6 +248,8 @@ export interface GameData {
   machines: Record<string, GameMachine>;
   belts: Record<string, GameBelt>;
   buildables: Record<string, GameBuildable>;
+  /** Schematic class → recipe classes it unlocks (W2b; empty on trimmed catalogs). */
+  schematics?: Record<string, string[]>;
   buildVersion: string;
 }
 
@@ -288,6 +318,22 @@ export interface TransportMath {
   fuelItem: string | null;
 }
 
+/** Task #49 train answer-sheet — trains-needed for a route, from the same
+ *  transport math. Returned by the read-only `routeCalc` backend call for a
+ *  PROSPECTIVE route, and composed client-side for an existing one. */
+export interface TrainAnswer {
+  math: TransportMath;
+  /** Throughput of ONE consist/truck/drone at these specs (items/min). */
+  perTrainPerMin: number;
+  /** ceil(demand ÷ per-train) — the headline answer. */
+  trainsNeeded: number;
+  demandPerMin: number;
+  /** Throughput at the configured unit count − demand; negative ⇒ short. */
+  surplusPerMin: number;
+  /** The configured fleet can't meet demand. */
+  short: boolean;
+}
+
 export interface DerivedRoute {
   flow: number;
   supplied: number;
@@ -329,9 +375,130 @@ export interface DerivedCircuit {
   nextShed: string | null;
 }
 
+/** W1c build queue — a DERIVED projection: each step is an existing ◇ planned
+ *  (or partially-built) entity, completion derived from the ◆ built layer. */
+export type BuildStepState = "pending" | "partial" | "done";
+export type BuildStepKind = "factory" | "group" | "route" | "claim";
+
+/** Milestone "built so far" (◆ production of the item) against the game total. */
+export interface BuildProgress {
+  item: string;
+  built: number;
+  total: number;
+}
+
+export interface BuildStep {
+  id: Id;
+  kind: BuildStepKind;
+  /** owning factory, for "go there" navigation (null on map-level routes) */
+  factory: Id | null;
+  label: string;
+  detail: string;
+  /** derived completion, ignoring the override — drives the ◇◈◆ glyph */
+  state: BuildStepState;
+  /** resolved answer: override ?? (state === "done") */
+  done: boolean;
+  /** a manual BuildOverride is pinning `done` */
+  overridden: boolean;
+  /** completion can't be auto-detected (routes/claims) — check is manual */
+  manualOnly: boolean;
+  /** ordering key: creating proposal's number, 0 for MANUAL/import */
+  number: number;
+  progress?: BuildProgress;
+}
+
+/** W2a cutover — a DERIVED refactor overlay: a ◇ replacement linked to the ◆ it
+ *  retires, with ordered BuildNew → Switch → Dismantle steps. The ◆ layer is
+ *  never mutated; dismantle completion is derived from it. */
+export type CutoverPhase = "build_new" | "switch" | "dismantle";
+
+export interface CutoverStep {
+  id: Id;
+  phase: CutoverPhase;
+  /** owning factory, for "go there" navigation */
+  factory: Id | null;
+  label: string;
+  detail: string;
+  /** derived completion, ignoring the override — drives the ◇◈◆ glyph */
+  state: BuildStepState;
+  done: boolean;
+  overridden: boolean;
+  /** completion can't be auto-detected (Switch steps) — check is manual */
+  manualOnly: boolean;
+}
+
+export interface Cutover {
+  newFactory: Id;
+  newName: string;
+  oldFactory: Id;
+  oldName: string;
+  steps: CutoverStep[];
+  /** the new ◇ reuses a node the old ◆ still holds → unavoidable downtime */
+  nodeReuse: boolean;
+  number: number;
+}
+
+/** A single tracked-item production dip at a phase boundary. `rate`/`baseline`
+ *  are COMPUTED (scratch-solve output); `estHours` is the labeled estimate. */
+export interface Dip {
+  /** boundary: 1 = Switch, 2 = Dismantle */
+  phase: number;
+  item: string;
+  rate: number;
+  baseline: number;
+  estHours: number;
+}
+
+/** On-demand, scratch-solved downtime pricing for one cutover (ripple-inclusive).
+ *  Fetched via cutoverPlan(factoryId) — never part of the per-edit derived. */
+export interface CutoverPlan {
+  newFactory: Id;
+  oldFactory: Id;
+  tracked: string[];
+  baseline: Record<string, number>;
+  production: Record<string, number>[];
+  dips: Dip[];
+  /** node reuse: unavoidable downtime for the build window */
+  hard: boolean;
+  /** whether the downtime could be COMPUTED. false when the old factory declares
+   *  positive output but the scratch-solve baseline is ~0 (imported/unsolved) —
+   *  distinguishes "no impact" from "can't compute". Transient (derived). */
+  downtimeAvailable: boolean;
+  /** human reason set when downtimeAvailable is false (else null) */
+  unavailableReason: string | null;
+}
+
+/** W2b-D empire alternate-recipe optimizer: one ranked adopt-everywhere
+ *  opportunity. Derived/advisory — fetched via optimizeEmpire(), never part of
+ *  the per-edit derived, and empty in the fixture (no unlocked alternates). */
+export interface AltOpportunity {
+  recipe: string;
+  recipeName: string;
+  product: string;
+  productName: string;
+  /** Σ machines current − Σ machines alt (positive = the alt is cheaper). */
+  machinesSaved: number;
+  powerSavedMw: number;
+  /** net per-input change (positive = the alt consumes more of that item). */
+  inputDeltas: [string, number][];
+  /** ◇ planned group ids retooled in place; ◆ built group ids route to Refactor. */
+  affectedPlanned: Id[];
+  affectedBuilt: Id[];
+  retoolEstHours: number;
+  nodeReuse: boolean;
+}
+
+/** Result of adopting an alternate empire-wide: the drafted review proposal(s)
+ *  (T2 for ◇, W2a Refactor for ◆), plus any relayed infeasibility. */
+export interface AdoptOutcome {
+  proposals: Id[];
+  route: "t2" | "refactor";
+  note: string | null;
+}
+
 export interface Derived {
   factories: Record<Id, DerivedFactory>;
-  nodes: Record<string, { claims: number; conflict: boolean }>;
+  nodes: Record<string, { claims: number; conflict: boolean; drift: boolean }>;
   routes: Record<Id, DerivedRoute>;
   deficits: DeficitRow[];
   circuits: DerivedCircuit[];
@@ -339,6 +506,10 @@ export interface Derived {
   empireCycle: boolean;
   recomputeUs: number;
   totalPowerMw: number;
+  /** ordered ◇ planned / partially-built steps with resolved completion */
+  buildQueue: BuildStep[];
+  /** W2a cutovers: lightweight presence/steps (downtime is fetched on demand) */
+  cutovers: Cutover[];
 }
 
 // ---- IPC ----
@@ -351,7 +522,13 @@ export type PatchOp =
 // ---- proposals (Phase 3): reviewable, partially-acceptable change sets ----
 
 export type ProposalStatus = "draft" | "reviewing" | "accepted" | "rejected";
-export type ProposalSource = "global_solver" | "t2_optimize" | "advisor" | "chat" | "save_reimport";
+export type ProposalSource =
+  | "global_solver"
+  | "t2_optimize"
+  | "advisor"
+  | "chat"
+  | "save_reimport"
+  | "refactor";
 export type ProposalItemKind = "create" | "modify" | "claim" | "route_add";
 
 export interface ProposalItem {
@@ -369,6 +546,15 @@ export interface ProposalItem {
   sync?: unknown;
 }
 
+/** Total-quantity goal target carried alongside a proposal (goal-mode). The
+ *  solver never reads it — the rate drives the plan; the review surface
+ *  annotates the target and its time-at-rate. */
+export interface Milestone {
+  item: string;
+  total: number;
+  rate: number;
+}
+
 export interface Proposal {
   id: Id;
   source: ProposalSource;
@@ -381,9 +567,22 @@ export interface Proposal {
   inputHash: string;
   provenance: string;
   items: ProposalItem[];
+  /** optional total-quantity target (goal-mode); absent on legacy plans */
+  milestone?: Milestone;
 }
 
 export interface GoalCheck { item: string; requested: number; achieved: number }
+
+/** Per-grid before→after power for a touched circuit (mock 3a review banner). */
+export interface CircuitImpact {
+  name: string;
+  demandBeforeMw: number;
+  demandAfterMw: number;
+  generationBeforeMw: number;
+  generationAfterMw: number;
+  headroomAfter: number;
+  level: "ok" | "warn" | "crit";
+}
 
 export interface ProposalConsequence {
   goal: GoalCheck[];
@@ -392,6 +591,7 @@ export interface ProposalConsequence {
   deltaGenerationMw: number;
   machines: number;
   warnings: string[];
+  circuitImpacts: CircuitImpact[];
 }
 
 export interface WizardConstraints {
@@ -407,6 +607,8 @@ export interface WizardConstraints {
 export interface WizardGoal {
   items: [string, number][];
   constraints: WizardConstraints;
+  /** total-quantity goal mode; passed through the solver into the proposal */
+  milestone?: Milestone;
 }
 
 export interface WizardLogLine { phase: string; line: string }
@@ -446,6 +648,21 @@ export interface InitPayload {
   canRedo: boolean;
   undoLabel: string | null;
   viewState: ViewState | null;
+  /** last save-import summary (W1c "what changed since last import") */
+  lastImport: LastImport | null;
+  /** W2b: recipe classes the imported save has unlocked (mPurchasedSchematics ×
+      FGSchematic unlocks). Save-derived, outside the undo journal; [] until a
+      save with schematics is imported. Gates alternate-recipe eligibility. */
+  unlocked: string[];
+}
+
+/** Session fact: what the most recent save import did (W1c resume dashboard). */
+export interface LastImport {
+  at: string;
+  saveName: string;
+  outcome: "imported" | "drift" | "in_sync";
+  factoriesAdded: number;
+  groupsChanged: number;
 }
 
 export interface ViewState {
@@ -453,6 +670,9 @@ export interface ViewState {
   openFactory?: Id | null;
   /** first-run card dismissed */
   onboarded?: boolean;
+  /** resume dashboard has been auto-presented for this plan (persisted, like
+      `onboarded`) — so it greets once and never ambushes the restored map. */
+  resumeSeen?: boolean;
 }
 
 // ---- commands (serde: tag "type" snake_case, fields camelCase) ----
@@ -498,7 +718,10 @@ export type Command =
   | { type: "delete_switch"; id: Id }
   | { type: "create_style_guide"; guide: StyleGuide }
   | { type: "delete_style_guide"; id: Id }
-  | { type: "set_factory_theme"; factory: Id; styleGuide: Id | null };
+  | { type: "set_factory_theme"; factory: Id; styleGuide: Id | null }
+  | { type: "set_build_done"; id: Id; done: boolean | null }
+  | { type: "set_factory_replaces"; id: Id; replaces: Id | null }
+  | { type: "set_node_override"; id: string; nodeOverride: NodeOverride | null };
 
 export const BELT_CAPACITY = [60, 120, 270, 480, 780, 1200];
 export const beltCapacity = (tier: number) => BELT_CAPACITY[Math.min(6, Math.max(1, tier)) - 1];
@@ -515,6 +738,16 @@ export interface ImportMachine {
   x: number;
   y: number;
   z?: number;
+  /** Extractors only (W2b node context): stable ref to the resource node /
+   *  water volume this sits on, for re-match on re-import. */
+  nodeActorId?: string;
+  /** Resource item (Desc_…) — not carried in the save; null until the world
+   *  catalog supplies it downstream. */
+  resource?: string | null;
+  /** Node purity — not carried in the save; null (snapshot-primary purity). */
+  purity?: string | null;
+  /** Extraction rate items/min — not exposed by the parser; absent. */
+  extractionRate?: number;
 }
 
 export interface ImportSnapshot {
@@ -522,6 +755,9 @@ export interface ImportSnapshot {
   buildVersion?: string;
   machines: ImportMachine[];
   extractors?: ImportMachine[];
+  /** Purchased/unlocked schematic class names (W2b alt-awareness); [] if the
+   *  schematic manager actor is absent. */
+  unlockedSchematics: string[];
   belts?: Record<string, number>;
   rails?: number;
   powerLines?: number;

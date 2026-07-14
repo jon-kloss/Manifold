@@ -28,17 +28,38 @@ async function connect(page: Page, source: string, target: string) {
   const before = await page.locator(".belt-label").count();
   const src = page.locator(`[data-testid="${source}"] .react-flow__handle.source`);
   const dst = page.locator(`[data-testid="${target}"] .react-flow__handle.target`);
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // React Flow's synthetic drag-to-connect is the flakiest op in the suite on a
+  // loaded CI runner: the handle must be scrolled into view AND hovered before
+  // it accepts a connection start, the drop must pause on the target so RF's
+  // pointer-over fires, and the whole gesture can still miss under contention.
+  // Retry generously with a neutral-position reset between attempts — a stuck
+  // half-drag from a missed attempt otherwise swallows the next one.
+  await src.scrollIntoViewIfNeeded();
+  await dst.scrollIntoViewIfNeeded();
+  await src.waitFor({ state: "visible" });
+  await dst.waitFor({ state: "visible" });
+  for (let attempt = 0; attempt < 6; attempt++) {
     const a = await src.boundingBox();
     const b = await dst.boundingBox();
     if (!a || !b) throw new Error(`handle not found: ${source} → ${target}`);
-    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    const sx = a.x + a.width / 2;
+    const sy = a.y + a.height / 2;
+    const tx = b.x + b.width / 2;
+    const ty = b.y + b.height / 2;
+    await page.mouse.move(sx, sy);
+    await src.hover(); // arm the handle so RF marks it connectable
     await page.mouse.down();
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.move(sx, sy); // tiny wiggle to register drag start
+    await page.mouse.move(tx, ty, { steps: 16 });
+    await page.mouse.move(tx, ty); // settle on target so pointer-over fires
+    await page.waitForTimeout(60);
     await page.mouse.up();
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(400);
     if ((await page.locator(".belt-label").count()) === before + 1) return;
+    // Reset any half-committed drag before retrying.
+    await page.mouse.up().catch(() => {});
+    await page.mouse.move(sx, sy - 120);
+    await page.waitForTimeout(120);
   }
   throw new Error(`connect failed after retries: ${source} → ${target}`);
 }
@@ -240,6 +261,12 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
 
   // ---- reopen: everything persisted (view state returns to the open factory) ----
   await page.reload();
+  // R1: the once-per-plan resume dashboard auto-presents on THIS first reload
+  // with a non-empty build queue — the empty first open (above) no longer wrongly
+  // spends the flag. Dismiss it (Escape consumes — R6) to reach the factory view.
+  await expect(page.getByTestId("dashboard")).toBeVisible({ timeout: 15_000 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("dashboard")).toBeHidden();
   await expect(page.getByTestId("graph-root")).toBeVisible();
   await expect(page.getByTestId("port-out-Desc_ModularFrame_C")).toBeVisible();
   await page.getByTestId("port-out-Desc_ModularFrame_C").click();

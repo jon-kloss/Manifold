@@ -224,6 +224,62 @@ fn advisor_fires_on_new_deficit_and_dismiss_mutes() {
 }
 
 #[test]
+fn restart_does_not_refire_still_true_conditions() {
+    // M18: arming state persists — a deficit reported before shutdown must
+    // not produce a duplicate card on the next launch while it is still true.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plan.ficsit");
+    let a = {
+        let mut s = Session::open(&path, None, "fixture").unwrap();
+        let (a, out) = build_starvable(&mut s);
+        let resp = s
+            .edit(vec![Command::SetPortRate {
+                id: out,
+                rate: 10.0,
+            }])
+            .unwrap();
+        assert_eq!(
+            resp.advisor
+                .cards
+                .iter()
+                .filter(|c| c.rule == "new_deficit")
+                .count(),
+            1,
+            "deficit fires once before shutdown"
+        );
+        a
+    }; // session dropped — "app closed"
+
+    let mut s = Session::open(&path, None, "fixture").unwrap();
+    assert_eq!(
+        s.advisor
+            .feed(false)
+            .cards
+            .iter()
+            .filter(|c| c.rule == "new_deficit")
+            .count(),
+        1,
+        "persisted card survives the restart"
+    );
+    // trivial edit → advise() runs over the still-true deficit
+    let resp = s
+        .edit(vec![Command::RenameFactory {
+            id: a,
+            name: "UPSTREAM".into(),
+        }])
+        .unwrap();
+    assert_eq!(
+        resp.advisor
+            .cards
+            .iter()
+            .filter(|c| c.rule == "new_deficit")
+            .count(),
+        1,
+        "still-true condition must not re-fire a duplicate card after restart"
+    );
+}
+
+#[test]
 fn chat_intent_drafts_a_reviewable_proposal() {
     let mut s = Session::in_memory(None).unwrap();
     let reply = app::chat::chat(

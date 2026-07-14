@@ -28,6 +28,7 @@ import Inspector from "./Inspector";
 import RecipeStrip from "./RecipeStrip";
 import AddGroupMenu from "./AddGroupMenu";
 import AddPortMenu from "./AddPortMenu";
+import BuildSheet from "./BuildSheet";
 import { fmtPower } from "../lib/format";
 import { isEditableTarget } from "../lib/keys";
 import { computeEdgeLayout, type LabelSize, type NodeGeom } from "./edgeLayout";
@@ -240,6 +241,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; flowX: number; flowY: number } | null>(null);
   const [portMenu, setPortMenu] = useState<"in" | "out" | null>(null);
   const [logisticMenu, setLogisticMenu] = useState(false);
+  const [buildSheet, setBuildSheet] = useState(false);
 
   // Display derived: T0 projection during drag, else authoritative T1.
   const df: DerivedFactory | undefined =
@@ -527,7 +529,12 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       } else if (e.key === "r" || e.key === "R") {
         setStripOpen((o) => !o);
       } else if (e.key === "f" || e.key === "F") {
-        void fitView({ padding: 0.15, duration: 200 });
+        // leave room for the inspector panel (360px) so framed cards are
+        // never hidden under it
+        void fitView({
+          padding: useStore.getState().selection ? { top: 0.15, bottom: 0.15, left: 0.15, right: 0.32 } : 0.15,
+          duration: 200,
+        });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -564,6 +571,14 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         <span className={`chip ${chip.over ? "warn" : ""}`}>{chip.text}</span>
         {df?.solveOnRelease && <span className="chip warn">LIVE → ON RELEASE</span>}
         <span className="ctx-spring" />
+        <button
+          className="btn btn-ghost overlay-chip"
+          onClick={() => setBuildSheet(true)}
+          title="BUILD SHEET — a clean, copy/print-friendly per-factory checklist to build from in-game"
+          data-testid="btn-build-sheet"
+        >
+          BUILD SHEET
+        </button>
         <button
           className="btn btn-ghost overlay-chip"
           onClick={() => void dispatch([{ type: "tidy_layout", factory: factoryId }])}
@@ -748,6 +763,8 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       )}
 
       {selectedGroup && stripOpen && <RecipeStrip group={selectedGroup} />}
+
+      {buildSheet && <BuildSheet factoryId={factoryId} onClose={() => setBuildSheet(false)} />}
     </div>
   );
 }

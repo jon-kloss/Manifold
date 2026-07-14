@@ -67,6 +67,39 @@ function clockOf(obj: RawObject): number {
   return 1.0;
 }
 
+// Stable reference to the resource node (or water volume) this extractor sits
+// on: an `mExtractableResource` object-property whose pathName is the level
+// instance name (e.g. "…:PersistentLevel.BP_ResourceNode109"). Survives
+// re-saves, so it re-matches the same node on re-import. The save carries NO
+// purity, resource-item, or items/min rate on the node — those come from the
+// bundled world catalog (snapshot-primary purity, W2b-C). Guarded: undefined
+// when absent.
+function nodeActorIdOf(obj: RawObject): string | undefined {
+  const prop = obj.properties?.mExtractableResource as
+    | { value?: { pathName?: string } }
+    | undefined;
+  const path = prop?.value?.pathName;
+  return typeof path === "string" && path.length > 0 ? path : undefined;
+}
+
+// The purchased/unlocked schematics live on the single BP_SchematicManager
+// actor as `mPurchasedSchematics`: an ObjectProperty array whose pathNames end
+// in the schematic class (e.g. "…/Schematic_1-2.Schematic_1-2_C"). Returns the
+// class names; [] when the actor/property is absent (honest degradation).
+function unlockedSchematicsOf(obj: RawObject): string[] {
+  const prop = obj.properties?.mPurchasedSchematics as
+    | { values?: Array<{ pathName?: string }>; value?: Array<{ pathName?: string }> }
+    | undefined;
+  const list = prop?.values ?? prop?.value;
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const entry of list) {
+    const path = entry?.pathName;
+    if (typeof path === "string" && path.length > 0) out.push(classOf(path));
+  }
+  return out;
+}
+
 function toMachine(obj: RawObject, cls: string): ImportMachine | null {
   const t = obj.transform?.translation;
   if (!t) return null;
@@ -90,6 +123,7 @@ self.onmessage = (e: MessageEvent<{ name: string; bytes: ArrayBuffer }>) => {
       buildVersion: String((save.header as { buildVersion?: number })?.buildVersion ?? ""),
       machines: [],
       extractors: [],
+      unlockedSchematics: [],
       belts: {},
       rails: 0,
       powerLines: 0,
@@ -108,7 +142,17 @@ self.onmessage = (e: MessageEvent<{ name: string; bytes: ArrayBuffer }>) => {
           if (m) snapshot.machines.push(m);
         } else if (EXTRACTORS.has(cls)) {
           const m = toMachine(obj, cls);
-          if (m) snapshot.extractors!.push(m);
+          if (m) {
+            // Node context for W2b node reconciliation. Only the stable node
+            // ref is in the save; purity/resource/rate are not — emit null and
+            // let the world catalog supply purity downstream (honest absence).
+            m.nodeActorId = nodeActorIdOf(obj);
+            m.resource = null;
+            m.purity = null;
+            snapshot.extractors!.push(m);
+          }
+        } else if (cls === "BP_SchematicManager_C") {
+          snapshot.unlockedSchematics = unlockedSchematicsOf(obj);
         } else if (cls.startsWith("Build_ConveyorBelt")) {
           snapshot.belts![cls] = (snapshot.belts![cls] ?? 0) + 1;
         } else if (cls.startsWith("Build_RailroadTrack")) {

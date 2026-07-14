@@ -4,13 +4,17 @@ import { create } from "zustand";
 import { backend } from "./backend";
 import { applyPatches } from "./patch";
 import type {
+  AdoptOutcome,
   AdvisorFeed,
+  AltOpportunity,
   Command,
+  CutoverPlan,
   Derived,
   DerivedFactory,
   EditResponse,
   GameData,
   Id,
+  LastImport,
   Plan,
   ViewState,
   World,
@@ -18,6 +22,21 @@ import type {
 
 /** Human text for a rejected backend call (DomainError string or Error). */
 export const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/** Backend errors cite entity ids; users know names. Swap any ULID we can
+ *  resolve for its display name (quoted), leave the rest untouched. */
+const nameIds = (msg: string): string =>
+  msg.replace(/[0-9A-HJKMNP-TV-Z]{26}/g, (id) => {
+    const p = useStore.getState().plan;
+    const group = p.groups[id];
+    const name =
+      p.factories[id]?.name ??
+      (group ? `${p.factories[group.factory]?.name ?? "?"} machine bank` : undefined) ??
+      (p.ports[id] ? `${p.ports[id].item.replace(/^Desc_|_C$/g, "")} port` : undefined) ??
+      (p.routes[id] ? "route" : undefined) ??
+      p.proposals[id]?.title;
+    return name ? `"${name}"` : id;
+  });
 
 export type Selection =
   | { kind: "factory"; id: Id }
@@ -44,6 +63,8 @@ const emptyPlan: Plan = {
   proposals: {},
   switches: {},
   styleGuides: {},
+  buildOverrides: {},
+  nodeOverrides: {},
 };
 
 const emptyDerived: Derived = {
@@ -56,6 +77,8 @@ const emptyDerived: Derived = {
   empireCycle: false,
   recomputeUs: 0,
   totalPowerMw: 0,
+  buildQueue: [],
+  cutovers: [],
 };
 
 export interface AppStore {
@@ -73,7 +96,7 @@ export interface AppStore {
   undoLabel: string | null;
   view: ViewMode;
   selection: Selection;
-  overlays: { flows: boolean; nodes: boolean; power: boolean };
+  overlays: { flows: boolean; nodes: boolean; power: boolean; terrain: boolean };
   /** T0 projection during slider drag — rendered italic, replaced on settle. */
   projected: { factoryId: Id; result: DerivedFactory; targetRate: number } | null;
   /** ids whose numbers changed in the last authoritative patch (settle flash). */
@@ -89,6 +112,13 @@ export interface AppStore {
   /** ambient advisor feed (updated by every backend response) */
   advisor: AdvisorFeed;
   advisorOpen: boolean;
+  /** last save-import summary (W1c resume dashboard "what changed") */
+  lastImport: LastImport | null;
+  /** W2b: recipe classes the imported save has unlocked — gates alternate-recipe
+      eligibility in the wizard/recipe pickers. Empty until a save is imported. */
+  unlocked: Set<string>;
+  /** resume dashboard overlay — auto-presents once per plan (viewState.resumeSeen) */
+  dashboardOpen: boolean;
 
   hydrate(): Promise<void>;
   /** Resolves with the created ids, or null when the backend refused the
@@ -102,7 +132,7 @@ export interface AppStore {
   redo(): Promise<void>;
   setSelection(sel: Selection): void;
   setView(view: ViewMode): void;
-  setOverlay(key: "flows" | "nodes" | "power", on: boolean): void;
+  setOverlay(key: "flows" | "nodes" | "power" | "terrain", on: boolean): void;
   setProjected(p: AppStore["projected"]): void;
   setPlacingFactory(on: boolean): void;
   saveViewState(patch: Partial<ViewState>): void;
@@ -111,6 +141,24 @@ export interface AppStore {
   acceptProposal(id: Id): Promise<void>;
   setAdvisor(feed: AdvisorFeed): void;
   setAdvisorOpen(open: boolean): void;
+  setDashboardOpen(open: boolean): void;
+  /** mark a build-queue step done/undone (manual override), or clear it back
+      to derived with `null` — one undoable step (SetBuildDone). */
+  markBuildDone(id: Id, done: boolean | null): Promise<void>;
+  /** W2a: plan a whole-factory replacement → stores a Draft Refactor proposal
+      and opens it in the review surface. Returns null on success, or the
+      infeasibility/error reason string on failure so the caller can surface a
+      clear inline notice at the point of action (not just the status chip). */
+  planReplacement(factoryId: Id): Promise<string | null>;
+  /** W2a: fetch a cutover's scratch-solved downtime on demand (or null on
+      refusal — recorded in cmdError). */
+  cutoverPlan(factoryId: Id): Promise<CutoverPlan | null>;
+  /** W2b-D: fetch the empire alternate-recipe ranking (read-only; [] on refusal
+      or when nothing is unlocked). */
+  optimizeEmpire(): Promise<AltOpportunity[]>;
+  /** W2b-D: adopt an alternate empire-wide → drafts the review proposal(s) and
+      opens the first in review. Returns the outcome, or null on refusal. */
+  optimizeAdopt(recipe: string): Promise<AdoptOutcome | null>;
 }
 
 export const useStore = create<AppStore>((set, get) => ({
@@ -126,7 +174,7 @@ export const useStore = create<AppStore>((set, get) => ({
   undoLabel: null,
   view: { mode: "map" },
   selection: null,
-  overlays: { flows: true, nodes: true, power: true },
+  overlays: { flows: true, nodes: true, power: true, terrain: true },
   projected: null,
   settled: new Set(),
   placingFactory: false,
@@ -136,6 +184,9 @@ export const useStore = create<AppStore>((set, get) => ({
   wizard: { open: false },
   advisor: { cards: [], muted: [], paused: false, callsThisHour: 0, callBudget: 6, aiStatus: "offline" },
   advisorOpen: false,
+  lastImport: null,
+  unlocked: new Set(),
+  dashboardOpen: false,
 
   async hydrate() {
     try {
@@ -152,6 +203,8 @@ export const useStore = create<AppStore>((set, get) => ({
         undoLabel: init.undoLabel,
         planHash: init.planHash,
         advisor: init.advisor,
+        lastImport: init.lastImport ?? null,
+        unlocked: new Set(init.unlocked ?? []),
         viewState: init.viewState ?? {},
         view:
           openFactory && init.plan.factories[openFactory]
@@ -244,7 +297,7 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   reportCmdError(message) {
-    set({ cmdError: { message, at: Date.now() } });
+    set({ cmdError: { message: nameIds(message), at: Date.now() } });
   },
 
   clearCmdError(at) {
@@ -279,6 +332,82 @@ export const useStore = create<AppStore>((set, get) => ({
 
   setAdvisorOpen(open) {
     set({ advisorOpen: open });
+  },
+
+  setDashboardOpen(open) {
+    set({ dashboardOpen: open });
+  },
+
+  async markBuildDone(id, done) {
+    // One undoable step: SetBuildDone upserts (Some) or clears (null) the
+    // override; the response patches /buildOverrides and the derived queue.
+    await get().dispatch([{ type: "set_build_done", id, done }]);
+  },
+
+  // Plan a replacement = one backend call that stores a Draft Refactor
+  // proposal (◇-only) and lands it in review, exactly like an import drift.
+  async planReplacement(factoryId) {
+    let res: { response: EditResponse; proposal: Id };
+    try {
+      res = await backend.planReplacement(factoryId);
+    } catch (e) {
+      // Replacement infeasibility is an EXPECTED planning outcome, not a fault:
+      // hand the reason back so the drawer can show a clear, actionable inline
+      // notice at the button. The terse status-bar chip alone is insufficient.
+      return errText(e);
+    }
+    const resp = res.response;
+    set((s) => ({
+      plan: applyPatches(s.plan, resp.patches),
+      derived: resp.derived,
+      canUndo: resp.canUndo,
+      canRedo: resp.canRedo,
+      undoLabel: resp.undoLabel,
+      planHash: resp.planHash,
+      advisor: resp.advisor,
+      reviewing: res.proposal,
+      selection: null,
+      settled: new Set(resp.patches.map((p) => p.path)),
+      cmdError: null,
+    }));
+    return null;
+  },
+
+  async cutoverPlan(factoryId) {
+    try {
+      return await backend.cutoverPlan(factoryId);
+    } catch (e) {
+      get().reportCmdError(errText(e));
+      return null;
+    }
+  },
+
+  // W2b-D: the optimizer is derived/advisory — a read-only fetch, never a
+  // mutation. Empty in the fixture (no unlocked alternates) — honest.
+  async optimizeEmpire() {
+    try {
+      return await backend.optimizeEmpire();
+    } catch (e) {
+      get().reportCmdError(errText(e));
+      return [];
+    }
+  },
+
+  // Adopt = draft the review proposal(s) (◇→T2, ◆→Refactor; ◆ never mutated),
+  // re-hydrate so the new proposals land, and open the first in review.
+  async optimizeAdopt(recipe) {
+    let outcome: AdoptOutcome;
+    try {
+      outcome = await backend.optimizeAdopt(recipe);
+    } catch (e) {
+      get().reportCmdError(errText(e));
+      return null;
+    }
+    await get().hydrate();
+    const first = outcome.proposals[0] ?? null;
+    set({ reviewing: first, selection: null });
+    if (outcome.note) get().reportCmdError(outcome.note);
+    return outcome;
   },
 
   // Accept = one backend transaction, one undo entry, ◇ entities only.

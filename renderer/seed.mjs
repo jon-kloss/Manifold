@@ -13,7 +13,7 @@ const f = await edit([
 ]);
 const fid = f.created[0];
 
-await edit([{ type: "claim_node", factory: fid, node: "iron-gf-01", extractor: "Build_MinerMk2_C", clock: 1.0 }]);
+await edit([{ type: "claim_node", factory: fid, node: "bp_resourcenode496", extractor: "Build_MinerMk2_C", clock: 1.0 }]);
 
 const inP = (
   await edit([
@@ -84,7 +84,7 @@ const plant = (
     { type: "create_factory", name: "COAL PLANT 01", position: { x: 180, y: 1050 }, region: "GRASS FIELDS" },
   ])
 ).created[0];
-await edit([{ type: "claim_node", factory: plant, node: "coal-gf-01", extractor: "Build_MinerMk2_C", clock: 1.0 }]);
+await edit([{ type: "claim_node", factory: plant, node: "bp_resourcenode600", extractor: "Build_MinerMk2_C", clock: 1.0 }]);
 const coalIn = (
   await edit([
     { type: "add_port", factory: plant, direction: "in", item: "Desc_Coal_C", rate: 0, rateCeiling: 120, graphPos: { x: 0, y: 100 } },
@@ -111,7 +111,7 @@ await edit([{ type: "set_port_rate", id: mwOut, rate: 150 }]);
 // the copper basin takes the frames — a live belt route across the map
 const framesIn = (
   await edit([
-    { type: "add_port", factory: basinId, direction: "in", item: "Desc_ModularFrame_C", rate: 0, rateCeiling: null, graphPos: { x: 0, y: 100 } },
+    { type: "add_port", factory: basinId, direction: "in", item: "Desc_ModularFrame_C", rate: 2, rateCeiling: null, graphPos: { x: 0, y: 100 } },
   ])
 ).created[0];
 await edit([

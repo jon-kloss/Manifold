@@ -20,7 +20,7 @@ import RoutePopover from "./RoutePopover";
 import Legend from "./Legend";
 import SearchBox from "./SearchBox";
 import ImportModal from "../import/ImportModal";
-import { fmtPower } from "../lib/format";
+import { fmtPower, prettyClass } from "../lib/format";
 import "./map.css";
 
 /** Cargo route kinds drawn with the saturation line grammar (A3.1). Pipe is
@@ -36,7 +36,7 @@ function circuitLevel(genMw: number, demandMw: number): "ok" | "warn" | "crit" {
   return "ok";
 }
 
-function pinHtml(name: string, status: string, selected: boolean): string {
+function pinHtml(name: string, status: string, selected: boolean, tag?: "retiring" | "incoming"): string {
   const glyph = status === "planned" ? "◇" : status === "under_construction" ? "◈" : "◆";
   // 22px rotated-square diamond as SVG — dashed strokes stay crisp
   const stroke =
@@ -44,14 +44,54 @@ function pinHtml(name: string, status: string, selected: boolean): string {
   const dash = status === "built" ? "" : 'stroke-dasharray="4 3"';
   const fill =
     status === "built" ? "var(--steel-800)" : status === "planned" ? "rgba(86,168,255,.10)" : "rgba(138,100,35,.4)";
+  // W2a: a retiring ◆ / incoming ◇ carries a cutover tag chip.
+  const tagChip =
+    tag === "retiring"
+      ? `<div class="pin-tag mono retiring">RETIRING</div>`
+      : tag === "incoming"
+        ? `<div class="pin-tag mono incoming">INCOMING</div>`
+        : "";
   return `
-    <div class="pin-wrap">
+    <div class="pin-wrap ${tag ? `cutover-${tag}` : ""}">
       <svg class="pin-svg ${selected ? "selected" : ""}" width="30" height="30" viewBox="0 0 30 30">
         <rect x="8" y="8" width="14" height="14" transform="rotate(45 15 15)"
               fill="${fill}" stroke="${stroke}" stroke-width="2" ${dash} />
       </svg>
       <div class="pin-chip mono ${status}">${glyph} ${name.toUpperCase()}</div>
+      ${tagChip}
     </div>`;
+}
+
+/** Pin-chip declutter: chips whose rects would overlap an already-kept chip
+ *  are culled (the diamond stays; hovering the pin reveals the name).
+ *  Selected factory wins, then stable name order — the same zoom always
+ *  shows the same chips. */
+function declutterPinChips(map: L.Map, markers: Map<string, L.Marker>) {
+  const st = useStore.getState();
+  const entries = Object.values(st.plan.factories)
+    .map((f) => {
+      const marker = markers.get(f.id);
+      const el = marker?.getElement()?.querySelector(".pin-chip") as HTMLElement | null;
+      if (!marker || !el) return null;
+      const pt = map.latLngToContainerPoint(toLatLng(f.position));
+      const w = f.name.length * 6.4 + 34; // 10px mono + glyph + padding
+      return {
+        el,
+        selected: st.selection?.kind === "factory" && st.selection.id === f.id,
+        name: f.name,
+        rect: { x: pt.x - w / 2, y: pt.y + 15, w, h: 20 },
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null)
+    .sort((a, b) => (a.selected !== b.selected ? (a.selected ? -1 : 1) : a.name.localeCompare(b.name)));
+  const kept: { x: number; y: number; w: number; h: number }[] = [];
+  for (const e of entries) {
+    const hit = kept.some(
+      (k) => e.rect.x < k.x + k.w && k.x < e.rect.x + e.rect.w && e.rect.y < k.y + k.h && k.y < e.rect.y + e.rect.h,
+    );
+    if (!hit) kept.push(e.rect);
+    e.el.classList.toggle("chip-culled", hit);
+  }
 }
 
 export default function MapView() {
@@ -87,9 +127,40 @@ export default function MapView() {
   // one-shot: swallow the contextmenu that follows a route-drag release
   const suppressCtxRef = useRef(false);
 
+  // Resolved node set (W2b-C): catalog nodes at their plan-corrected position,
+  // plus save-only nodes (`save:<id>`, absent from every catalog) synthesized
+  // from their override alone. The bundled asset stays an ambient default —
+  // this overlay never mutates `world.nodes`.
+  const resolvedNodes = useMemo(() => {
+    const catalog = new Set(world.nodes.map((n) => n.id));
+    const out = world.nodes.map((n) => {
+      const ov = plan.nodeOverrides[n.id];
+      return ov?.pos ? { ...n, x: ov.pos.x, y: ov.pos.y, z: ov.pos.z ?? n.z } : n;
+    });
+    for (const [id, ov] of Object.entries(plan.nodeOverrides)) {
+      if (!catalog.has(id) && ov.pos) {
+        out.push({
+          id,
+          item: "",
+          purity: "normal",
+          x: ov.pos.x,
+          y: ov.pos.y,
+          z: ov.pos.z ?? 0,
+          zone: "surface",
+          region: "",
+        });
+      }
+    }
+    return out;
+  }, [world.nodes, plan.nodeOverrides]);
+  const resolvedWorld = useMemo(
+    () => ({ ...world, nodes: resolvedNodes }),
+    [world, resolvedNodes],
+  );
+
   const claimLinks = useMemo(() => {
     const nodeById: Record<string, { x: number; y: number }> = {};
-    for (const n of world.nodes) nodeById[n.id] = { x: n.x, y: n.y };
+    for (const n of resolvedNodes) nodeById[n.id] = { x: n.x, y: n.y };
     const links: CanvasLayerData["claimLinks"] = [];
     for (const c of Object.values(plan.nodeClaims)) {
       const node = nodeById[c.node];
@@ -108,7 +179,25 @@ export default function MapView() {
       });
     }
     return links;
-  }, [plan.nodeClaims, plan.factories, world.nodes, derived.nodes, selection, hoveredNode]);
+  }, [plan.nodeClaims, plan.factories, resolvedNodes, derived.nodes, selection, hoveredNode]);
+
+  // Refactor tethers (W2a): old ◆ → new ◇ links from every `replaces`. Highlight
+  // when either endpoint is the selected factory ("orange is a verb").
+  const replacesLinks = useMemo(() => {
+    const links: CanvasLayerData["replacesLinks"] = [];
+    for (const f of Object.values(plan.factories)) {
+      if (!f.replaces) continue;
+      const old = plan.factories[f.replaces];
+      if (!old) continue;
+      links.push({
+        old: old.position,
+        new: f.position,
+        highlight:
+          selection?.kind === "factory" && (selection.id === f.id || selection.id === old.id),
+      });
+    }
+    return links;
+  }, [plan.factories, selection]);
 
   const nodeStates = useMemo(() => {
     const out: Record<string, NodeRenderState> = {};
@@ -116,16 +205,17 @@ export default function MapView() {
     for (const c of Object.values(plan.nodeClaims)) {
       claimsByNode[c.node] = (claimsByNode[c.node] ?? 0) + 1;
     }
-    for (const n of world.nodes) {
+    for (const n of resolvedNodes) {
       const claims = claimsByNode[n.id] ?? 0;
       out[n.id] = {
         claims,
         claimed: claims > 0,
         conflict: derived.nodes[n.id]?.conflict ?? false,
+        drift: derived.nodes[n.id]?.drift ?? false,
       };
     }
     return out;
-  }, [plan.nodeClaims, world.nodes, derived.nodes]);
+  }, [plan.nodeClaims, resolvedNodes, derived.nodes]);
 
   // ---- map init (once) ----
   useEffect(() => {
@@ -150,9 +240,11 @@ export default function MapView() {
       world: useStore.getState().world,
       nodeStates: {},
       claimLinks: [],
+      replacesLinks: [],
       hoveredNode: null,
       selectedNode: null,
       showNodes: true,
+      showTerrain: useStore.getState().overlays.terrain,
       routes: [],
       showRoutes: true,
       powerLines: [],
@@ -164,6 +256,7 @@ export default function MapView() {
     });
     layer.addTo(map);
     layerRef.current = layer;
+    map.on("move zoom viewreset", () => declutterPinChips(map, markersRef.current));
     mapRef.current = map;
     setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
 
@@ -185,6 +278,23 @@ export default function MapView() {
 
   // ---- canvas layer data sync ----
   useEffect(() => {
+    // Lane assignment: routes (cargo AND power) between the same factory
+    // pair fan out with stable perpendicular offsets instead of stacking.
+    const laneOf = new Map<string, { lane: number; lanes: number }>();
+    {
+      const groups = new Map<string, string[]>();
+      // cargo endpoints are PORT ids, power endpoints are FACTORY ids —
+      // normalize to factories so mixed kinds share the fan
+      const owner = (e: string) => plan.ports[e]?.factory ?? e;
+      for (const r of Object.values(plan.routes)) {
+        const key = r.endpoints.map(owner).sort().join("|");
+        groups.set(key, [...(groups.get(key) ?? []), r.id]);
+      }
+      for (const ids of groups.values()) {
+        ids.sort();
+        ids.forEach((id, i) => laneOf.set(id, { lane: i, lanes: ids.length }));
+      }
+    }
     const routes = Object.values(plan.routes)
       .filter((r) => CARGO_KINDS.has(r.kind.kind))
       .map((r) => {
@@ -197,9 +307,11 @@ export default function MapView() {
           saturation: d?.saturation ?? 0,
           flow: d?.flow ?? 0,
           capacity: d?.capacity ?? 0,
+          kind: r.kind.kind as "belt" | "rail" | "truck" | "drone",
           tag: r.kind.kind === "belt" ? `MK.${r.kind.tier}` : r.kind.kind.toUpperCase(),
-          itemName: (gamedata.items[itemClass]?.displayName ?? itemClass).toUpperCase(),
+          itemName: (gamedata.items[itemClass]?.displayName ?? prettyClass(itemClass)).toUpperCase(),
           selected: selection?.kind === "route" && selection.id === r.id,
+          ...(laneOf.get(r.id) ?? { lane: 0, lanes: 1 }),
         };
       });
     // power lines connect factory pins; the chip carries the grid margin
@@ -207,6 +319,7 @@ export default function MapView() {
       .filter((r) => r.kind.kind === "power")
       .map((r) => ({
         id: r.id,
+        ...(laneOf.get(r.id) ?? { lane: 0, lanes: 1 }),
         from: plan.factories[r.endpoints[0]]?.position ?? r.path[0] ?? { x: 0, y: 0 },
         to: plan.factories[r.endpoints[1]]?.position ?? r.path[r.path.length - 1] ?? { x: 0, y: 0 },
         selected: selection?.kind === "route" && selection.id === r.id,
@@ -266,12 +379,14 @@ export default function MapView() {
     }
     const src = routeDraft ? plan.factories[routeDraft.from] : null;
     layerRef.current?.setData({
-      world,
+      world: resolvedWorld,
       nodeStates,
       claimLinks,
+      replacesLinks,
       hoveredNode: hoveredNode?.id ?? null,
       selectedNode: selection?.kind === "node" ? selection.id : null,
       showNodes: overlays.nodes,
+      showTerrain: overlays.terrain,
       routes,
       showRoutes: overlays.flows,
       powerLines,
@@ -281,21 +396,36 @@ export default function MapView() {
       ghost: src && routeDraft ? { from: src.position, to: routeDraft.cursor } : null,
       review,
     });
-  }, [world, nodeStates, claimLinks, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
+  }, [resolvedWorld, nodeStates, claimLinks, replacesLinks, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
 
   // ---- pointer interactions (hover + click on canvas nodes, placement) ----
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    // One arbitration rule for hover AND click, so the cursor never promises
+    // a different target than a click selects. Nodes keep their 12px comfort
+    // zone in open space, but a line passing through the dense real-node
+    // field must stay clickable: within 8px of a dot the node wins (you're ON
+    // it), farther out a route/switch hit takes precedence.
+    const resolveHit = (pt: L.Point) => {
+      const layer = layerRef.current;
+      const nodeHit = layer?.hitTestNode(pt) ?? null;
+      const switchHit = layer?.hitTestSwitch(pt) ?? null;
+      const routeHit = layer?.hitTestRoute(pt) ?? layer?.hitTestPower(pt) ?? null;
+      const nodeWins = nodeHit && (nodeHit.d <= 8 || (!switchHit && !routeHit));
+      return {
+        node: nodeWins ? nodeHit.node : null,
+        switchHit: nodeWins ? null : switchHit,
+        routeHit: nodeWins || switchHit ? null : routeHit,
+      };
+    };
     const onMove = (e: L.LeafletMouseEvent) => {
       if (routeDraftRef.current) {
         setRouteDraft({ from: routeDraftRef.current.from, cursor: fromLatLng(e.latlng) });
         return;
       }
       const pt = map.latLngToContainerPoint(e.latlng);
-      const hit = layerRef.current?.hitTest(pt) ?? null;
-      const switchHit = hit ? null : layerRef.current?.hitTestSwitch(pt);
-      const routeHit = hit || switchHit ? null : layerRef.current?.hitTestRoute(pt) ?? layerRef.current?.hitTestPower(pt);
+      const { node: hit, switchHit, routeHit } = resolveHit(pt);
       setHoveredNode(hit);
       map.getContainer().style.cursor = placing ? "crosshair" : hit || switchHit || routeHit ? "pointer" : "";
     };
@@ -316,18 +446,10 @@ export default function MapView() {
         return;
       }
       const pt = map.latLngToContainerPoint(e.latlng);
-      const hit = layerRef.current?.hitTest(pt);
-      if (hit) {
-        setSelection({ kind: "node", id: hit.id });
-        return;
-      }
-      const switchHit = layerRef.current?.hitTestSwitch(pt);
-      if (switchHit) {
-        setSelection({ kind: "switch", id: switchHit });
-        return;
-      }
-      const routeHit = layerRef.current?.hitTestRoute(pt) ?? layerRef.current?.hitTestPower(pt);
-      if (routeHit) setSelection({ kind: "route", id: routeHit });
+      const { node: hit, switchHit, routeHit } = resolveHit(pt);
+      if (hit) setSelection({ kind: "node", id: hit.id });
+      else if (switchHit) setSelection({ kind: "switch", id: switchHit });
+      else if (routeHit) setSelection({ kind: "route", id: routeHit });
       else setSelection(null);
     };
     // right-drag from a pin draws a route (ghost-blue until confirmed).
@@ -377,10 +499,15 @@ export default function MapView() {
     if (!map) return;
     const markers = markersRef.current;
     const seen = new Set<string>();
+    // W2a cutover tags: a factory named by some `replaces` is RETIRING; a
+    // factory that carries `replaces` is the INCOMING replacement.
+    const retiring = new Set<string>();
+    for (const f of Object.values(plan.factories)) if (f.replaces) retiring.add(f.replaces);
     for (const f of Object.values(plan.factories)) {
       seen.add(f.id);
       const selected = selection?.kind === "factory" && selection.id === f.id;
-      const html = pinHtml(f.name, f.status, selected);
+      const tag = f.replaces ? "incoming" : retiring.has(f.id) ? "retiring" : undefined;
+      const html = pinHtml(f.name, f.status, selected, tag);
       const icon = L.divIcon({ className: "pin-icon", html, iconSize: [30, 30], iconAnchor: [15, 15] });
       let marker = markers.get(f.id);
       if (!marker) {
@@ -407,6 +534,11 @@ export default function MapView() {
         markers.set(f.id, marker);
       } else {
         marker.setIcon(icon);
+        // re-sync draggability: a pin that flips ◇→◈→◆ (or back on undo) must
+        // gain/lose its drag handle, not keep the value it was created with.
+        const draggable = f.status === "planned";
+        marker.options.draggable = draggable;
+        if (marker.dragging) marker.dragging[draggable ? "enable" : "disable"]();
         const ll = toLatLng(f.position) as [number, number];
         const cur = marker.getLatLng();
         if (Math.abs(cur.lat - ll[0]) > 1e-9 || Math.abs(cur.lng - ll[1]) > 1e-9) marker.setLatLng(ll);
@@ -418,6 +550,7 @@ export default function MapView() {
         markers.delete(id);
       }
     }
+    declutterPinChips(map, markers);
   }, [plan.factories, selection]);
 
   // ---- keys: N place, F frame, ESC deselect, 1/4 overlays, ⏎ dive ----
@@ -435,6 +568,7 @@ export default function MapView() {
       } else if (e.key === "1") setOverlay("flows", !overlays.flows);
       else if (e.key === "2") setOverlay("power", !overlays.power);
       else if (e.key === "4") setOverlay("nodes", !overlays.nodes);
+      else if (e.key === "3") setOverlay("terrain", !overlays.terrain);
       else if (e.key === "f" || e.key === "F") {
         const pts = Object.values(plan.factories).map((f) => toLatLng(f.position));
         if (pts.length && map) map.fitBounds(L.latLngBounds(pts as L.LatLngExpression[]).pad(0.4));
@@ -453,7 +587,7 @@ export default function MapView() {
   const zoomBy = (d: number) => mapRef.current?.setZoom((mapRef.current?.getZoom() ?? 2) + d);
 
   const selectedFactory = selection?.kind === "factory" ? plan.factories[selection.id] : null;
-  const selectedNode = selection?.kind === "node" ? world.nodes.find((n) => n.id === selection.id) : null;
+  const selectedNode = selection?.kind === "node" ? resolvedNodes.find((n) => n.id === selection.id) : null;
 
   return (
     <div className={`map-root ${reviewing ? "reviewing" : ""}`} data-testid="map-root">
@@ -483,6 +617,13 @@ export default function MapView() {
             title="Resource nodes (4)"
           >
             NODES <span className="key-hint">4</span>
+          </button>
+          <button
+            className={`btn btn-ghost overlay-chip ${overlays.terrain ? "active" : ""}`}
+            onClick={() => setOverlay("terrain", !overlays.terrain)}
+            data-testid="btn-overlay-terrain"
+          >
+            TERRAIN <span className="key-hint">3</span>
           </button>
         </div>
         <div className="map-actions">
@@ -554,10 +695,11 @@ export default function MapView() {
 
 function NodeTooltip({ node }: { node: WorldNode }) {
   const items = useStore((s) => s.gamedata.items);
-  const name = items[node.item]?.displayName ?? node.item;
+  // save-only nodes carry item:"" — degrade to a readable label, never blank.
+  const name = items[node.item]?.displayName ?? (node.item || "RESOURCE NODE");
   return (
     <div className="node-tooltip chip">
-      {name.toUpperCase()} · {node.purity.toUpperCase()}
+      {name.toUpperCase()} · {(node.purity || "UNKNOWN").toUpperCase()}
       {node.zone === "cave" ? " · ▾CAVE" : ""}
     </div>
   );

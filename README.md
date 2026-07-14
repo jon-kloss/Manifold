@@ -183,9 +183,9 @@ feeds phase-5's advisor).
   `cargo run -p app --no-default-features --bin gen-tokens` rewrites
   `renderer/src/tokens/`. CI fails on drift. No hex value ships outside the
   token system.
-- **T0 WASM** (after touching `crates/solver`):
-  `cd crates/solver-wasm && wasm-pack build --target web --out-dir
-  ../../renderer/src/wasm/pkg --release`
+- **T0 WASM** (after touching `crates/solver`): `scripts/regen-wasm.sh`
+  rebuilds `renderer/src/wasm/pkg` with wasm-pack and stamps the solver
+  sources that fed it. CI fails on drift (`scripts/regen-wasm.sh check`).
 - **Demo seed** (a small empire with routes, a coal grid, and floors — good
   for screenshots and manual poking): start the bridge on a *fresh* plan plus
   vite, then `cd renderer && node seed.mjs`.

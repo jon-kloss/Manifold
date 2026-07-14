@@ -67,6 +67,7 @@ fn wizard_solve(state: State<AppState>, jobs: State<Jobs>, goal: WizardGoal) -> 
         s.gamedata.clone(),
         s.world.clone(),
         goal,
+        s.unlocked.clone(),
         s.plan_hash(),
         now_rfc3339(),
     )
@@ -88,7 +89,7 @@ fn t2_optimize(
     factory: String,
 ) -> Option<planner_core::proposals::Proposal> {
     let s = state.0.lock().unwrap();
-    let mut p = app::wizard::t2_optimize(&s.state, &s.gamedata, &factory);
+    let mut p = app::wizard::t2_optimize(&s.state, &s.gamedata, &s.unlocked, &factory);
     if let Some(pr) = p.as_mut() {
         pr.input_hash = s.plan_hash();
         pr.snapshot_time = now_rfc3339();
@@ -159,6 +160,67 @@ fn proposal_eval(state: State<AppState>, id: String) -> Result<ProposalConsequen
     state.0.lock().unwrap().eval_proposal(&id)
 }
 
+/// W2a: plan a whole-factory replacement → store the Draft proposal and return
+/// { response, proposal } so the renderer opens the review surface.
+#[tauri::command]
+fn cutover_plan(
+    window: tauri::Window,
+    state: State<AppState>,
+    factory: String,
+) -> Result<serde_json::Value, SessionError> {
+    let mut s = state.0.lock().unwrap();
+    let proposal = s.plan_replacement(factory, None)?;
+    let resp = s.edit(vec![Command::CreateProposal { proposal }])?;
+    let _ = window.emit("state://patch", &resp);
+    let pid = resp.created.first().cloned().unwrap_or_default();
+    Ok(serde_json::json!({ "response": resp, "proposal": pid }))
+}
+
+/// W2a: price a cutover's downtime on demand (scratch-solved, ripple-inclusive).
+#[tauri::command]
+fn cutover_downtime(
+    state: State<AppState>,
+    factory: String,
+) -> Result<app::cutover::CutoverPlan, SessionError> {
+    state.0.lock().unwrap().cutover_plan(factory)
+}
+
+/// W2b-D: empire-wide alternate-recipe optimizer — a derived, read-only ranking
+/// of adopt-everywhere opportunities (no mutation).
+#[tauri::command]
+fn optimize_empire(state: State<AppState>) -> Vec<app::altopt::AltOpportunity> {
+    let s = state.0.lock().unwrap();
+    app::altopt::empire_optimize(&s.state, &s.gamedata, &s.unlocked)
+}
+
+/// W2b-D: adopt an alternate empire-wide → draft the review proposal(s) (T2 for
+/// ◇, W2a Refactor for ◆). The ◆ built layer is never mutated.
+#[tauri::command]
+fn optimize_adopt(
+    state: State<AppState>,
+    recipe: String,
+) -> Result<app::session::AdoptOutcome, SessionError> {
+    state.0.lock().unwrap().optimize_adopt(&recipe)
+}
+
+/// Task #49: read-only trains-needed answer for a PROSPECTIVE route (no route
+/// is created). Reuses the canonical transport math from the two factory pins.
+#[tauri::command]
+fn route_calc(
+    state: State<AppState>,
+    from: String,
+    to: String,
+    kind: planner_core::entities::RouteKind,
+    demand_per_min: f64,
+    item: Option<String>,
+) -> Option<planner_core::transport::TrainAnswer> {
+    state
+        .0
+        .lock()
+        .unwrap()
+        .route_calc(&from, &to, &kind, demand_per_min, item.as_deref())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -194,7 +256,12 @@ fn main() {
             chat_send,
             chat_context,
             proposal_accept,
-            proposal_eval
+            proposal_eval,
+            cutover_plan,
+            cutover_downtime,
+            optimize_empire,
+            optimize_adopt,
+            route_calc
         ])
         .run(tauri::generate_context!())
         .expect("error while running FICSIT Planner");

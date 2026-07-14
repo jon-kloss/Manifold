@@ -1,13 +1,33 @@
 //! Domain entities per SDD §3. The full shape ships from day one — Phase 1 only
 //! creates Planned/Manual entities, but `status` and `created_by` are always present.
 
+use std::cell::RefCell;
+
 use serde::{Deserialize, Serialize};
 
 /// Ulid rendered as its canonical string — JSON- and SQLite-friendly.
 pub type Id = String;
 
+thread_local! {
+    // Monotonic generator: ids minted within the same millisecond keep
+    // ascending order (the random component is incremented, not re-rolled).
+    // Plain `Ulid::new()` re-randomizes each call, so ids created in one burst
+    // — an import or a proposal accept mints many at once — sorted in random
+    // order, which the build-queue "chronological within a bucket" ordering
+    // relies on. Thread-local because every logical plan operation runs on a
+    // single thread; cross-thread ordering is not a chronology we promise.
+    static GEN: RefCell<ulid::Generator> = const { RefCell::new(ulid::Generator::new()) };
+}
+
 pub fn new_id() -> Id {
-    ulid::Ulid::new().to_string()
+    GEN.with(|g| {
+        // `generate` only errors on random-component overflow within a
+        // millisecond (>1.2e24 ids) — impossible here; fall back if it ever does.
+        g.borrow_mut()
+            .generate()
+            .unwrap_or_else(|_| ulid::Ulid::new())
+            .to_string()
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +76,14 @@ pub struct Factory {
     pub groups: Vec<Id>,
     pub ports: Vec<Id>,
     pub style_guide: Option<Id>,
+    /// Refactor/cutover link (W2a): when this ◇ factory is a planned replacement
+    /// for a running ◆ factory, `replaces` names that old factory's id. It is a
+    /// planner-side LABEL (same species as `name`) — never a ◆ mutation and never
+    /// a write to the referenced entity; the cutover + downtime are DERIVED from
+    /// it, and it auto-nulls on re-import once the old factory is gone. serde-
+    /// default so plan files predating W2a load unchanged (no migration).
+    #[serde(default)]
+    pub replaces: Option<Id>,
     pub status: Status,
     pub created_by: CreatedBy,
 }
@@ -235,14 +263,43 @@ pub struct BeltEdge {
 #[serde(rename_all = "camelCase")]
 pub struct NodeClaim {
     pub id: Id,
-    /// WorldNodeId from the bundled static snapshot.
+    /// Resolved node id: a bundled-snapshot [`crate::...`] WorldNode id, or a
+    /// plan-local `"save:<nodeActorId>"` when the extractor sits on no known
+    /// snapshot node (W2b-C).
     pub node: String,
     pub factory: Id,
     /// Extractor machine class.
     pub extractor: String,
     pub clock: f64,
+    /// The save's STABLE node reference (`mExtractableResource` pathName) this
+    /// claim was bound from — the re-match key on re-import, so binding survives
+    /// position noise (W2b-C). `None` for manually-drawn claims. serde-default so
+    /// plan files predating W2b-C load unchanged (no migration).
+    #[serde(default)]
+    pub save_node_id: Option<String>,
     pub status: Status,
     pub created_by: CreatedBy,
+}
+
+/// Plan-local correction of a resource node's geometry (W2b-C). Sparse overlay
+/// keyed by node id (`"<snapshot id>"` or `"save:<nodeActorId>"`): the bundled
+/// world catalog (and any `FICSIT_WORLD_NODES` swap) stays an ambient, never-
+/// mutated default — a node's RESOLVED position is `snapshot ⊕ override`. Purity
+/// is deliberately NOT correctable: the save carries none, so the snapshot is
+/// the trusted source (snapshot-primary). Save-only nodes (`"save:<id>"`, absent
+/// from every catalog) synthesize into the resolved set from `pos` alone.
+/// serde-default so plan files predating W2b-C load unchanged (no migration).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeOverride {
+    /// Node id this correction applies to (matches [`NodeClaim::node`]).
+    pub id: String,
+    /// Corrected world position; `None` leaves the catalog coordinate intact.
+    #[serde(default)]
+    pub pos: Option<MapPos>,
+    /// The save's stable node actor id this correction was reconciled from.
+    #[serde(default)]
+    pub save_actor: Option<String>,
 }
 
 // ---- Later-phase entities: full data-model shape from day one (HANDOFF mandate).
@@ -362,6 +419,20 @@ pub struct PrioritySwitch {
     pub position: MapPos,
     pub status: Status,
     pub created_by: CreatedBy,
+}
+
+/// Manual completion assertion for a build-queue step (W1c). A sparse overlay
+/// keyed by the step entity's id (factory / group / route / claim): present
+/// ONLY when the user has manually checked or unchecked a step against its
+/// derived state. Completion itself stays DERIVED (◇◈◆) — this override just
+/// pins the resolved answer, and auto-dissolves on re-import once the derived
+/// state agrees (mirroring `MachineGroup::planned_delta`). Lives in its own
+/// collection so the solver/drift reads never see it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildOverride {
+    pub id: Id,
+    pub done: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

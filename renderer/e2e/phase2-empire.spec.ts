@@ -65,7 +65,7 @@ test("empire: belt route, power grid, audit drawer", async ({ page, request }) =
   // upstream: iron ore → ingots, 30/min target
   const ingotWorks = await mk("INGOT POINT", -2600, 2600);
   await edit(request, [
-    { type: "claim_node", factory: ingotWorks, node: "iron-gf-01", extractor: "Build_MinerMk2_C", clock: 1.0 },
+    { type: "claim_node", factory: ingotWorks, node: "bp_resourcenode496", extractor: "Build_MinerMk2_C", clock: 1.0 },
   ]);
   const oreIn = await port(ingotWorks, "in", "Desc_OreIron_C", 120, 0);
   const ingotOut = await port(ingotWorks, "out", "Desc_IronIngot_C", null, 600);
@@ -86,7 +86,7 @@ test("empire: belt route, power grid, audit drawer", async ({ page, request }) =
   // coal plant: coal → 150 MW
   const coalPlant = await mk("COAL PLANT", -1800, 1400);
   await edit(request, [
-    { type: "claim_node", factory: coalPlant, node: "coal-gf-01", extractor: "Build_MinerMk2_C", clock: 1.0 },
+    { type: "claim_node", factory: coalPlant, node: "bp_resourcenode600", extractor: "Build_MinerMk2_C", clock: 1.0 },
   ]);
   const coalIn = await port(coalPlant, "in", "Desc_Coal_C", 120, 0);
   const mwOut = await port(coalPlant, "out", "__PowerMW", null, 600);
@@ -231,4 +231,16 @@ test("empire: belt route, power grid, audit drawer", async ({ page, request }) =
   await expect(powerChip).not.toHaveClass(/active/);
   await page.keyboard.press("2");
   await expect(powerChip).toHaveClass(/active/);
+
+  // ---- a thin circuit tints the PWR chip (orange is a verb: color follows
+  // the derived condition). Throttle the coal plant below the grid's draw so
+  // GRID A browns out, then restore full generation for the later specs. ----
+  await edit(request, [{ type: "set_port_rate", id: mwOut, rate: 5 }]);
+  await page.reload();
+  await expect(page.getByTestId("map-root")).toBeVisible();
+  await expect(page.getByTestId("sb-power")).toHaveClass(/sb-(warn|crit)/);
+  await edit(request, [{ type: "set_port_rate", id: mwOut, rate: 150 }]);
+  await page.reload();
+  await expect(page.getByTestId("map-root")).toBeVisible();
+  await expect(page.getByTestId("sb-power")).not.toHaveClass(/sb-(warn|crit)/);
 });

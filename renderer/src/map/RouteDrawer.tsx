@@ -3,15 +3,11 @@
 // The full rail/truck/drone math block arrives in Phase 4.
 
 import { useStore } from "../state/store";
-import { fmtKm, fmtPercent, fmtPower, fmtRate } from "../lib/format";
+import { fmtClockS, fmtKm, fmtPercent, fmtPower, fmtRate } from "../lib/format";
 import { DEFAULT_DRONE_SPEC, DEFAULT_RAIL_SPEC, DEFAULT_TRUCK_SPEC } from "../state/types";
 import type { RailSpec, Route, RouteKind } from "../state/types";
-
-const fmtClockS = (s: number) => {
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};
+import TrainAnswerBlock from "./TrainAnswerBlock";
+import { trainAnswerFromMath } from "./trainAnswer";
 
 export default function RouteDrawer({ route }: { route: Route }) {
   const plan = useStore((s) => s.plan);
@@ -480,6 +476,28 @@ function TransportDrawer({ route }: { route: Route }) {
               +1 CONSIST → {fmtRate((t.throughputPerMin / rail.consists) * (rail.consists + 1))}/min ✓
             </button>
           )}
+        </section>
+      )}
+
+      {t && (
+        <section className="drawer-section">
+          <h3 className="t-label">THE ANSWER</h3>
+          <TrainAnswerBlock
+            answer={trainAnswerFromMath(
+              t,
+              rail ? rail.consists : truck ? truck.trucks : 1,
+              demand,
+            )}
+            ctx={{
+              kind,
+              from: srcFactory?.name ?? "?",
+              to: dstFactory?.name ?? "?",
+              item:
+                gamedata.items[route.manifest[0]?.[0] ?? ""]?.displayName ??
+                route.manifest[0]?.[0] ??
+                "cargo",
+            }}
+          />
         </section>
       )}
 

@@ -29,9 +29,15 @@ export default function Legend() {
             <span className="legend-tether" /> Claim tether (node → factory)
           </div>
           <div className="legend-row">
+            <span className="legend-tether replaces" /> Replaces tether (◆ → ◇)
+          </div>
+          <div className="legend-row">
             <span className="legend-load" /> &lt;70
             <span className="legend-load warn" /> 70–95
             <span className="legend-load crit" /> ≥95
+          </div>
+          <div className="legend-row mono">
+            <span>❯ flow</span> <span>╫ rail</span> <span>▪ truck</span> <span>┄ drone</span>
           </div>
         </div>
       )}

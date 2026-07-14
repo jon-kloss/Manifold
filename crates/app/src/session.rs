@@ -3,7 +3,7 @@
 //! write-backs into the same transaction → persist → commit (one undo entry).
 //! Disk commits first — see [`Session::commit_mutation`] for the invariant.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use planner_core::commands::{self, Command, DomainError, Transaction};
@@ -14,6 +14,8 @@ use planner_core::state::{Entity, PlanState};
 use planner_core::undo::UndoLog;
 
 use crate::advisor::{AdvisorFeed, AdvisorState};
+use crate::buildqueue::{derive_build_queue, BuildStep};
+use crate::cutover::{derive_cutovers, Cutover, CutoverPlan, Dip};
 
 use gamedata::docs::GameData;
 use gamedata::worldnodes::WorldSnapshot;
@@ -81,6 +83,10 @@ pub struct DerivedFactory {
 pub struct DerivedNode {
     pub claims: u32,
     pub conflict: bool,
+    /// A plan-local node override disagrees with the ambient catalog position
+    /// (W2b-C) — the node renders at its corrected coord with a drift marker.
+    /// `conflict` stays double-claim only; this is a separate, orthogonal flag.
+    pub drift: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -137,6 +143,45 @@ pub struct DerivedCircuit {
     pub next_shed: Option<String>,
 }
 
+/// Per-grid power delta a proposal would cause (mock 3a review banner).
+/// Transient — derived for the review, never persisted, so no `serde(default)`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CircuitImpact {
+    pub name: String,
+    pub demand_before_mw: f64,
+    pub demand_after_mw: f64,
+    pub generation_before_mw: f64,
+    pub generation_after_mw: f64,
+    /// Headroom AFTER the change, via [`circuit_level`].
+    pub headroom_after: f64,
+    /// `"ok" | "warn" | "crit"` — banner color follows the derived condition.
+    pub level: String,
+}
+
+/// Circuit headroom + level from generation/demand — the ONE place the
+/// `(gen - demand) / gen` formula and the 0.20/0.05 thresholds live (SDD §12).
+/// Demand with no generation reads fully overdrawn (-1); an idle grid reads
+/// full margin (1). Routed through the advisor's power_swing rule, the review
+/// consequence, and the per-circuit impact so all three stay byte-identical.
+pub(crate) fn circuit_level(generation_mw: f64, demand_mw: f64) -> (f64, &'static str) {
+    let headroom = if generation_mw > 0.0 {
+        (generation_mw - demand_mw) / generation_mw
+    } else if demand_mw > 0.0 {
+        -1.0
+    } else {
+        1.0
+    };
+    let level = if headroom < 0.05 {
+        "crit"
+    } else if headroom < 0.20 {
+        "warn"
+    } else {
+        "ok"
+    };
+    (headroom, level)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GoalCheck {
@@ -155,6 +200,26 @@ pub struct ProposalConsequence {
     pub delta_generation_mw: f64,
     pub machines: u32,
     pub warnings: Vec<String>,
+    /// Per-grid before→after power for every TOUCHED circuit (mock 3a banner).
+    /// Replaces the old margin-critical `warnings` strings — power lives here.
+    pub circuit_impacts: Vec<CircuitImpact>,
+}
+
+/// Result of adopting an alternate empire-wide (W2b-D CTA). The optimizer is
+/// advisory: this drafts the proposal(s) that carry the change into the existing
+/// review surface — a T2 `SetGroupRecipe` proposal for an all-◇ opportunity, or
+/// a W2a Refactor per ◆ built factory (the ◆ layer is never mutated). Any
+/// per-factory infeasibility is relayed in `note`, never silently dropped.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoptOutcome {
+    /// Drafted-and-stored proposal ids (open these in review).
+    pub proposals: Vec<Id>,
+    /// `"t2"` (all ◇ planned) or `"refactor"` (any ◆ built).
+    pub route: String,
+    /// Relayed infeasibility reason(s) for a built factory that could not be
+    /// replaced (e.g. node budget) — surfaced in the row, not swallowed.
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,6 +256,13 @@ pub struct Derived {
     /// Whole-empire recompute wall time (SDD §5.4 budget: 200ms).
     pub recompute_us: u64,
     pub total_power_mw: f64,
+    /// Derived build queue (W1c): ordered ◇ planned / partially-built steps
+    /// with resolved completion. Recomputed every solve like circuits/deficits.
+    pub build_queue: Vec<BuildStep>,
+    /// Derived cutovers (W2a): the lightweight presence/steps for each ◇→◆
+    /// refactor link. The N+1 scratch-solves that price the downtime are NOT run
+    /// here — they are on-demand via [`Session::cutover_plan`].
+    pub cutovers: Vec<Cutover>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -218,6 +290,11 @@ pub struct Session {
     slow_solves: BTreeMap<Id, u32>,
     /// Ambient advisor state (cards/mutes persist outside the undo journal).
     pub advisor: AdvisorState,
+    /// Recipe classes the imported save has unlocked (W2b). Resolved from
+    /// `mPurchasedSchematics × FGSchematic` unlocks at import; persisted in the
+    /// meta KV store, OUTSIDE the undo journal / plan_hash (a save-derived fact,
+    /// not canonical plan state). Empty when no save with schematics is imported.
+    pub unlocked: BTreeSet<String>,
     /// Model API key (env `FICSIT_AI_KEY`; OS keychain when the shell wires it).
     pub ai_key: Option<String>,
 }
@@ -250,7 +327,7 @@ impl Session {
         };
         let gd = gamedata::docs::parse_docs(&text, game_build)
             .map_err(|e| SessionError::Internal(format!("Docs.json parse failed: {e}")))?;
-        let world = gamedata::worldnodes::bundled();
+        let world = gamedata::worldnodes::load();
         let (state, entries, cursor) = file.load()?;
         let undo = UndoLog::hydrate_with_cursor(entries, cursor);
         let mut advisor = AdvisorState::default();
@@ -260,6 +337,17 @@ impl Session {
             }
         }
         advisor.muted = file.load_mutes().unwrap_or_default().into_iter().collect();
+        if let Some(json) = file.advisor_gate() {
+            // Arming state survives restarts: still-true conditions were
+            // already reported and must not fire duplicate cards on launch.
+            advisor.restore_gate_snapshot(&json);
+        }
+        // Unlocked recipe set survives restarts (save-derived fact). Tolerant
+        // default: a plan file with no "unlocked" blob hydrates as empty.
+        let unlocked = file
+            .unlocked()
+            .and_then(|s| serde_json::from_str::<BTreeSet<String>>(&s).ok())
+            .unwrap_or_default();
         Ok(Self {
             state,
             undo,
@@ -268,6 +356,7 @@ impl Session {
             world,
             slow_solves: BTreeMap::new(),
             advisor,
+            unlocked,
             ai_key: std::env::var("FICSIT_AI_KEY")
                 .ok()
                 .filter(|k| !k.is_empty()),
@@ -295,6 +384,8 @@ impl Session {
             "canRedo": self.undo.can_redo(),
             "undoLabel": self.undo.undo_label(),
             "viewState": self.file.view_state().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+            "lastImport": self.file.last_import().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+            "unlocked": self.unlocked,
         })
     }
 
@@ -302,6 +393,34 @@ impl Session {
     pub fn edit(&mut self, cmds: Vec<Command>) -> Result<EditResponse, SessionError> {
         if cmds.is_empty() {
             return Err(SessionError::Internal("empty command list".into()));
+        }
+        // B3: planner-core can't validate a `SetBuildDone` id (it never sees the
+        // derived queue, which mints synthetic `switch:<fid>:<item>` ids), but
+        // the app layer CAN. Reject an id no build-queue or cutover step carries
+        // so a bogus overlay is refused instead of silently upserting an inert
+        // override. Built once, and only when a SetBuildDone is actually present.
+        if cmds
+            .iter()
+            .any(|c| matches!(c, Command::SetBuildDone { .. }))
+        {
+            let valid: BTreeSet<Id> = derive_build_queue(&self.state, &self.gamedata)
+                .into_iter()
+                .map(|s| s.id)
+                .chain(
+                    derive_cutovers(&self.state, &self.gamedata)
+                        .into_iter()
+                        .flat_map(|c| c.steps.into_iter().map(|s| s.id)),
+                )
+                .collect();
+            for cmd in &cmds {
+                if let Command::SetBuildDone { id, .. } = cmd {
+                    if !valid.contains(id) {
+                        return Err(SessionError::Domain(DomainError::Invalid {
+                            message: format!("no build step {id} to mark done"),
+                        }));
+                    }
+                }
+            }
         }
         let mut tx = Transaction::new(cmds[0].label());
         for cmd in &cmds {
@@ -393,8 +512,17 @@ impl Session {
     }
 
     pub fn undo(&mut self) -> Result<Option<EditResponse>, SessionError> {
-        let Some(batch) = self.undo.undo(&mut self.state) else {
-            return Ok(None);
+        let batch = match self.undo.undo(&mut self.state) {
+            Ok(None) => return Ok(None),
+            Ok(Some(batch)) => batch,
+            Err(m) => {
+                // Corrupt journal entry: the log is untouched but state may
+                // hold a partial application. Disk is intact (no checkpoint
+                // ran), so restore from it — every subsequent ⌘Z re-fails
+                // cleanly instead of panicking.
+                self.rehydrate_from_disk(&m)?;
+                return Err(SessionError::Internal(format!("undo failed: {m}")));
+            }
         };
         if let Err(e) = self
             .file
@@ -402,23 +530,35 @@ impl Session {
         {
             // Disk untouched (the checkpoint transaction rolled back) —
             // compensate with the opposite move: re-applying the just-undone
-            // entry restores state and cursor in one call.
-            let _ = self.undo.redo(&mut self.state);
+            // entry restores state and cursor in one call. It re-applies a
+            // batch that applied cleanly moments ago; if it somehow fails,
+            // restore from disk, which still holds the pre-undo state.
+            if let Err(m) = self.undo.redo(&mut self.state) {
+                self.rehydrate_from_disk(&m)?;
+            }
             return Err(e.into());
         }
         Ok(Some(self.nav_response(batch)))
     }
 
     pub fn redo(&mut self) -> Result<Option<EditResponse>, SessionError> {
-        let Some(batch) = self.undo.redo(&mut self.state) else {
-            return Ok(None);
+        let batch = match self.undo.redo(&mut self.state) {
+            Ok(None) => return Ok(None),
+            Ok(Some(batch)) => batch,
+            Err(m) => {
+                // Mirror of undo(): self-heal from disk, surface the error.
+                self.rehydrate_from_disk(&m)?;
+                return Err(SessionError::Internal(format!("redo failed: {m}")));
+            }
         };
         if let Err(e) = self
             .file
             .checkpoint(&batch, &self.state.meta, self.applied_count())
         {
             // Mirror of undo(): un-apply the just-redone entry.
-            let _ = self.undo.undo(&mut self.state);
+            if let Err(m) = self.undo.undo(&mut self.state) {
+                self.rehydrate_from_disk(&m)?;
+            }
             return Err(e.into());
         }
         Ok(Some(self.nav_response(batch)))
@@ -450,42 +590,43 @@ impl Session {
         let label = format!("accept proposal #{}", p.number);
         let mut tx = Transaction::new(label);
         let mut symbols: BTreeMap<String, Id> = BTreeMap::new();
-        let mut apply_all =
-            |state: &mut PlanState, tx: &mut Transaction| -> Result<(), SessionError> {
-                for item in ordered_included(&p) {
-                    // SaveReimport drift items sync the ◆ Built layer directly
-                    // — the one documented exception to accept-creates-◇-only
-                    if let Some(sync) = &item.sync {
-                        let op: crate::import::SyncOp = serde_json::from_value(sync.clone())
-                            .map_err(|e| SessionError::Internal(e.to_string()))?;
-                        crate::import::apply_sync(state, tx, &op, &p.id, &self.gamedata);
-                        continue;
-                    }
-                    for (idx, cmd) in item.commands.iter().enumerate() {
-                        let resolved =
-                            resolve_aliases(cmd, &symbols).map_err(SessionError::Internal)?;
-                        let t = commands::apply(state, &resolved)?;
-                        if let (Some(Some(alias)), Some(created)) =
-                            (item.aliases.get(idx), t.created.first())
-                        {
-                            symbols.insert(alias.clone(), created.clone());
-                        }
-                        tx.forward.extend(t.forward);
-                        tx.inverse.extend(t.inverse);
-                        tx.created.extend(t.created);
-                    }
+        let mut apply_all = |state: &mut PlanState,
+                             tx: &mut Transaction|
+         -> Result<(), SessionError> {
+            for item in ordered_included(&p) {
+                // SaveReimport drift items sync the ◆ Built layer directly
+                // — the one documented exception to accept-creates-◇-only
+                if let Some(sync) = &item.sync {
+                    let op: crate::import::SyncOp = serde_json::from_value(sync.clone())
+                        .map_err(|e| SessionError::Internal(e.to_string()))?;
+                    crate::import::apply_sync(state, tx, &op, &p.id, &self.gamedata, &self.world);
+                    continue;
                 }
-                let t = commands::apply(
-                    state,
-                    &Command::SetProposalStatus {
-                        id: id.to_string(),
-                        status: ProposalStatus::Accepted,
-                    },
-                )?;
-                tx.forward.extend(t.forward);
-                tx.inverse.extend(t.inverse);
-                Ok(())
-            };
+                for (idx, cmd) in item.commands.iter().enumerate() {
+                    let resolved =
+                        resolve_aliases(cmd, &symbols).map_err(SessionError::Internal)?;
+                    let t = commands::apply(state, &resolved)?;
+                    if let (Some(Some(alias)), Some(created)) =
+                        (item.aliases.get(idx), t.created.first())
+                    {
+                        symbols.insert(alias.clone(), created.clone());
+                    }
+                    tx.forward.extend(t.forward);
+                    tx.inverse.extend(t.inverse);
+                    tx.created.extend(t.created);
+                }
+            }
+            let t = commands::apply(
+                state,
+                &Command::SetProposalStatus {
+                    id: id.to_string(),
+                    status: ProposalStatus::Accepted,
+                },
+            )?;
+            tx.forward.extend(t.forward);
+            tx.inverse.extend(t.inverse);
+            Ok(())
+        };
         if let Err(e) = apply_all(&mut self.state, &mut tx) {
             let mut rollback = tx.inverse.clone();
             rollback.reverse();
@@ -493,6 +634,27 @@ impl Session {
                 .apply_batch(&rollback)
                 .map_err(|m| SessionError::Internal(format!("rollback failed: {m}")))?;
             return Err(e);
+        }
+        // Stamp proposal provenance on the step-bearing entities this accept
+        // created (the raw commands default to CreatedBy::Manual): the build
+        // queue buckets steps by their creating proposal's number and lights
+        // milestone progress from it. Folded into the same undo entry.
+        for cid in tx.created.clone() {
+            self.stamp_proposal_provenance(&mut tx, &cid, id);
+        }
+        // A re-import drift accept writes the ◆ Built layer directly; any manual
+        // build-override the game has now caught up to is redundant, so dissolve
+        // it (mirrors the planned-delta dissolve in import.rs). Folded into the
+        // same undo entry as the accept.
+        if p.items.iter().any(|i| i.sync.is_some()) {
+            crate::buildqueue::dissolve_stale_overrides(&mut self.state, &mut tx, &self.gamedata);
+            // Node-position overrides that the save has caught back up to (or
+            // whose claim is gone) auto-dissolve, same undo entry (W2b-C).
+            crate::import::dissolve_stale_node_overrides(&mut self.state, &mut tx, &self.world);
+            // Any `replaces` pointing at a now-removed ◆ factory is dangling
+            // intent — null it so the cutover reads dismantle-complete (mirrors
+            // the override dissolve). Folded into the same undo entry.
+            crate::cutover::dissolve_stale_replaces(&mut self.state, &mut tx);
         }
         let derived = self.empire_solve(&T0Edit::Recompute, Some(&mut tx));
         self.commit_mutation(tx, derived)
@@ -522,6 +684,7 @@ impl Session {
                         &op,
                         &p.id,
                         &self.gamedata,
+                        &self.world,
                     );
                 }
                 continue 'items;
@@ -554,30 +717,18 @@ impl Session {
         }
         let after = self.solve_all_readonly();
         // goal check: production delta of each goal item across all out ports
-        let out_rate_of = |state: &PlanState, derived: &Derived, item: &str| -> f64 {
-            state
-                .ports
-                .values()
-                .filter(|port| port.direction == PortDirection::Out && port.item == item)
-                .filter_map(|port| {
-                    derived
-                        .factories
-                        .get(&port.factory)
-                        .and_then(|df| df.ports.get(&port.id))
-                })
-                .sum()
-        };
         let goal: Vec<GoalCheck> = p
             .goal
             .iter()
             .map(|(item, requested)| GoalCheck {
                 item: item.clone(),
                 requested: *requested,
-                achieved: out_rate_of(&self.state, &after, item)
-                    - out_rate_of(&saved, &before, item),
+                achieved: Self::out_rate(&self.state, &after, item)
+                    - Self::out_rate(&saved, &before, item),
             })
             .collect();
-        // new deficits + circuits gone critical feed the amber warning strip
+        // new deficits feed the amber warning strip; per-circuit power now
+        // lives in the structured `circuit_impacts` below, not `warnings`.
         let before_keys: std::collections::BTreeSet<String> = before
             .deficits
             .iter()
@@ -599,20 +750,63 @@ impl Session {
                 ));
             }
         }
-        for c in &after.circuits {
-            let headroom = if c.generation_mw > 0.0 {
-                (c.generation_mw - c.demand_mw) / c.generation_mw
-            } else if c.demand_mw > 0.0 {
-                -1.0
-            } else {
-                1.0
-            };
-            if headroom < 0.05 {
-                warnings.push(format!(
-                    "{} at {:.0}/{:.0} MW — margin critical",
-                    c.name, c.demand_mw, c.generation_mw
-                ));
+        // Per-circuit before→after power (mock 3a banner). Grid `name` is
+        // index-based and renumbers when sites are added, so membership overlap —
+        // not name — is the identity link. Attribute each BEFORE grid to its
+        // PRIMARY destination (the after grid it shares the most members with),
+        // then aggregate per after grid: a MERGE sums its sources' demand/gen and
+        // a SPLIT attributes the whole before grid to ONE child, so the sibling
+        // reads as newly-formed (no double-counting). This replaces a per-after
+        // single-match that mis-summed both directions. No before grid maps to an
+        // after ⇒ that grid is newly-formed (before = 0, delta = full after values).
+        type BeforeAgg<'a> = (f64, f64, std::collections::BTreeSet<&'a Id>);
+        let mut before_for_after: std::collections::BTreeMap<usize, BeforeAgg> =
+            std::collections::BTreeMap::new();
+        for bc in &before.circuits {
+            let bc_set: std::collections::BTreeSet<&Id> = bc.members.iter().collect();
+            let primary = after
+                .circuits
+                .iter()
+                .enumerate()
+                .map(|(i, ac)| {
+                    let overlap = ac.members.iter().filter(|m| bc_set.contains(m)).count();
+                    (overlap, i)
+                })
+                .filter(|(overlap, _)| *overlap > 0)
+                .max_by_key(|(overlap, _)| *overlap)
+                .map(|(_, i)| i);
+            if let Some(i) = primary {
+                let entry = before_for_after
+                    .entry(i)
+                    .or_insert_with(|| (0.0, 0.0, std::collections::BTreeSet::new()));
+                entry.0 += bc.demand_mw;
+                entry.1 += bc.generation_mw;
+                entry.2.extend(bc.members.iter());
             }
+        }
+        let mut circuit_impacts: Vec<CircuitImpact> = Vec::new();
+        for (i, ac) in after.circuits.iter().enumerate() {
+            let after_set: std::collections::BTreeSet<&Id> = ac.members.iter().collect();
+            let (demand_before, gen_before, before_set) = before_for_after
+                .get(&i)
+                .map(|(d, g, s)| (*d, *g, s.clone()))
+                .unwrap_or((0.0, 0.0, std::collections::BTreeSet::new()));
+            let touched = before_set != after_set
+                || (ac.demand_mw - demand_before).abs() > 1e-6
+                || (ac.generation_mw - gen_before).abs() > 1e-6;
+            if !touched {
+                continue;
+            }
+            let (headroom_after, level) = circuit_level(ac.generation_mw, ac.demand_mw);
+            circuit_impacts.push(CircuitImpact {
+                name: ac.name.clone(),
+                demand_before_mw: demand_before,
+                demand_after_mw: ac.demand_mw,
+                generation_before_mw: gen_before,
+                generation_after_mw: ac.generation_mw,
+                headroom_after,
+                level: level.to_string(),
+            });
         }
         let consequence = ProposalConsequence {
             goal_met: goal.iter().all(|g| g.achieved >= g.requested - 1e-6),
@@ -621,9 +815,418 @@ impl Session {
             delta_generation_mw: after.total_generation_mw - before.total_generation_mw,
             machines,
             warnings,
+            circuit_impacts,
         };
         self.state = saved;
         Ok(consequence)
+    }
+
+    /// Achieved production of `item` summed across every Out port empire-wide
+    /// (the port's derived rate). The one place the goal-check delta and the
+    /// cutover downtime engine measure "how much of this is being produced", so
+    /// the two can never disagree.
+    fn out_rate(state: &PlanState, derived: &Derived, item: &str) -> f64 {
+        state
+            .ports
+            .values()
+            .filter(|port| port.direction == PortDirection::Out && port.item == item)
+            .filter_map(|port| {
+                derived
+                    .factories
+                    .get(&port.factory)
+                    .and_then(|df| df.ports.get(&port.id))
+            })
+            .sum()
+    }
+
+    /// Plan a whole-factory replacement (W2a): target the item(s) the running ◆
+    /// factory produces, run the existing global solver to site a ◇ replacement
+    /// beside the old pin, and bind the two with a trailing `SetFactoryReplaces`
+    /// alias command. Returns a Draft proposal — accept goes through the
+    /// UNTOUCHED accept path (◇-only, one undo, the old ◆ never touched).
+    pub fn plan_replacement(
+        &mut self,
+        old_factory_id: Id,
+        pin: Option<String>,
+    ) -> Result<Proposal, SessionError> {
+        let old = self
+            .state
+            .factories
+            .get(&old_factory_id)
+            .cloned()
+            .ok_or_else(|| SessionError::Internal(format!("factory {old_factory_id} not found")))?;
+        if old.status != Status::Built {
+            return Err(SessionError::Internal(
+                "only a running ◆ built factory can be replaced".into(),
+            ));
+        }
+        // Goal = the achieved production of every item the old factory ships
+        // (its Out ports). Power (generator output) is sourced separately, never
+        // belted — skip it as a replacement goal.
+        let derived = self.solve_all_readonly();
+        let mut by_item: BTreeMap<String, f64> = BTreeMap::new();
+        for pid in &old.ports {
+            let Some(port) = self.state.ports.get(pid) else {
+                continue;
+            };
+            if port.direction != PortDirection::Out || port.item == gamedata::docs::POWER_ITEM {
+                continue;
+            }
+            let rate = derived
+                .factories
+                .get(&old_factory_id)
+                .and_then(|df| df.ports.get(pid))
+                .copied()
+                .filter(|r| *r > 0.0)
+                .unwrap_or(port.rate);
+            *by_item.entry(port.item.clone()).or_insert(0.0) += rate;
+        }
+        if by_item.is_empty() {
+            return Err(SessionError::Internal(
+                "the factory ships nothing to replace (no output ports)".into(),
+            ));
+        }
+        // O1: when the caller pins a recipe (a built-factory "adopt this alt"),
+        // seed the retired product's alternate so the ◇ replacement is solved
+        // ONTO that recipe (the ◆ is never touched). A pin whose product cannot
+        // be resolved degrades to no pin — behaviour-identical to the None path.
+        let mut pinned_recipes: BTreeMap<String, String> = BTreeMap::new();
+        if let Some(recipe) = pin {
+            if let Some(product) = self
+                .gamedata
+                .recipes
+                .get(&recipe)
+                .and_then(|r| r.products.first())
+                .map(|(i, _)| i.clone())
+            {
+                pinned_recipes.insert(product, recipe);
+            }
+        }
+        let goal = crate::wizard::WizardGoal {
+            items: by_item.into_iter().collect(),
+            constraints: crate::wizard::WizardConstraints::default(),
+            milestone: None,
+            pinned_recipes,
+        };
+        let outcome = crate::wizard::global_solve(
+            &self.state,
+            &self.gamedata,
+            &self.world,
+            &goal,
+            &self.unlocked,
+            self.plan_hash(),
+            crate::jobs::now_rfc3339(),
+            |_, _| {},
+            &std::sync::atomic::AtomicBool::new(false),
+        );
+        let mut proposal = match outcome {
+            crate::wizard::WizardOutcome::Proposal { proposal } => proposal,
+            crate::wizard::WizardOutcome::Infeasible(inf) => {
+                return Err(SessionError::Internal(format!(
+                    "replacement infeasible — {}",
+                    inf.binding
+                )))
+            }
+            crate::wizard::WizardOutcome::Cancelled => {
+                return Err(SessionError::Internal("replacement solve cancelled".into()))
+            }
+        };
+        // Refactor provenance + a title that names the retirement.
+        proposal.source = planner_core::proposals::ProposalSource::Refactor;
+        proposal.provenance = "REFACTOR".into();
+        proposal.title = format!("REPLACE {}", old.name.to_uppercase());
+        // Find the CREATE item minting the new factory (alias "site") and
+        // (a) re-site it beside the old pin, (b) append the SetFactoryReplaces
+        // link. The alias resolves at accept via the untouched $alias machinery.
+        let target_pos = MapPos {
+            x: old.position.x + 400.0,
+            y: old.position.y,
+            z: old.position.z,
+        };
+        let create = proposal
+            .items
+            .iter_mut()
+            .find(|it| it.kind == planner_core::proposals::ProposalItemKind::Create)
+            .ok_or_else(|| SessionError::Internal("solver produced no CREATE item".into()))?;
+        let orig_pos = create.commands.iter().find_map(|c| match c {
+            Command::CreateFactory { position, .. } => Some(*position),
+            _ => None,
+        });
+        if let Some(orig) = orig_pos {
+            for item in &mut proposal.items {
+                for cmd in &mut item.commands {
+                    shift_site_pos(cmd, &orig, &target_pos);
+                }
+            }
+        }
+        let create = proposal
+            .items
+            .iter_mut()
+            .find(|it| it.kind == planner_core::proposals::ProposalItemKind::Create)
+            .expect("CREATE item present");
+        create.commands.push(Command::SetFactoryReplaces {
+            id: "$site".into(),
+            replaces: Some(old_factory_id.clone()),
+        });
+        create.aliases.push(None);
+        create.detail = format!("{} · replaces {}", create.detail, old.name);
+        Ok(proposal)
+    }
+
+    /// Price the downtime of a cutover ON DEMAND (never in the per-edit solve):
+    /// scratch-solve the whole empire at each phase boundary and report the
+    /// honest, ripple-inclusive production dip per tracked item. Baseline is
+    /// boundary k=0; the Switch boundary (k=1) is the worst case (old down, new
+    /// not yet up). Restores canonical state before returning.
+    pub fn cutover_plan(&mut self, factory: Id) -> Result<CutoverPlan, SessionError> {
+        let cutover = derive_cutovers(&self.state, &self.gamedata)
+            .into_iter()
+            .find(|c| c.new_factory == factory || c.old_factory == factory)
+            .ok_or_else(|| {
+                SessionError::Internal(format!("no cutover involving factory {factory}"))
+            })?;
+        let tracked: Vec<String> = self
+            .state
+            .factories
+            .get(&cutover.old_factory)
+            .map(|old| crate::cutover::supplied_items(&self.state, old))
+            .unwrap_or_default();
+        // Machines torn down = the old factory's group counts (drives the est).
+        let old_machines: u32 = self
+            .state
+            .factories
+            .get(&cutover.old_factory)
+            .map(|old| {
+                old.groups
+                    .iter()
+                    .filter_map(|gid| self.state.groups.get(gid))
+                    .map(|g| g.count)
+                    .sum()
+            })
+            .unwrap_or(0);
+
+        // Scratch-solve at each boundary against a SAVED base, then restore.
+        let saved = self.state.clone();
+        let mut production: Vec<BTreeMap<String, f64>> = Vec::new();
+        for k in 0..=2usize {
+            self.state = crate::cutover::shape_for_boundary(&saved, &cutover, k);
+            let derived = self.solve_all_readonly();
+            let mut row = BTreeMap::new();
+            for item in &tracked {
+                row.insert(item.clone(), Self::out_rate(&self.state, &derived, item));
+            }
+            production.push(row);
+        }
+        self.state = saved;
+
+        let baseline = production[0].clone();
+        const EPS: f64 = 1e-6;
+
+        // Discriminate "no downtime" from "can't compute downtime". The old
+        // factory declares positive output when any of its Out ports carries a
+        // positive rate. If it declares output but the scratch-solve baseline is
+        // ~0 for every tracked item, the factory does not actually produce in the
+        // current solve (imported/unsolved/starved — the bundled fixture catalog
+        // can't resolve its recipes) — downtime is UNAVAILABLE, not zero. A
+        // silent-empty dips list here would read as "no impact"; that is the
+        // dishonesty this feature exists to prevent.
+        let declared_positive = self
+            .state
+            .factories
+            .get(&cutover.old_factory)
+            .map(|old| {
+                old.ports
+                    .iter()
+                    .filter_map(|pid| self.state.ports.get(pid))
+                    .filter(|p| {
+                        p.direction == PortDirection::Out && p.item != gamedata::docs::POWER_ITEM
+                    })
+                    .any(|p| p.rate > EPS)
+            })
+            .unwrap_or(false);
+        let baseline_positive = baseline.values().any(|r| *r > EPS);
+        // Discriminate WHY nothing is produced. If every one of the old factory's
+        // group recipes resolves in the catalog, the factory is real but STARVED
+        // (its inputs aren't supplied in the current solve) — the fix is to route
+        // its feed. If any recipe is unknown, it's an imported factory the bundled
+        // fixture catalog can't solve — point the player at FICSIT_DOCS_JSON.
+        let recipes_known = self
+            .state
+            .factories
+            .get(&cutover.old_factory)
+            .map(|old| {
+                old.groups
+                    .iter()
+                    .filter_map(|gid| self.state.groups.get(gid))
+                    .all(|g| self.gamedata.recipes.contains_key(&g.recipe))
+            })
+            .unwrap_or(false);
+        let (downtime_available, unavailable_reason) = if declared_positive && !baseline_positive {
+            let reason = if recipes_known {
+                format!(
+                    "{} produces nothing in the current solve — its inputs are starved; route its feed, then retry",
+                    cutover.old_name
+                )
+            } else {
+                format!(
+                    "{} does not produce in the current solve — imported factories may need a real recipe catalog (set FICSIT_DOCS_JSON to your game's Docs.json)",
+                    cutover.old_name
+                )
+            };
+            (false, Some(reason))
+        } else {
+            (true, None)
+        };
+
+        let mut dips: Vec<Dip> = Vec::new();
+        for (k, row) in production.iter().enumerate() {
+            if k == 0 {
+                continue;
+            }
+            for item in &tracked {
+                let base = baseline.get(item).copied().unwrap_or(0.0);
+                let rate = row.get(item).copied().unwrap_or(0.0);
+                if rate < base - EPS {
+                    dips.push(Dip {
+                        // k=1 (Switch) is a TIMED teardown window — the machine-
+                        // count estimate is the honest wall-clock. k=2 (Dismantle)
+                        // is steady-state: a dip that persists there is a PERMANENT
+                        // shortfall (the new factory doesn't cover the old output),
+                        // not a timed window, so a wall-clock estimate would be a
+                        // lie — zero it. (The renderer labels the k=2 dip
+                        // "PERMANENT SHORTFALL" in batch D.)
+                        est_hours: if k < 2 {
+                            crate::cutover::est_hours(old_machines)
+                        } else {
+                            0.0
+                        },
+                        phase: k as u8,
+                        item: item.clone(),
+                        rate,
+                        baseline: base,
+                    });
+                }
+            }
+        }
+        Ok(CutoverPlan {
+            new_factory: cutover.new_factory,
+            old_factory: cutover.old_factory,
+            tracked,
+            baseline,
+            production,
+            dips,
+            hard: cutover.node_reuse,
+            downtime_available,
+            unavailable_reason,
+        })
+    }
+
+    /// Route an empire-wide alternate adoption (W2b-D) into the existing review
+    /// surface, preserving the contract pivot: an opportunity touching only ◇
+    /// planned groups drafts a T2 `SetGroupRecipe` proposal (legal on planned);
+    /// an opportunity touching ANY ◆ built factory drafts a W2a Refactor per
+    /// built factory via `plan_replacement` (so downtime/cutover engage and the
+    /// ◆ layer is never mutated). Read the affected split off canonical state so
+    /// the decision matches the ranked row exactly. Each drafted proposal is
+    /// stored (one edit each); the ids come back for the renderer to open.
+    pub fn optimize_adopt(&mut self, recipe: &str) -> Result<AdoptOutcome, SessionError> {
+        let target = self
+            .gamedata
+            .recipes
+            .get(recipe)
+            .cloned()
+            .ok_or_else(|| SessionError::Internal(format!("unknown recipe {recipe}")))?;
+        let product = target
+            .products
+            .first()
+            .map(|(i, _)| i.clone())
+            .ok_or_else(|| SessionError::Internal("recipe has no product".into()))?;
+        // Distinct ◆ built factories whose primary-product-on-a-different-recipe
+        // group would adopt the alt — the presence of any routes to Refactor.
+        let mut built_factories: Vec<Id> = self
+            .state
+            .groups
+            .values()
+            .filter(|g| g.status == Status::Built && g.recipe != target.class_name)
+            .filter(|g| {
+                self.gamedata
+                    .recipes
+                    .get(&g.recipe)
+                    .and_then(|r| r.products.first())
+                    .map(|(i, _)| i == &product)
+                    .unwrap_or(false)
+            })
+            .map(|g| g.factory.clone())
+            .collect();
+        built_factories.sort();
+        built_factories.dedup();
+
+        if built_factories.is_empty() {
+            // All ◇ planned → a single T2-style adopt proposal (SetGroupRecipe).
+            // When no planned group can LOCALLY source the alt (an all-◇ dead-end),
+            // this is honest degradation, not an error: return an empty draft set
+            // with a note the row can surface, rather than an Err.
+            let Some(mut proposal) = crate::altopt::optimize_to_recipe(
+                &self.state,
+                &self.gamedata,
+                &self.unlocked,
+                recipe,
+            ) else {
+                return Ok(AdoptOutcome {
+                    proposals: vec![],
+                    route: "t2".into(),
+                    note: Some("no factory can locally source this alternate".into()),
+                });
+            };
+            proposal.input_hash = self.plan_hash();
+            proposal.snapshot_time = crate::jobs::now_rfc3339();
+            let resp = self.edit(vec![Command::CreateProposal { proposal }])?;
+            return Ok(AdoptOutcome {
+                proposals: resp.created,
+                route: "t2".into(),
+                note: None,
+            });
+        }
+
+        // Any ◆ built → a W2a Refactor per built factory. plan_replacement only
+        // PLANS a ◇ replacement bound by `replaces` (with the alt PINNED in its
+        // solve goal); it never touches the ◆.
+        let mut proposals: Vec<Id> = Vec::new();
+        let mut notes: Vec<String> = Vec::new();
+        for fid in built_factories {
+            let name = self
+                .state
+                .factories
+                .get(&fid)
+                .map(|f| f.name.clone())
+                .unwrap_or_else(|| fid.clone());
+            match self.plan_replacement(fid, Some(recipe.to_string())) {
+                Ok(proposal) => {
+                    let resp = self.edit(vec![Command::CreateProposal { proposal }])?;
+                    proposals.extend(resp.created);
+                }
+                Err(e) => notes.push(format!("{name}: {e}")),
+            }
+        }
+        // O4: a mixed opportunity also touches ◇ PLANNED groups (disjoint from the
+        // ◆ groups the Refactors retire — no double-apply). Draft the T2
+        // SetGroupRecipe for those too so the whole opportunity adopts in one
+        // review. Route reflects what was actually drafted.
+        let mut route = "refactor";
+        if let Some(mut proposal) =
+            crate::altopt::optimize_to_recipe(&self.state, &self.gamedata, &self.unlocked, recipe)
+        {
+            proposal.input_hash = self.plan_hash();
+            proposal.snapshot_time = crate::jobs::now_rfc3339();
+            let resp = self.edit(vec![Command::CreateProposal { proposal }])?;
+            proposals.extend(resp.created);
+            route = "mixed";
+        }
+        Ok(AdoptOutcome {
+            proposals,
+            route: route.into(),
+            note: (!notes.is_empty()).then(|| notes.join("; ")),
+        })
     }
 
     /// Save import (SDD §8). First import writes the ◆ Built layer directly;
@@ -632,6 +1235,27 @@ impl Session {
         &mut self,
         snapshot: crate::import::ImportSnapshot,
     ) -> Result<ImportOutcome, SessionError> {
+        // Resolve the save's unlocked recipe set: mPurchasedSchematics ×
+        // FGSchematic unlocks. A save-derived META fact — persisted outside the
+        // undo journal / plan_hash, surfaced through hydrate as `unlocked`. With
+        // the trimmed fixture catalog gamedata.schematics is empty, so this
+        // degrades to an empty set and alternates stay locked exactly as before.
+        let resolved: BTreeSet<String> = snapshot
+            .unlocked_schematics
+            .iter()
+            .filter_map(|s| self.gamedata.schematics.get(s))
+            .flatten()
+            .cloned()
+            .collect();
+        // Only overwrite when the parse actually resolved alts: a transient
+        // absent/failed schematic set (empty `resolved`) must not re-lock alts
+        // the previous import unlocked. Empty → leave `self.unlocked` intact.
+        if !resolved.is_empty() {
+            self.unlocked = resolved;
+            let _ = self.file.set_unlocked(
+                &serde_json::to_string(&self.unlocked).unwrap_or_else(|_| "[]".into()),
+            );
+        }
         let clusters = crate::import::cluster(&snapshot, &self.gamedata);
         let has_built = self
             .state
@@ -647,9 +1271,17 @@ impl Session {
                 &clusters,
                 &import_id,
                 &self.gamedata,
+                &self.world,
             );
             let derived = self.empire_solve(&T0Edit::Recompute, Some(&mut tx));
             let response = self.commit_mutation(tx, derived)?;
+            let groups_written: u32 = clusters.iter().map(|c| c.groups.len() as u32).sum();
+            self.write_last_import(
+                &snapshot.save_name,
+                "imported",
+                clusters.len() as u32,
+                groups_written,
+            );
             return Ok(ImportOutcome::Imported {
                 response,
                 factories: clusters.len() as u32,
@@ -658,10 +1290,13 @@ impl Session {
             });
         }
         // re-import: diff only, never write
-        let items = crate::import::diff_against_built(&self.state, &self.gamedata, &clusters);
+        let items =
+            crate::import::diff_against_built(&self.state, &self.gamedata, &clusters, &self.world);
         if items.is_empty() {
+            self.write_last_import(&snapshot.save_name, "in_sync", 0, 0);
             return Ok(ImportOutcome::InSync);
         }
+        let drift_count = items.len() as u32;
         let proposal = Proposal {
             id: String::new(),
             source: planner_core::proposals::ProposalSource::SaveReimport,
@@ -673,13 +1308,69 @@ impl Session {
             input_hash: self.plan_hash(),
             provenance: "SAVE RE-IMPORT".into(),
             items,
+            milestone: None,
         };
         let response = self.edit(vec![Command::CreateProposal { proposal }])?;
         let proposal_id = response.created[0].clone();
+        self.write_last_import(&snapshot.save_name, "drift", 0, drift_count);
         Ok(ImportOutcome::Drift {
             response,
             proposal: proposal_id,
         })
+    }
+
+    /// Re-stamp a just-created ◇ Planned step-bearing entity (factory / group /
+    /// route / node claim) with `CreatedBy::Proposal(pid)`, recording the change
+    /// into `tx`. Only these four kinds surface as build-queue steps; the
+    /// `Planned` guard leaves ◆ Built entities minted by drift sync on their
+    /// `Import` provenance. No-op when already stamped.
+    fn stamp_proposal_provenance(&mut self, tx: &mut Transaction, id: &Id, pid: &str) {
+        let prov = CreatedBy::Proposal(pid.to_string());
+        if let Some(f) = self.state.factories.get(id) {
+            if f.status == Status::Planned && f.created_by != prov {
+                let mut f = f.clone();
+                f.created_by = prov;
+                tx.record(self.state.upsert(Entity::Factory(f)));
+            }
+        } else if let Some(g) = self.state.groups.get(id) {
+            if g.status == Status::Planned && g.created_by != prov {
+                let mut g = g.clone();
+                g.created_by = prov;
+                tx.record(self.state.upsert(Entity::Group(g)));
+            }
+        } else if let Some(r) = self.state.routes.get(id) {
+            if r.status == Status::Planned && r.created_by != prov {
+                let mut r = r.clone();
+                r.created_by = prov;
+                tx.record(self.state.upsert(Entity::Route(r)));
+            }
+        } else if let Some(c) = self.state.node_claims.get(id) {
+            if c.status == Status::Planned && c.created_by != prov {
+                let mut c = c.clone();
+                c.created_by = prov;
+                tx.record(self.state.upsert(Entity::NodeClaim(c)));
+            }
+        }
+    }
+
+    /// Persist the "what changed since last import" summary blob (best-effort,
+    /// like the advisor writes — a failed session-fact write must not fail the
+    /// import). Surfaced through [`Session::hydrate`] as `lastImport`.
+    fn write_last_import(
+        &self,
+        save_name: &str,
+        outcome: &str,
+        factories_added: u32,
+        groups_changed: u32,
+    ) {
+        let blob = serde_json::json!({
+            "at": crate::jobs::now_rfc3339(),
+            "saveName": save_name,
+            "outcome": outcome,
+            "factoriesAdded": factories_added,
+            "groupsChanged": groups_changed,
+        });
+        let _ = self.file.set_last_import(&blob.to_string());
     }
 
     /// Run the advisor gate over fresh derived state and persist new cards.
@@ -695,6 +1386,11 @@ impl Session {
                 .file
                 .save_advisor_card(&card.id, &serde_json::to_string(card).unwrap_or_default());
         }
+        // Gate state changes even when nothing fires (keys arm and prune) —
+        // snapshot it best-effort, like the card writes above.
+        let _ = self
+            .file
+            .save_advisor_gate(&self.advisor.gate_snapshot_json());
     }
 
     /// Dismiss = hide the card AND mute its rule (persisted) — the spec's
@@ -1225,17 +1921,44 @@ impl Session {
             }
         }
 
-        // Node claim conflicts (§3.1.3 — representable, rendered CRIT, never prevented).
+        // Node claim conflicts (§3.1.3 — representable, rendered CRIT, never
+        // prevented) + position drift (W2b-C). `conflict` stays double-claim
+        // only; `drift` fires when a plan-local override disagrees with the
+        // ambient catalog coordinate past the correction threshold. Save-only
+        // nodes (absent from the catalog) have nothing to disagree with.
         let mut by_node: BTreeMap<String, u32> = BTreeMap::new();
         for c in self.state.node_claims.values() {
             *by_node.entry(c.node.clone()).or_insert(0) += 1;
         }
-        for (node, claims) in by_node {
+        let drifted = |node: &str| -> bool {
+            let Some(ov) = self.state.node_overrides.get(node) else {
+                return false;
+            };
+            let Some(pos) = ov.pos else {
+                return false;
+            };
+            self.world
+                .nodes
+                .iter()
+                .find(|n| n.id == node)
+                .map(|n| (n.x - pos.x).hypot(n.y - pos.y) > crate::import::NODE_DRIFT_M)
+                .unwrap_or(false)
+        };
+        // Only claimed nodes render: iterate `by_node` alone. An override-only
+        // (zero-claim) node stays inert in canonical state and auto-dissolves on
+        // re-import via `dissolve_stale_node_overrides`, so it never draws an
+        // owner-less dot. A claimed node's `drifted()` still consults its
+        // override (path unchanged).
+        let node_ids: BTreeSet<String> = by_node.keys().cloned().collect();
+        for node in node_ids {
+            let claims = by_node.get(&node).copied().unwrap_or(0);
+            let drift = drifted(&node);
             derived.nodes.insert(
                 node,
                 DerivedNode {
                     claims,
                     conflict: claims > 1,
+                    drift,
                 },
             );
         }
@@ -1383,6 +2106,13 @@ impl Session {
             }
             derived.total_generation_mw = self.state.factories.keys().map(gen_of).sum();
         }
+        // Build queue: a pure projection over canonical state + gamedata,
+        // recomputed here like circuits/deficits (no stored ordering entity).
+        derived.build_queue = derive_build_queue(&self.state, &self.gamedata);
+        // Cutovers: cheap presence/steps projection (no scratch-solves here).
+        // Reuse the queue just computed above rather than deriving it twice.
+        derived.cutovers =
+            crate::cutover::derive_cutovers_with(&self.state, &self.gamedata, &derived.build_queue);
         derived.recompute_us = started.elapsed().as_micros() as u64;
         derived
     }
@@ -1404,6 +2134,37 @@ impl Session {
     /// Recompute derived state for everything, without touching canonical state.
     pub fn solve_all_readonly(&mut self) -> Derived {
         self.empire_solve(&T0Edit::Recompute, None)
+    }
+
+    /// Read-only train answer-sheet for a PROSPECTIVE route (task #49): given
+    /// two factories, a transport kind, a demand rate, and the moved item,
+    /// return the trains-needed answer from the canonical transport math. The
+    /// route length is the straight line between the two factory pins (the same
+    /// path a confirmed route would take). Creates and mutates nothing; belt/
+    /// pipe kinds have no consist math and return None.
+    pub fn route_calc(
+        &self,
+        from: &str,
+        to: &str,
+        kind: &RouteKind,
+        demand_per_min: f64,
+        item: Option<&str>,
+    ) -> Option<planner_core::transport::TrainAnswer> {
+        let a = self.state.factories.get(from)?;
+        let b = self.state.factories.get(to)?;
+        let path = [a.position, b.position];
+        let (_, math) = cargo_capacity(&self.gamedata, kind, polyline_length(&path), item)?;
+        let math = math?;
+        let units = match kind {
+            RouteKind::Rail { spec } => spec.consists as u32,
+            RouteKind::Truck { spec } => spec.trucks as u32,
+            _ => 1,
+        };
+        Some(planner_core::transport::train_answer(
+            math,
+            units,
+            demand_per_min,
+        ))
     }
 }
 
@@ -1553,10 +2314,57 @@ fn polyline_climb(path: &[MapPos]) -> (f64, f64) {
     })
 }
 
+/// Re-site a solver-drafted factory beside the old pin (W2a): rewrite every
+/// occurrence of the solver's original site position `orig` to `target` inside a
+/// command — the CreateFactory pin and any AddRoute path endpoint anchored there
+/// — so the replacement lands next to the factory it retires and its routes
+/// track the move. Purely on the DRAFT proposal, before accept.
+fn shift_site_pos(cmd: &mut Command, orig: &MapPos, target: &MapPos) {
+    let same = |p: &MapPos| p.x == orig.x && p.y == orig.y && p.z == orig.z;
+    match cmd {
+        Command::CreateFactory { position, .. } if same(position) => *position = *target,
+        Command::AddRoute { path, .. } => {
+            for p in path.iter_mut() {
+                if same(p) {
+                    *p = *target;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn item_or(manifest: &[(String, f64)], src_port: &Id, state: &PlanState) -> String {
     manifest
         .first()
         .map(|(i, _)| i.clone())
         .or_else(|| state.ports.get(src_port).map(|p| p.item.clone()))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod circuit_tests {
+    use super::circuit_level;
+
+    /// The shared helper reproduces the EXACT 0.20 / 0.05 boundaries the
+    /// advisor's power_swing rule and the review consequence used inline, so
+    /// routing all three through it is behavior-preserving.
+    #[test]
+    fn circuit_level_matches_the_inline_thresholds() {
+        // 20% headroom is the OK floor: the advisor fired STRICTLY under 0.20
+        assert_eq!(circuit_level(100.0, 79.0).1, "ok"); // 21% headroom
+        assert_eq!(circuit_level(100.0, 80.0).1, "ok"); // exactly 20% → still OK
+        assert_eq!(circuit_level(100.0, 81.0).1, "warn"); // 19% → thin
+                                                          // 5% is the crit floor: the consequence pushed a warning STRICTLY under
+                                                          // 0.05, so exactly 5% is thin (warn), not yet critical
+        assert_eq!(circuit_level(100.0, 94.0).1, "warn"); // 6% → thin
+        assert_eq!(circuit_level(100.0, 95.0).1, "warn"); // exactly 5% → thin
+        assert_eq!(circuit_level(100.0, 96.0).1, "crit"); // 4% → critical
+                                                          // headroom value itself is the inline formula, byte-for-byte
+        assert!((circuit_level(150.0, 30.0).0 - 0.8).abs() < 1e-9);
+        // degenerate fallbacks: draw with no generation is fully overdrawn,
+        // an idle grid is full margin
+        assert_eq!(circuit_level(0.0, 10.0), (-1.0, "crit"));
+        assert_eq!(circuit_level(0.0, 0.0), (1.0, "ok"));
+    }
 }

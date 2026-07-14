@@ -16,6 +16,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: fmt
         run: cargo fmt --all --check
@@ -25,6 +26,10 @@ jobs:
         run: cargo test --workspace --exclude app && cargo test -p app --no-default-features
       - name: tokens in sync
         run: cargo run -p app --no-default-features --bin gen-tokens && git diff --exit-code renderer/src/tokens
+      - name: solver builds for wasm
+        run: cargo check -p solver-wasm --target wasm32-unknown-unknown
+      - name: wasm pkg in sync
+        run: ./scripts/regen-wasm.sh check
 
   shell:
     runs-on: ubuntu-latest
@@ -58,3 +63,51 @@ jobs:
       - name: build
         working-directory: renderer
         run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40 # cold cargo build + 12 serial specs with 120-300s import waits
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: renderer/pnpm-lock.yaml
+      - name: install
+        working-directory: renderer
+        run: pnpm install --frozen-lockfile
+      - name: playwright version
+        id: pw
+        working-directory: renderer
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: "playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}"
+      - name: install chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        working-directory: renderer
+        run: pnpm exec playwright install --with-deps chromium
+      - name: install chromium OS deps # browser cached; apt deps are not
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        working-directory: renderer
+        run: pnpm exec playwright install-deps chromium
+      - name: prebuild dev-bridge # so the webServer 180s timeout never eats a cold compile
+        run: cargo build -p app --no-default-features --bin dev-bridge
+      - name: e2e
+        working-directory: renderer
+        run: pnpm exec playwright test --trace=retain-on-failure
+      - name: upload traces/results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: renderer/test-results/
+          retention-days: 7

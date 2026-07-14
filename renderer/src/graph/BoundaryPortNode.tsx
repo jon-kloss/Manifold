@@ -27,6 +27,18 @@ export default function BoundaryPortNode({ data, selected }: { data: PortNodeDat
     port.direction === "in" && port.rateCeiling != null && rate >= port.rateCeiling - 1e-9 && rate > 0;
   const numCls = `${isProjected ? "projected" : ""} ${settled.has(`/ports/${port.id}`) ? "settle" : ""}`;
   const item = gamedata.items[port.item]?.displayName ?? port.item;
+  // Honest source line: a bound route, a node claim covering this item, or
+  // nothing — an unrouted input is solved as supplied, so say so.
+  const plan = useStore((s) => s.plan);
+  const world = useStore((s) => s.world);
+  const src = (() => {
+    if (port.direction !== "in") return port.boundRoute ? "TO ROUTE" : "TO WORLD";
+    if (port.boundRoute) return "FROM ROUTE";
+    const claimed = Object.values(plan.nodeClaims).some(
+      (c) => c.factory === port.factory && world.nodes.find((n) => n.id === c.node)?.item === port.item,
+    );
+    return claimed ? "FROM NODE CLAIM" : "UNROUTED — SUPPLY ASSUMED";
+  })();
 
   return (
     <div
@@ -45,7 +57,7 @@ export default function BoundaryPortNode({ data, selected }: { data: PortNodeDat
           <span className={`port-ceiling ${capped ? "capped" : ""}`}> / {fmtRate(port.rateCeiling)}</span>
         )}
       </div>
-      <div className="port-card-src mono">{port.direction === "in" ? "FROM NODE CLAIM" : "TO WORLD"}</div>
+      <div className="port-card-src mono">{src}</div>
       {port.direction === "in" ? (
         <Handle type="source" position={Position.Right} className="belt-handle" />
       ) : (

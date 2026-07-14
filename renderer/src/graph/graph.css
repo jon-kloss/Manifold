@@ -438,6 +438,7 @@
   overflow-y: auto;
   z-index: 15;
   animation: drawer-in var(--dur-drawer) var(--ease);
+  padding-right: 20px; /* clear the ADVISOR edge tab */
 }
 .insp-section {
   padding: 12px 14px;

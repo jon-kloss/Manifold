@@ -118,6 +118,9 @@
 .sb-crit {
   color: var(--flow-crit);
 }
+.sb-warn {
+  color: var(--flow-warn);
+}
 .sb-error {
   color: var(--flow-crit);
   max-width: 40ch;
@@ -144,6 +147,12 @@
   display: block;
   height: 100%;
   background: var(--flow-ok);
+}
+.sb-powerbar > span.warn {
+  background: var(--flow-warn);
+}
+.sb-powerbar > span.crit {
+  background: var(--flow-crit);
 }
 .sb-spring {
   flex: 1;

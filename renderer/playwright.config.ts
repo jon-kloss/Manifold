@@ -4,11 +4,18 @@ import fs from "node:fs";
 // The e2e suite drives the real Rust core through the dev-bridge — the same
 // command surface the Tauri shell uses. A fresh plan file per run.
 const planFile = "/tmp/ficsit-e2e-world.ficsit";
-for (const f of [planFile, `${planFile}.bak`, `${planFile}-wal`, `${planFile}-shm`]) {
-  try {
-    fs.rmSync(f);
-  } catch {
-    /* fresh already */
+// The config re-executes in every worker process (and on each worker restart).
+// Only the runner main process — evaluated before webServers launch — may wipe
+// the plan DB; a worker-side rm unlinks it out from under the live dev-bridge.
+// NOTE: globalSetup is NOT a safe home for this — in Playwright 1.61 webServer
+// plugins start BEFORE globalSetup runs.
+if (!process.env.TEST_WORKER_INDEX) {
+  for (const f of [planFile, `${planFile}.bak`, `${planFile}-wal`, `${planFile}-shm`]) {
+    try {
+      fs.rmSync(f);
+    } catch {
+      /* fresh already */
+    }
   }
 }
 

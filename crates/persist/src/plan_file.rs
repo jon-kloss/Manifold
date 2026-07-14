@@ -276,6 +276,19 @@ impl PlanFile {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Advisor gate arming state (active condition keys + per-rule last-fire
+    /// times) as an opaque JSON blob — joins cards/mutes outside the undo
+    /// journal: it records what the advisor already REPORTED, and undoing a
+    /// plan edit must not re-arm those reports.
+    pub fn save_advisor_gate(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("advisor_gate", json)?;
+        Ok(())
+    }
+
+    pub fn advisor_gate(&self) -> Option<String> {
+        self.get_meta("advisor_gate").ok()
+    }
+
     pub fn set_view_state(&self, json: &str) -> Result<(), PersistError> {
         self.set_meta("view_state", json)?;
         Ok(())
@@ -283,6 +296,34 @@ impl PlanFile {
 
     pub fn view_state(&self) -> Option<String> {
         self.get_meta("view_state").ok()
+    }
+
+    /// Last save-import summary (W1c) — a session fact for the resume
+    /// dashboard's "what changed since last import" line. Lives in the meta KV
+    /// store alongside view_state/advisor_gate, NOT the undo journal: it records
+    /// what the last import DID, and undoing a plan edit must not rewrite it.
+    pub fn set_last_import(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("last_import", json)?;
+        Ok(())
+    }
+
+    pub fn last_import(&self) -> Option<String> {
+        self.get_meta("last_import").ok()
+    }
+
+    /// Unlocked recipe set (W2b) — the recipe classes the imported save has
+    /// purchased (mPurchasedSchematics × FGSchematic unlocks), stored as a JSON
+    /// array blob. A save-derived fact, so it lives in the meta KV store beside
+    /// last_import, NOT the undo journal: undoing a plan edit must not toggle
+    /// unlocks, and it is excluded from plan_hash. Tolerant default — old plan
+    /// files with no "unlocked" blob load as an empty set.
+    pub fn set_unlocked(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("unlocked", json)?;
+        Ok(())
+    }
+
+    pub fn unlocked(&self) -> Option<String> {
+        self.get_meta("unlocked").ok()
     }
 }
 
@@ -339,7 +380,7 @@ mod tests {
         assert_eq!(cursor, 2);
         assert_eq!(state.factories[&fid].name, "IRON WORKS");
         let mut log = UndoLog::hydrate(entries);
-        let batch = log.undo(&mut state).unwrap();
+        let batch = log.undo(&mut state).unwrap().unwrap();
         assert_eq!(state.factories[&fid].name, "NORTHERN FORGE");
         let mut file2 = file2;
         file2.checkpoint(&batch, &state.meta, 1).unwrap();

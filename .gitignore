@@ -3,3 +3,5 @@ node_modules
 dist
 dev-world.ficsit*
 *.sqlite
+renderer/test-results/
+renderer/playwright-report/

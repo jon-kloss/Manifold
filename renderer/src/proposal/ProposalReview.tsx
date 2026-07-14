@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { backend } from "../state/backend";
-import { fmtPower, fmtRate } from "../lib/format";
+import { fmtDuration, fmtPower, fmtRate } from "../lib/format";
 import type { Proposal, ProposalConsequence, ProposalItem } from "../state/types";
 import "./proposal.css";
 
@@ -115,6 +115,19 @@ export default function ProposalReview({ proposal }: { proposal: Proposal }) {
 
       {/* change list */}
       <aside className="prop-panel">
+        {/* milestone chip: total-quantity target + time-at-rate, pinned under
+            the title. Static — this carries the goal; live "built so far"
+            progress is a later unit. */}
+        {proposal.milestone && (
+          <div className="prop-milestone mono" data-testid="proposal-milestone">
+            <span className="prop-milestone-tag">MILESTONE</span>
+            <span className="prop-milestone-body">
+              {proposal.milestone.total.toLocaleString("en-US")} {itemName(proposal.milestone.item).toUpperCase()} @{" "}
+              {proposal.milestone.rate.toFixed(1)}/MIN →{" "}
+              {fmtDuration(proposal.milestone.total / proposal.milestone.rate)}
+            </span>
+          </div>
+        )}
         <div className="prop-list" ref={listRef}>
           {KIND_ORDER.map((kind) => {
             const items = proposal.items.filter((i) => i.kind === kind);
@@ -153,6 +166,43 @@ export default function ProposalReview({ proposal }: { proposal: Proposal }) {
             );
           })}
         </div>
+
+        {/* always-visible per-circuit power banner (mock 3a): one pinned line
+            per touched grid — draw + headroom before→after — and a pinned
+            generator-sizing line, so the power consequence never scrolls away */}
+        {consequence && consequence.circuitImpacts.length > 0 && (
+          <div className="prop-power-banner" data-testid="proposal-power-banner">
+            {consequence.circuitImpacts.map((ci) => {
+              const draw = ci.demandAfterMw - ci.demandBeforeMw;
+              const marginBefore = ci.generationBeforeMw - ci.demandBeforeMw;
+              const marginAfter = ci.generationAfterMw - ci.demandAfterMw;
+              return (
+                <div
+                  key={ci.name}
+                  className={`prop-power-circuit ${ci.level === "ok" ? "" : ci.level}`}
+                  data-testid="proposal-power-circuit"
+                >
+                  <div className="prop-power-line mono" data-testid="proposal-power-line">
+                    <span className="prop-power-grid">{ci.name}</span>
+                    <span>
+                      {draw >= 0 ? "+" : "−"}
+                      {fmtPower(Math.abs(draw))} draw
+                    </span>
+                    <span className="prop-power-sep">·</span>
+                    <span>
+                      headroom {fmtPower(marginBefore)} → {fmtPower(marginAfter)}
+                    </span>
+                    {ci.level === "crit" && <span className="prop-power-flag">→ BROWNOUT</span>}
+                    {ci.level === "warn" && <span className="prop-power-flag">→ THIN</span>}
+                  </div>
+                  <div className="prop-power-gen mono" data-testid="proposal-gen-line">
+                    generation {fmtPower(ci.generationBeforeMw)} → {fmtPower(ci.generationAfterMw)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {consequence && consequence.warnings.length > 0 && (
           <div className="prop-warnings" data-testid="proposal-warnings">

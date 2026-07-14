@@ -1,11 +1,13 @@
 // Phase 4 exit criterion: import Dunarr-076; drift renders in DIFF.
 // Also: rail route math block through the real inspector.
 
+import { fileURLToPath } from "node:url";
+
 import { test, expect, type Page } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
-const SAVES = "/home/user/Conveyancer/fixtures/saves";
+const SAVES = fileURLToPath(new URL("../../fixtures/saves", import.meta.url));
 
 async function importSave(page: Page, file: string) {
   const [chooser] = await Promise.all([
@@ -32,7 +34,13 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   await expect(page.getByTestId("import-done")).toContainText("quarantined");
   await page.locator(".wizard-foot .btn-primary").click();
   expect(await factoryCount()).toBe(before + 13);
+  // 13 clustered pins → the declutter pass may cull this chip at world zoom;
+  // attached proves the ◆ pin exists, search-select proves it wins the cull
+  await expect(page.locator(".pin-chip", { hasText: "IRON INGOT WORKS 1" })).toBeAttached();
+  await page.locator(".searchbox input").fill("iron ingot works 1");
+  await page.keyboard.press("Enter");
   await expect(page.locator(".pin-chip", { hasText: "IRON INGOT WORKS 1" })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // one undo removes the entire import; redo restores it
   await page.keyboard.press("Control+z");
@@ -71,7 +79,8 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   await page.keyboard.press("Tab");
 });
 
-test("rail route: the math block is the product", async ({ page }) => {
+test("rail route: the math block is the product", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
   await expect(page.getByTestId("map-root")).toBeVisible();
   await page.keyboard.press("f");
@@ -79,7 +88,13 @@ test("rail route: the math block is the product", async ({ page }) => {
 
   // right-drag IRON PLATE WORKS (phase-3 site, unbound OUT) → DEPOT SOUTH
   const pin = async (name: string) => {
-    const box = await page.locator(`.pin-wrap:has(.pin-chip:has-text("${name}")) svg`).boundingBox();
+    // poll: a one-shot boundingBox races map init / zoom animation
+    const loc = page.locator(`.pin-wrap:has(.pin-chip:has-text("${name}")) svg`);
+    let box = null;
+    for (let i = 0; i < 25 && !box; i++) {
+      box = await loc.boundingBox().catch(() => null);
+      if (!box) await page.waitForTimeout(200);
+    }
     if (!box) throw new Error(`pin ${name}`);
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   };
@@ -91,6 +106,21 @@ test("rail route: the math block is the product", async ({ page }) => {
   await page.mouse.up({ button: "right" });
   await expect(page.getByTestId("route-popover")).toBeVisible();
   await page.selectOption('[data-testid="popover-transport"]', "rail");
+
+  // ---- task #49: the pre-build TRAIN ANSWER answers "how many trains?" in the
+  // popover, before the route is committed. Enter a target rate → a real
+  // trains-needed number → COPY puts the answer on the clipboard. ----
+  const popAnswer = page.getByTestId("train-answer");
+  await expect(popAnswer).toBeVisible();
+  await expect(popAnswer).toContainText("TRAINS NEEDED");
+  await page.getByTestId("train-answer-demand").fill("500");
+  await expect(page.getByTestId("train-answer-count")).toContainText(/\d+×/);
+  await page.getByTestId("btn-train-answer-copy").click();
+  await expect(page.getByTestId("btn-train-answer-copy")).toContainText("COPIED");
+  const popClip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(popClip).toContain("TRAINS NEEDED");
+  expect(popClip).toMatch(/TRAINS NEEDED\s+\d+×/);
+
   await page.getByTestId("btn-route-confirm").click();
 
   // the inspector opens on the rail route with the visible math block
@@ -102,6 +132,9 @@ test("rail route: the math block is the product", async ({ page }) => {
   await expect(math).toContainText("RTT");
   await expect(math).toContainText("THROUGHPUT");
   await expect(math).toContainText("DEMAND");
+
+  // the TRAINS NEEDED headline also rides the inspector, from the same math
+  await expect(page.getByTestId("train-answer")).toContainText("TRAINS NEEDED");
 
   // +1 consist doubles throughput (1 → 2)
   const throughput = async () =>

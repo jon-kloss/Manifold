@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useStore } from "../state/store";
 import { fmtPower, fmtRate } from "../lib/format";
 import type { Factory } from "../state/types";
+import BuildSheet from "../graph/BuildSheet";
 
 const STATUS_GLYPH = { planned: "◇", under_construction: "◈", built: "◆" } as const;
 
@@ -16,12 +17,19 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
   const setView = useStore((s) => s.setView);
   const setSelection = useStore((s) => s.setSelection);
   const dispatch = useStore((s) => s.dispatch);
+  const planReplacement = useStore((s) => s.planReplacement);
   const [editingName, setEditingName] = useState(false);
+  const [buildSheet, setBuildSheet] = useState(false);
+  // Replacement infeasibility is an EXPECTED outcome — surface it as a clear,
+  // dismissible inline notice at the button, not just the status-bar chip.
+  const [infeasible, setInfeasible] = useState<string | null>(null);
 
   const df = derived.factories[factory.id];
   const ports = factory.ports.map((id) => plan.ports[id]).filter(Boolean);
   const outputs = ports.filter((p) => p.direction === "out");
   const inputs = ports.filter((p) => p.direction === "in");
+  // Distinct product lines this factory ships — drives the multi-output guidance.
+  const outputLines = new Set(outputs.map((p) => p.item)).size;
   const projected = factory.status === "planned" ? "projected" : "";
 
   return (
@@ -51,7 +59,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
             </button>
           )}
           <div className="mono drawer-sub">
-            {factory.region.toUpperCase()} · {factory.groups.length} GROUPS · {factory.nodeClaims.length} NODES
+            {factory.region.toUpperCase()} · {factory.groups.length} {factory.groups.length === 1 ? "GROUP" : "GROUPS"} · {factory.nodeClaims.length} {factory.nodeClaims.length === 1 ? "NODE" : "NODES"}
           </div>
         </div>
         <span className={`chip ${factory.status === "planned" ? "planned" : ""}`}>
@@ -196,6 +204,48 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
         </div>
       </section>
 
+      {factory.status === "built" && (
+        <section className="drawer-section">
+          <h3 className="t-label">REFACTOR</h3>
+          <div className="drawer-empty" style={{ marginBottom: 8 }}>
+            Tiers unlocked? Plan a replacement beside this factory and get an
+            ordered cutover with honest downtime — the ◆ built layer is never
+            touched.
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{ width: "100%", height: 32 }}
+            data-testid="btn-plan-replacement"
+            onClick={() => {
+              setInfeasible(null);
+              void planReplacement(factory.id).then((reason) => setInfeasible(reason));
+            }}
+          >
+            PLAN REPLACEMENT
+          </button>
+          {infeasible && (
+            <div className="refactor-infeasible" data-testid="refactor-infeasible">
+              <div className="refactor-infeasible-head">
+                <span className="mono warn">CAN'T REPLAN — {infeasible}</span>
+                <button
+                  className="drawer-close"
+                  onClick={() => setInfeasible(null)}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
+              {outputLines > 1 && (
+                <div className="mono refactor-infeasible-hint">
+                  This factory produces {outputLines} product lines — refactoring
+                  one at a time may fit your node budget.
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       <footer className="drawer-footer">
         <button
           className="btn btn-primary"
@@ -204,6 +254,15 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
           data-testid="btn-open-factory"
         >
           OPEN FACTORY ⏎
+        </button>
+        <button
+          className="btn btn-ghost"
+          style={{ height: 34 }}
+          onClick={() => setBuildSheet(true)}
+          title="BUILD SHEET — copy/print-friendly per-factory build checklist"
+          data-testid="btn-build-sheet"
+        >
+          BUILD SHEET
         </button>
         {factory.status === "planned" && (
           <button
@@ -217,6 +276,8 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
           </button>
         )}
       </footer>
+
+      {buildSheet && <BuildSheet factoryId={factory.id} onClose={() => setBuildSheet(false)} />}
     </aside>
   );
 }

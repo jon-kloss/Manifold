@@ -1,6 +1,7 @@
 // Recipe strip (mock 4a, bottom-center, build-menu style tiles). Current =
-// orange border; available (standard, unlocked) = steel; alternates render
-// locked in Phase 1 — no unlock model until progression lands (DECISIONS.md).
+// orange border; available (standard + unlocked alternates) = steel; alternates
+// the imported save has NOT unlocked render locked (W2b — the unlocked set comes
+// from the save's purchased schematics; DECISIONS.md).
 
 import { useMemo } from "react";
 import { useStore } from "../state/store";
@@ -9,6 +10,7 @@ import type { MachineGroup } from "../state/types";
 export default function RecipeStrip({ group }: { group: MachineGroup }) {
   const gamedata = useStore((s) => s.gamedata);
   const dispatch = useStore((s) => s.dispatch);
+  const unlocked = useStore((s) => s.unlocked);
 
   const recipes = useMemo(() => {
     const manufacturers = new Set(
@@ -36,7 +38,9 @@ export default function RecipeStrip({ group }: { group: MachineGroup }) {
       <div className="recipe-strip-tiles">
         {recipes.map((r) => {
           const current = r.className === group.recipe;
-          const locked = r.alternate;
+          // an alternate is locked only until the save unlocks its recipe class;
+          // unlocked alternates are selectable steel tiles like standard recipes.
+          const locked = r.alternate && !unlocked.has(r.className);
           return (
             <button
               key={r.className}

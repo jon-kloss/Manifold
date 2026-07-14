@@ -56,7 +56,7 @@ fn build_modular_frame_factory(s: &mut Session) -> (Id, Id, Id) {
     let r = s
         .edit(vec![Command::ClaimNode {
             factory: fid.clone(),
-            node: "iron-gf-01".into(),
+            node: "bp_resourcenode496".into(),
             extractor: "Build_MinerMk2_C".into(),
             clock: 1.0,
         }])
@@ -285,6 +285,7 @@ fn built_group_delta_feeds_the_solver_and_survives_write_back() {
         x,
         y: 0.0,
         z: 0.0,
+        ..Default::default()
     };
     s.import_save(app::import::ImportSnapshot {
         save_name: "TEST-01".into(),
@@ -2078,6 +2079,37 @@ fn undo_redo_persist_failure_restores_position() {
 }
 
 #[test]
+fn corrupt_journal_undo_fails_cleanly_and_session_self_heals() {
+    use planner_core::patch::PatchOp;
+    use planner_core::undo::{UndoEntry, UndoLog};
+    let mut s = Session::in_memory(None).unwrap();
+    let fid = create_named_factory(&mut s, "FIRST");
+
+    // Simulate a damaged persisted journal: an in-memory log whose top
+    // entry's inverse can't apply. Before the fallible-undo fix this was a
+    // panic (poisoned mutex); now it surfaces as an error and the session
+    // self-heals from disk.
+    let corrupt = UndoEntry {
+        label: "corrupt".into(),
+        forward: vec![],
+        inverse: vec![PatchOp::Add {
+            path: "/wizzles/x".into(),
+            value: serde_json::json!({}),
+        }],
+    };
+    s.undo = UndoLog::hydrate(vec![corrupt]);
+    assert!(s.undo().is_err(), "corrupt journal must surface, not panic");
+
+    // Rehydrated from the plan file: state matches disk and the real journal
+    // is back, so the same ⌘Z now undoes cleanly.
+    assert_disk_matches_memory(&s);
+    assert_eq!(s.state.factories[&fid].name, "FIRST");
+    s.undo().unwrap().unwrap();
+    assert!(!s.state.factories.contains_key(&fid));
+    assert_disk_matches_memory(&s);
+}
+
+#[test]
 fn accept_proposal_persist_failure_rolls_back() {
     use planner_core::proposals::*;
     let mut s = Session::in_memory(None).unwrap();
@@ -2091,6 +2123,7 @@ fn accept_proposal_persist_failure_rolls_back() {
         snapshot_time: "2026-01-01T00:00:00Z".into(),
         input_hash: s.plan_hash(),
         provenance: "TEST".into(),
+        milestone: None,
         items: vec![ProposalItem {
             id: "item-1".into(),
             kind: ProposalItemKind::Create,
@@ -2168,4 +2201,134 @@ fn solver_write_backs_roll_back_with_failed_edit() {
     .unwrap();
     assert_eq!(s.state.groups[&smelt].count, 2);
     assert_disk_matches_memory(&s);
+}
+
+// ---- W2a refactor/cutover: plan a replacement, accept without touching ◆ ----
+
+/// Import a single-machine ◆ built factory producing iron ingot (net surplus →
+/// an Out port), and return its factory id.
+fn import_built_ingot(s: &mut Session, x: f64) -> Id {
+    let mach = |class: &str, recipe: &str, x: f64| app::import::ImportMachine {
+        class: class.into(),
+        recipe: Some(recipe.into()),
+        clock: 1.0,
+        x,
+        y: 0.0,
+        z: 0.0,
+        ..Default::default()
+    };
+    s.import_save(app::import::ImportSnapshot {
+        save_name: "OLD-INGOT".into(),
+        machines: vec![mach("Build_SmelterMk1_C", "Recipe_IngotIron_C", x)],
+        ..Default::default()
+    })
+    .unwrap();
+    s.state
+        .factories
+        .values()
+        .find(|f| f.status == Status::Built)
+        .map(|f| f.id.clone())
+        .unwrap()
+}
+
+/// plan_replacement drafts a Refactor proposal: source Refactor, a CREATE item
+/// carrying the site alias, and a trailing SetFactoryReplaces { $site → old }.
+#[test]
+fn plan_replacement_builds_refactor_proposal() {
+    let mut s = Session::in_memory(None).unwrap();
+    let old = import_built_ingot(&mut s, 0.0);
+    let old_pos = s.state.factories[&old].position;
+
+    let proposal = s.plan_replacement(old.clone(), None).unwrap();
+    assert_eq!(
+        proposal.source,
+        planner_core::proposals::ProposalSource::Refactor
+    );
+    // the CREATE item mints the new factory beside the old pin AND appends the
+    // SetFactoryReplaces link referencing the site alias + the old id.
+    let create = proposal
+        .items
+        .iter()
+        .find(|it| it.kind == planner_core::proposals::ProposalItemKind::Create)
+        .expect("CREATE item");
+    let link = create
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::SetFactoryReplaces { id, replaces } => Some((id.clone(), replaces.clone())),
+            _ => None,
+        })
+        .expect("trailing SetFactoryReplaces");
+    assert_eq!(link.0, "$site", "links the freshly-minted site alias");
+    assert_eq!(link.1, Some(old.clone()));
+    // the new site is placed beside the old pin (x shifted, y shared)
+    let new_pos = create
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::CreateFactory { position, .. } => Some(*position),
+            _ => None,
+        })
+        .unwrap();
+    assert!(new_pos.x > old_pos.x, "sited to the side of the old pin");
+    assert_eq!(new_pos.y, old_pos.y);
+}
+
+/// Accepting a Refactor proposal is one undo step and NEVER touches the ◆ built
+/// layer: the old factory's groups/counts are byte-identical afterward, the new
+/// ◇ carries `replaces`, and undo restores the pre-accept state.
+#[test]
+fn accept_refactor_is_one_undo_step_and_old_built_untouched() {
+    let mut s = Session::in_memory(None).unwrap();
+    let old = import_built_ingot(&mut s, 0.0);
+    // snapshot the ◆ built factory + its groups before the refactor
+    let old_before = s.state.factories[&old].clone();
+    let groups_before: std::collections::BTreeMap<Id, MachineGroup> = s
+        .state
+        .groups
+        .values()
+        .filter(|g| g.factory == old)
+        .map(|g| (g.id.clone(), g.clone()))
+        .collect();
+
+    let proposal = s.plan_replacement(old.clone(), None).unwrap();
+    let pid = s
+        .edit(vec![Command::CreateProposal { proposal }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let factories_before = s.state.factories.len();
+    s.accept_proposal(&pid).unwrap();
+
+    // the old ◆ factory + groups are byte-identical (never a ◆ write)
+    assert_eq!(s.state.factories[&old], old_before, "◆ factory untouched");
+    for (gid, g) in &groups_before {
+        assert_eq!(&s.state.groups[gid], g, "◆ group untouched");
+    }
+    // a NEW ◇ factory appeared carrying replaces → old
+    let new = s
+        .state
+        .factories
+        .values()
+        .find(|f| f.replaces.as_deref() == Some(old.as_str()))
+        .expect("new ◇ carries replaces");
+    assert_eq!(new.status, Status::Planned);
+    // a cutover now exists pairing new → old
+    assert!(s
+        .solve_all_readonly()
+        .cutovers
+        .iter()
+        .any(|c| c.old_factory == old));
+
+    // one undo reverts the ENTIRE accept (◇-only) in a single step
+    s.undo().unwrap().unwrap();
+    assert_eq!(s.state.factories.len(), factories_before);
+    assert!(
+        !s.state
+            .factories
+            .values()
+            .any(|f| f.replaces.as_deref() == Some(old.as_str())),
+        "replacement gone after undo"
+    );
+    assert_eq!(s.state.factories[&old], old_before, "◆ still untouched");
 }

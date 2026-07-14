@@ -240,6 +240,40 @@ pub enum Command {
         factory: Id,
         style_guide: Option<Id>,
     },
+    /// Manually assert (or clear) a build-queue step's completion (W1c).
+    /// `Some(done)` upserts the override; `None` removes it, reverting the step
+    /// to its derived state. Metadata, not a ◆ mutation — no `require_planned`.
+    ///
+    /// The `id` is NOT validated against a live step: planner-core has no view of
+    /// the derived queue/cutover projection (which lives in the `app` crate and
+    /// mints synthetic ids like `switch:<fid>:<item>`). An override for an id that
+    /// no step carries is an inert sparse overlay — it changes nothing until a
+    /// matching step appears, and it auto-dissolves on the next re-import via
+    /// `dissolve_stale_overrides`. So validation can't (and needn't) live here.
+    /// (The `app` layer — which CAN derive the valid step ids — rejects a bogus
+    /// id at the `Session::edit` dispatch before it reaches this arm.)
+    SetBuildDone {
+        id: Id,
+        done: Option<bool>,
+    },
+    /// Link a ◇ planned factory to the running ◆ factory it replaces (W2a
+    /// refactor). `Some` sets the label, `None` clears it. A planner-side label
+    /// (same species as RenameFactory) — never a ◆ mutation and never a write to
+    /// the referenced entity; the cutover/downtime are DERIVED from it. Undo is
+    /// free via the standard upsert patch-pair.
+    SetFactoryReplaces {
+        id: Id,
+        replaces: Option<Id>,
+    },
+    /// Upsert (or clear) a plan-local resource-node correction (W2b-C).
+    /// `Some(ov)` writes the override; `None` removes it, reverting the node to
+    /// its ambient catalog geometry. Plan-local metadata, not a ◆ mutation — no
+    /// `require_planned` (same species as [`Command::SetBuildDone`]); undo is
+    /// free via the standard upsert/remove patch-pair.
+    SetNodeOverride {
+        id: String,
+        node_override: Option<NodeOverride>,
+    },
 }
 
 impl Command {
@@ -286,6 +320,9 @@ impl Command {
             Command::CreateStyleGuide { .. } => "save style guide",
             Command::DeleteStyleGuide { .. } => "delete style guide",
             Command::SetFactoryTheme { .. } => "set factory theme",
+            Command::SetBuildDone { .. } => "mark build done",
+            Command::SetFactoryReplaces { .. } => "link replacement",
+            Command::SetNodeOverride { .. } => "correct node position",
         }
     }
 }
@@ -320,12 +357,58 @@ fn valid_tier(tier: u8) -> Result<u8, DomainError> {
     Ok(tier)
 }
 
+/// Endpoint midpoint of a route path — where a priority switch sits (square
+/// pin at the line's midpoint, A2.3). Shared by AddPrioritySwitch and
+/// MoveFactoryPin so placement and refresh can never disagree. Empty paths
+/// fall back to the origin, exactly as switch placement always has.
+fn line_midpoint(path: &[MapPos]) -> MapPos {
+    let a = path.first().copied().unwrap_or(MapPos {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    });
+    let b = path.last().copied().unwrap_or(a);
+    MapPos {
+        x: (a.x + b.x) / 2.0,
+        y: (a.y + b.y) / 2.0,
+        z: (a.z + b.z) / 2.0,
+    }
+}
+
+/// Resolve an edge endpoint to its owning factory, or fail: `NotFound` for a
+/// dangling reference, `Invalid` for an endpoint owned by another factory.
+/// Dev-bridge clients and delete/connect races can produce both; either would
+/// corrupt the intra-factory graph.
+fn require_edge_end(state: &PlanState, end: &EdgeEnd, factory: &Id) -> Result<(), DomainError> {
+    let (id, owner) = match end {
+        EdgeEnd::Group(gid) => (gid, state.groups.get(gid).map(|g| g.factory.clone())),
+        EdgeEnd::Port(pid) => (pid, state.ports.get(pid).map(|p| p.factory.clone())),
+        EdgeEnd::Junction(jid) => (jid, state.junctions.get(jid).map(|j| j.factory.clone())),
+    };
+    let owner = owner.ok_or(DomainError::NotFound { id: id.clone() })?;
+    if &owner != factory {
+        return Err(DomainError::Invalid {
+            message: format!("edge endpoint {id} belongs to a different factory"),
+        });
+    }
+    Ok(())
+}
+
 /// Remove a route and everything riding it, recording each op into `tx`:
 /// unbind any port still bound to the line, cascade the priority switches
 /// sitting on it (switches riding this line go with it), then remove the
 /// route. Every removal path (DeleteRoute, DeleteFactory, DeletePort) goes
 /// through here so no path can forget the cascade. Deliberately carries no
 /// status check — DeleteFactory bypasses `require_planned` for its children.
+/// Drop a build-queue override for a step entity that is being removed, so an
+/// override can never dangle past the thing it tracked. Recorded into `tx` so
+/// undo restores it with the entity. No-op when there is no override.
+fn prune_build_override(state: &mut PlanState, tx: &mut Transaction, id: &Id) {
+    if let Some(ops) = state.remove(COLL_BUILD_OVERRIDES, id) {
+        tx.record(ops);
+    }
+}
+
 fn remove_route_cascading(state: &mut PlanState, tx: &mut Transaction, route_id: &Id) {
     if let Some(r) = state.routes.get(route_id).cloned() {
         for pid in [&r.endpoints.0, &r.endpoints.1] {
@@ -351,6 +434,7 @@ fn remove_route_cascading(state: &mut PlanState, tx: &mut Transaction, route_id:
     if let Some(ops) = state.remove(COLL_ROUTES, route_id) {
         tx.record(ops);
     }
+    prune_build_override(state, tx, route_id);
 }
 
 /// Remove a factory and everything belonging to it, recording each op into
@@ -416,6 +500,7 @@ pub fn remove_factory_cascading(state: &mut PlanState, tx: &mut Transaction, id:
         if let Some(ops) = state.remove(COLL_GROUPS, &gid) {
             tx.record(ops);
         }
+        prune_build_override(state, tx, &gid);
     }
     for pid in port_ids {
         if let Some(ops) = state.remove(COLL_PORTS, &pid) {
@@ -426,6 +511,7 @@ pub fn remove_factory_cascading(state: &mut PlanState, tx: &mut Transaction, id:
         if let Some(ops) = state.remove(COLL_NODE_CLAIMS, &cid) {
             tx.record(ops);
         }
+        prune_build_override(state, tx, &cid);
     }
     for jid in junction_ids {
         if let Some(ops) = state.remove(COLL_JUNCTIONS, &jid) {
@@ -435,6 +521,7 @@ pub fn remove_factory_cascading(state: &mut PlanState, tx: &mut Transaction, id:
     if let Some(ops) = state.remove(COLL_FACTORIES, id) {
         tx.record(ops);
     }
+    prune_build_override(state, tx, id);
 }
 
 /// Apply a command to canonical state. Returns an open `Transaction`.
@@ -455,6 +542,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 groups: vec![],
                 ports: vec![],
                 style_guide: None,
+                replaces: None,
                 status: Status::Planned,
                 created_by: CreatedBy::Manual,
             };
@@ -467,6 +555,13 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .get(id)
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // Deliberately NOT `require_planned` (§3.1.1 exemption): names are
+            // planner-side labels, not game ground truth — the save format has
+            // no factory-name concept, import *synthesizes* names from the
+            // dominant output, and re-import matching is positional, so a
+            // rename can never break drift detection. Same reasoning as
+            // TidyLayout / card moves on ◆ built entities (DECISIONS
+            // "Built-immutability matrix").
             f.name = name.clone();
             tx.record(state.upsert(Entity::Factory(f)));
         }
@@ -505,7 +600,24 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                     touched = true;
                 }
                 if touched {
+                    // Priority switches sit at the line's midpoint (A2.3) —
+                    // snap them to the refreshed geometry so a pin move never
+                    // strands them on the stale line.
+                    let mid = line_midpoint(&r.path);
+                    let rid = r.id.clone();
                     tx.record(state.upsert(Entity::Route(r)));
+                    let switches: Vec<PrioritySwitch> = state
+                        .switches
+                        .values()
+                        .filter(|s| s.route == rid)
+                        .cloned()
+                        .collect();
+                    for mut sw in switches {
+                        if sw.position != mid {
+                            sw.position = mid;
+                            tx.record(state.upsert(Entity::Switch(sw)));
+                        }
+                    }
                 }
             }
         }
@@ -731,6 +843,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             if let Some(ops) = state.remove(COLL_GROUPS, id) {
                 tx.record(ops);
             }
+            prune_build_override(state, &mut tx, id);
         }
         Command::AddPort {
             factory,
@@ -837,6 +950,16 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             state.factories.get(factory).ok_or(DomainError::NotFound {
                 id: factory.clone(),
             })?;
+            // Every endpoint must exist and belong to this edge's factory —
+            // a dangling or cross-factory end would corrupt the graph.
+            if from == to {
+                return Err(DomainError::Invalid {
+                    message: "an edge needs two different endpoints".into(),
+                });
+            }
+            for end in [from, to] {
+                require_edge_end(state, end, factory)?;
+            }
             // Junction port budgets are physical game constraints (splitter
             // 1-in/3-out, merger 3-in/1-out, storage 1/1) — refuse overflow.
             for (end, incoming) in [(from, false), (to, true)] {
@@ -909,6 +1032,10 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .get(id)
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // Belt tier is physical game infrastructure — a Mk.N belt exists
+            // in the world, so the ◆ built layer is import-owned (§3.1.1).
+            // Tier-upgrade-as-planned-delta is BACKLOG.
+            require_planned(e.status, id, "set tier")?;
             e.tier = valid_tier(*tier)?;
             tx.record(state.upsert(Entity::Edge(e)));
         }
@@ -1121,6 +1248,9 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .get(id)
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // Same field SetRouteSpec guards ("respec") — a built route's
+            // belt tier is physical infrastructure (§3.1.1).
+            require_planned(r.status, id, "set tier")?;
             match &mut r.kind {
                 RouteKind::Belt { tier: t } => *t = valid_tier(*tier)?,
                 other => {
@@ -1160,6 +1290,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 factory: factory.clone(),
                 extractor: extractor.clone(),
                 clock: clamp_clock(*clock)?,
+                save_node_id: None,
                 status: Status::Planned,
                 created_by: CreatedBy::Manual,
             };
@@ -1181,6 +1312,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             if let Some(ops) = state.remove(COLL_NODE_CLAIMS, id) {
                 tx.record(ops);
             }
+            prune_build_override(state, &mut tx, id);
         }
         Command::RenamePlan { name } => {
             let old = state.meta.name.clone();
@@ -1294,22 +1426,12 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                     message: format!("priority P{priority} outside P1–P8"),
                 });
             }
-            // midpoint of the line — square pin grammar (A2.3)
-            let a = r.path.first().copied().unwrap_or(MapPos {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            });
-            let b = r.path.last().copied().unwrap_or(a);
             let sw = PrioritySwitch {
                 id: new_id(),
                 route: route.clone(),
                 priority: *priority,
-                position: MapPos {
-                    x: (a.x + b.x) / 2.0,
-                    y: (a.y + b.y) / 2.0,
-                    z: (a.z + b.z) / 2.0,
-                },
+                // midpoint of the line — square pin grammar (A2.3)
+                position: line_midpoint(&r.path),
                 status: Status::Planned,
                 created_by: CreatedBy::Manual,
             };
@@ -1377,6 +1499,72 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                     .ok_or(DomainError::NotFound { id: sg.clone() })?;
             }
             f.style_guide = style_guide.clone();
+            tx.record(state.upsert(Entity::Factory(f)));
+        }
+        Command::SetBuildDone { id, done } => {
+            // The override is a sparse assertion overlay routed through the same
+            // upsert/remove machinery as every other entity, so it undoes in one
+            // step. No `require_planned`: it is build-progress metadata, never a
+            // mutation of the ◆ game-ground-truth layer.
+            match done {
+                Some(v) => tx.record(state.upsert(Entity::BuildOverride(BuildOverride {
+                    id: id.clone(),
+                    done: *v,
+                }))),
+                None => {
+                    if let Some(ops) = state.remove(COLL_BUILD_OVERRIDES, id) {
+                        tx.record(ops);
+                    }
+                }
+            }
+        }
+        Command::SetNodeOverride { id, node_override } => {
+            // Sparse plan-local overlay routed through the same upsert/remove
+            // machinery as every other entity, so it undoes in one step. No
+            // `require_planned`: the bundled/ambient catalog is never mutated —
+            // this only records a plan-side correction of node geometry.
+            match node_override {
+                Some(ov) => {
+                    let mut ov = ov.clone();
+                    ov.id = id.clone();
+                    tx.record(state.upsert(Entity::NodeOverride(ov)));
+                }
+                None => {
+                    if let Some(ops) = state.remove(COLL_NODE_OVERRIDES, id) {
+                        tx.record(ops);
+                    }
+                }
+            }
+        }
+        Command::SetFactoryReplaces { id, replaces } => {
+            let mut f = state
+                .factories
+                .get(id)
+                .cloned()
+                .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // Deliberately NOT `require_planned` (§3.1.1 exemption): `replaces`
+            // is a planner-side label with the same reasoning as RenameFactory —
+            // the save format has no such concept, so it can never break drift.
+            if let Some(target) = replaces {
+                if target == id {
+                    return Err(DomainError::Invalid {
+                        message: "a factory can't replace itself".into(),
+                    });
+                }
+                let old = state
+                    .factories
+                    .get(target)
+                    .ok_or(DomainError::NotFound { id: target.clone() })?;
+                // The replaced factory must be a running ◆ Built one — that is
+                // the whole premise of a cutover (tear down the built factory
+                // once its ◇ replacement is up).
+                if old.status != Status::Built {
+                    return Err(DomainError::Invalid {
+                        message: format!("replacement target {target} is not a built factory"),
+                    });
+                }
+            }
+            f.replaces = replaces.clone();
             tx.record(state.upsert(Entity::Factory(f)));
         }
         Command::DeleteSwitch { id } => {

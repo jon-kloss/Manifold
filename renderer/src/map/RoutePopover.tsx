@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
+import { backend } from "../state/backend";
 import {
   beltCapacity,
   DEFAULT_DRONE_SPEC,
@@ -13,8 +14,10 @@ import {
   type Command,
   type Id,
   type RouteKind,
+  type TrainAnswer,
 } from "../state/types";
 import { fmtRate } from "../lib/format";
+import TrainAnswerBlock from "./TrainAnswerBlock";
 
 interface Candidate {
   key: string;
@@ -35,6 +38,7 @@ export default function RoutePopover({
   onClose: () => void;
 }) {
   const plan = useStore((s) => s.plan);
+  const derived = useStore((s) => s.derived);
   const gamedata = useStore((s) => s.gamedata);
   const dispatch = useStore((s) => s.dispatch);
   const setSelection = useStore((s) => s.setSelection);
@@ -98,6 +102,34 @@ export default function RoutePopover({
   }, [plan, fromFactory, toFactory, gamedata.items]);
 
   const [picked, setPicked] = useState(0);
+
+  // ---- task #49: the pre-build TRAIN ANSWER. For a rail/truck/drone pick the
+  // popover answers "how many trains?" BEFORE the route is committed — read-only
+  // (routeCalc creates nothing), from the two pins' distance and the OUT port's
+  // demand (or a user-entered target). ----
+  const cand = candidates[picked];
+  const showTrain = !!cand && !cand.power && transport !== "belt";
+  const autoDemand = useMemo(() => {
+    if (!cand || cand.power) return 0;
+    return derived.factories[fromFactory]?.ports[cand.outPort] ?? plan.ports[cand.outPort]?.rate ?? 0;
+  }, [cand, derived, fromFactory, plan.ports]);
+  const [target, setTarget] = useState<number | null>(null);
+  const demand = target ?? autoDemand;
+  const [answer, setAnswer] = useState<TrainAnswer | null>(null);
+  useEffect(() => {
+    if (!showTrain || !cand) {
+      setAnswer(null);
+      return;
+    }
+    let live = true;
+    void backend
+      .routeCalc(fromFactory, toFactory, kindFor(), demand, cand.item || null)
+      .then((a) => live && setAnswer(a))
+      .catch(() => live && setAnswer(null));
+    return () => {
+      live = false;
+    };
+  }, [showTrain, cand, fromFactory, toFactory, kindFor, demand]);
 
   // Enter key-repeat (or a double click) must not dispatch add_route twice
   // while the first await is in flight.
@@ -225,6 +257,18 @@ export default function RoutePopover({
                 ))}
               </select>
             </div>
+          )}
+          {showTrain && answer && cand && (
+            <TrainAnswerBlock
+              answer={answer}
+              ctx={{
+                kind: transport as "rail" | "truck" | "drone",
+                from: plan.factories[fromFactory]?.name ?? "?",
+                to: plan.factories[toFactory]?.name ?? "?",
+                item: gamedata.items[cand.item]?.displayName ?? cand.item,
+              }}
+              onDemandChange={(r) => setTarget(r)}
+            />
           )}
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => void confirm()} data-testid="btn-route-confirm">

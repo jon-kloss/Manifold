@@ -7,7 +7,7 @@
 //! item's candidates independently (min machines, then min power). True
 //! cross-item MILP arrives when alternate recipes create real trade-offs.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use gamedata::docs::{extraction_rate, GameData, POWER_ITEM};
@@ -34,8 +34,10 @@ pub struct WizardConstraints {
     pub power_margin_cap: f64,
     /// 0 = greenfield, 1 = expand existing factories where possible.
     pub expand_preference: f64,
-    /// Consider alternate recipes (no unlock model yet — they render locked,
-    /// so the wizard leaves them off by default; T2 suggests them explicitly).
+    /// ALSO consider LOCKED alternates (as suggestions). Unlocked alternates
+    /// (in the save's unlocked set) are always available and used like standard
+    /// recipes; this toggle only re-scopes to pull in the genuinely-locked ones,
+    /// which stay flagged "NOT UNLOCKED — suggested".
     #[serde(default)]
     pub include_alternates: bool,
 }
@@ -61,6 +63,17 @@ pub struct WizardGoal {
     pub items: Vec<(String, f64)>,
     #[serde(default)]
     pub constraints: WizardConstraints,
+    /// Total-quantity goal mode: carried through global_solve into the
+    /// Proposal untouched (no solver behaviour changes — a target annotation).
+    #[serde(default)]
+    pub milestone: Option<Milestone>,
+    /// Product class → pinned recipe class. When a product is pinned, the solver
+    /// adopts that exact recipe for it (bypassing cost scoring) instead of the
+    /// cheapest one — e.g. a built-factory "adopt this alt" seeds the retired
+    /// product's alternate here so its ◇ replacement is solved onto that recipe.
+    /// Empty (the default) leaves recipe selection behaviour-identical.
+    #[serde(default)]
+    pub pinned_recipes: BTreeMap<String, String>,
 }
 
 /// Infeasible ≠ dead end (mock 5c): best achievable + named binding + one-tap
@@ -98,12 +111,14 @@ pub fn global_solve(
     gd: &GameData,
     world: &WorldSnapshot,
     goal: &WizardGoal,
+    unlocked: &BTreeSet<String>,
     plan_hash: String,
     snapshot_time: String,
     mut log: impl FnMut(&str, &str),
     cancel: &AtomicBool,
 ) -> WizardOutcome {
     let c = &goal.constraints;
+    let pinned = &goal.pinned_recipes;
     let item_name = |class: &str| -> String {
         gd.items
             .get(class)
@@ -187,7 +202,7 @@ pub fn global_solve(
         }
         *demand.entry(item.clone()).or_default() += rate;
         // expand via the standard recipe for BFS; final pick happens in phase 2
-        if let Some(r) = pick_recipe(gd, &item, c.include_alternates) {
+        if let Some(r) = pick_recipe(gd, &item, unlocked, c.include_alternates, pinned) {
             let out_per_cycle = r
                 .products
                 .iter()
@@ -212,31 +227,32 @@ pub fn global_solve(
         if cancel.load(Ordering::Relaxed) {
             return WizardOutcome::Cancelled;
         }
-        let Some(r) = pick_recipe(gd, item, c.include_alternates) else {
+        let Some(r) = pick_recipe(gd, item, unlocked, c.include_alternates, pinned) else {
             // A GOAL item with no pickable recipe can never be staged — the
             // proposal would dangle a `$g.` alias and accept would always
             // fail. Name the fix instead of emitting a broken proposal.
             // (Non-goal mid-chain items keep degrading honestly via the
             // ingredient-edge guard + T1 `Disconnected` shortfalls.)
             if goal.items.iter().any(|(i, _)| i == item) {
-                let (binding, relaxations) =
-                    if !c.include_alternates && pick_recipe(gd, item, true).is_some() {
-                        (
-                            format!(
-                                "only alternate recipes produce {} (alternates are off)",
-                                item_name(item)
-                            ),
-                            vec!["enable alternate recipes ✓".to_string()],
-                        )
-                    } else {
-                        (
-                            format!("no usable recipe produces {}", item_name(item)),
-                            vec![format!(
-                                "pick another goal item — {} has no enabled recipe",
-                                item_name(item)
-                            )],
-                        )
-                    };
+                let (binding, relaxations) = if !c.include_alternates
+                    && pick_recipe(gd, item, unlocked, true, pinned).is_some()
+                {
+                    (
+                        format!(
+                            "only locked alternate recipes produce {} (not unlocked)",
+                            item_name(item)
+                        ),
+                        vec!["enable alternate recipes ✓".to_string()],
+                    )
+                } else {
+                    (
+                        format!("no usable recipe produces {}", item_name(item)),
+                        vec![format!(
+                            "pick another goal item — {} has no enabled recipe",
+                            item_name(item)
+                        )],
+                    )
+                };
                 log(phase, &format!("INFEASIBLE — {binding}"));
                 return WizardOutcome::Infeasible(Infeasible {
                     best_rate: 0.0,
@@ -856,22 +872,44 @@ pub fn global_solve(
             input_hash: plan_hash,
             provenance: "GLOBAL SOLVER".into(),
             items,
+            // passthrough: the total-quantity target rides into the review
+            // surface; the solve itself never read it (rate drives the plan).
+            milestone: goal.milestone.clone(),
         },
     }
 }
 
 /// Cheapest recipe for an item: min machines for 1/min, then min power.
 /// Standard recipes win ties over alternates.
+///
+/// Eligibility (W2b): an alternate is available iff the save has unlocked it
+/// (`unlocked.contains(&r.class_name)`). `include_alts` re-scopes to ALSO pull
+/// in genuinely-locked alternates as suggestions. Standard recipes are always
+/// eligible; with an empty unlocked set + `include_alts=false` this collapses to
+/// the historical "standard only" filter (honest fixture degradation).
 fn pick_recipe<'a>(
     gd: &'a GameData,
     item: &str,
+    unlocked: &BTreeSet<String>,
     include_alts: bool,
+    pinned: &BTreeMap<String, String>,
 ) -> Option<&'a gamedata::docs::Recipe> {
+    // An explicit pin wins over cost scoring: if the caller pinned a recipe for
+    // this product and it exists in gamedata AND actually produces the item,
+    // adopt it directly. A bad pin (unknown class / wrong product) is ignored —
+    // it falls through to the normal scoring below, never panics.
+    if let Some(class) = pinned.get(item) {
+        if let Some(r) = gd.recipes.get(class) {
+            if !r.produced_in.is_empty() && r.products.iter().any(|(i, _)| i == item) {
+                return Some(r);
+            }
+        }
+    }
     gd.recipes
         .values()
         .filter(|r| {
             !r.produced_in.is_empty()
-                && (include_alts || !r.alternate)
+                && (!r.alternate || unlocked.contains(&r.class_name) || include_alts)
                 && r.products.iter().any(|(i, _)| i == item)
                 && r.products.iter().all(|(i, _)| i != POWER_ITEM)
         })
@@ -914,7 +952,12 @@ fn nearest_region(world: &WorldSnapshot, pos: MapPos) -> String {
 /// producing group or a boundary IN port) — T2 rewires feed belts, it never
 /// invents supply chains (that is the global solver's job). Output is a
 /// mini-proposal of MODIFY items; nothing applies until accepted.
-pub fn t2_optimize(state: &PlanState, gd: &GameData, factory_id: &Id) -> Option<Proposal> {
+pub fn t2_optimize(
+    state: &PlanState,
+    gd: &GameData,
+    unlocked: &BTreeSet<String>,
+    factory_id: &Id,
+) -> Option<Proposal> {
     let factory = state.factories.get(factory_id)?;
     let item_name = |class: &str| -> String {
         gd.items
@@ -1031,7 +1074,9 @@ pub fn t2_optimize(state: &PlanState, gd: &GameData, factory_id: &Id) -> Option<
             });
         }
         let aliases = vec![None; cmds.len()];
-        let locked_note = if alt.alternate {
+        // Unlocked alternates are first-class — only genuinely-locked ones
+        // (alternate + not in the save's unlocked set) carry the suggestion flag.
+        let locked_note = if alt.alternate && !unlocked.contains(&alt.class_name) {
             " · NOT UNLOCKED — suggested"
         } else {
             ""
@@ -1076,5 +1121,86 @@ pub fn t2_optimize(state: &PlanState, gd: &GameData, factory_id: &Id) -> Option<
         input_hash: String::new(),
         provenance: "T2 OPTIMIZE".into(),
         items,
+        milestone: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gamedata::docs::Recipe;
+
+    fn recipe(class: &str, item: &str, per_cycle: f64, dur_s: f64, alternate: bool) -> Recipe {
+        Recipe {
+            class_name: class.into(),
+            display_name: class.into(),
+            duration_s: dur_s,
+            ingredients: vec![("Desc_Ore_C".into(), 1.0)],
+            products: vec![(item.into(), per_cycle)],
+            produced_in: vec!["Build_ConstructorMk1_C".into()],
+            alternate,
+            variable_power_mw: None,
+        }
+    }
+
+    /// W2b: an alternate whose recipe class is in the save's unlocked set is a
+    /// first-class recipe — `pick_recipe` selects it with `include_alts=false`
+    /// and (being unlocked) it carries no "NOT UNLOCKED" flag.
+    #[test]
+    fn unlocked_alt_is_selectable() {
+        let mut gd = GameData::default();
+        // standard: 1/min · alternate: 4/min (cheaper) — the alt wins on cost
+        gd.recipes.insert(
+            "Recipe_Std_C".into(),
+            recipe("Recipe_Std_C", "Desc_Widget_C", 1.0, 60.0, false),
+        );
+        gd.recipes.insert(
+            "Recipe_Alt_C".into(),
+            recipe("Recipe_Alt_C", "Desc_Widget_C", 2.0, 30.0, true),
+        );
+        let mut unlocked = BTreeSet::new();
+        unlocked.insert("Recipe_Alt_C".to_string());
+
+        let picked = pick_recipe(&gd, "Desc_Widget_C", &unlocked, false, &BTreeMap::new())
+            .expect("an unlocked cheaper alt is eligible without include_alts");
+        assert_eq!(
+            picked.class_name, "Recipe_Alt_C",
+            "the unlocked alt is chosen like a standard recipe"
+        );
+        // t2's flag predicate: unlocked alts are NOT genuinely locked → no flag
+        assert!(
+            !picked.alternate || unlocked.contains(&picked.class_name),
+            "an unlocked alt drops the NOT UNLOCKED flag"
+        );
+    }
+
+    /// A locked alternate (not in the unlocked set) is excluded when
+    /// `include_alts=false`; `include_alts=true` re-scopes to pull it in as a
+    /// suggestion. Being unlocked also admits it. This is the `pick_recipe` gate
+    /// `!alternate || unlocked.contains(class) || include_alts`.
+    #[test]
+    fn locked_alt_excluded_unless_opted_in() {
+        let mut gd = GameData::default();
+        gd.recipes.insert(
+            "Recipe_AltOnly_C".into(),
+            recipe("Recipe_AltOnly_C", "Desc_Gizmo_C", 1.0, 60.0, true),
+        );
+        let empty = BTreeSet::new();
+        assert!(
+            pick_recipe(&gd, "Desc_Gizmo_C", &empty, false, &BTreeMap::new()).is_none(),
+            "a locked alt is excluded by default"
+        );
+        assert_eq!(
+            pick_recipe(&gd, "Desc_Gizmo_C", &empty, true, &BTreeMap::new())
+                .expect("include_alts pulls the locked alt in")
+                .class_name,
+            "Recipe_AltOnly_C"
+        );
+        // and being unlocked admits it even with include_alts off, flag-free
+        let mut unlocked = BTreeSet::new();
+        unlocked.insert("Recipe_AltOnly_C".to_string());
+        let picked = pick_recipe(&gd, "Desc_Gizmo_C", &unlocked, false, &BTreeMap::new())
+            .expect("the unlocked alt is available");
+        assert!(picked.alternate && unlocked.contains(&picked.class_name));
+    }
 }

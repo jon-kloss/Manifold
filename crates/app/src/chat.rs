@@ -291,6 +291,8 @@ fn intent_to_proposal(
     let goal = WizardGoal {
         items: vec![(item_class.to_string(), rate)],
         constraints: Default::default(),
+        milestone: None,
+        pinned_recipes: Default::default(),
     };
     let cancel = std::sync::atomic::AtomicBool::new(false);
     let mut log_lines = 0usize;
@@ -299,6 +301,7 @@ fn intent_to_proposal(
         &s.gamedata,
         &s.world,
         &goal,
+        &s.unlocked,
         s.plan_hash(),
         crate::jobs::now_rfc3339(),
         |_, _| log_lines += 1,
