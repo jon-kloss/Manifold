@@ -2151,7 +2151,7 @@ impl Session {
                         Some(gamedata::docs::MachineKind::Generator {
                             power_production_mw,
                         }) => Some(
-                            power_production_mw * g.count as f64,
+                            power_production_mw * g.effective_count() as f64 * g.effective_clock(),
                         ),
                         _ => None,
                     },
