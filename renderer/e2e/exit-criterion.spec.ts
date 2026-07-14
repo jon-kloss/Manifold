@@ -69,6 +69,11 @@ async function connect(page: Page, source: string, target: string) {
 }
 
 test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
+  // The suite's longest UI-gesture spec (~40 gestures with retry loops): the
+  // default 60s budget fits a warm dev box but not a cold contended CI runner —
+  // CI burned the whole budget before the first belt and cascaded the serial
+  // suite. Same honest-budget treatment phase4 gives its save parses.
+  test.setTimeout(180_000);
   await page.goto("/");
   await expect(page.getByTestId("map-root")).toBeVisible();
 
