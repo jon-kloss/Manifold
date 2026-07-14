@@ -13,6 +13,19 @@ pub enum DbError {
     Json(#[from] serde_json::Error),
 }
 
+/// Cache schema version, stored in meta('schema_version') and required by
+/// `build_matches` alongside the game build. Bump whenever the persisted shape
+/// changes meaning. Two hazards make this key load-bearing even while the
+/// cache is write-only:
+/// 1. serde-default fields (e.g. `Item.is_resource`) silently deserialize as
+///    `false` from pre-versioned blobs — a wired read path would resurrect the
+///    packaging-cycle hazard the raw-resource gate exists to prevent;
+/// 2. schematics are NOT persisted at all (no table) — a wired read would
+///    silently drop unlocked-alternate resolution.
+///
+/// Absence of the key = stale, which covers every pre-existing cache.
+const SCHEMA_VERSION: &str = "2";
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS items (class TEXT PRIMARY KEY, json TEXT NOT NULL);
@@ -28,6 +41,10 @@ pub fn write(conn: &Connection, gd: &GameData) -> Result<(), DbError> {
     conn.execute(
         "INSERT OR REPLACE INTO meta (key, value) VALUES ('game_build', ?1)",
         [&gd.build_version],
+    )?;
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?1)",
+        [SCHEMA_VERSION],
     )?;
     let clear = |table: &str| conn.execute_batch(&format!("DELETE FROM {table}"));
     clear("items")?;
@@ -107,13 +124,21 @@ pub fn read(conn: &Connection) -> Result<GameData, DbError> {
     Ok(gd)
 }
 
-/// True when the stored build differs from the install's (re-parse trigger).
+/// True only when the stored game build matches the install's AND the stored
+/// cache schema version matches `SCHEMA_VERSION` (re-parse trigger otherwise).
+/// A missing `schema_version` key counts as stale — see `SCHEMA_VERSION` for
+/// why a build match alone is not enough.
 pub fn build_matches(conn: &Connection, build: &str) -> bool {
-    conn.query_row("SELECT value FROM meta WHERE key = 'game_build'", [], |r| {
-        r.get::<_, String>(0)
-    })
-    .map(|stored| stored == build)
-    .unwrap_or(false)
+    let meta = |key: &str| {
+        conn.query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| {
+            r.get::<_, String>(0)
+        })
+    };
+    let build_ok = meta("game_build").map(|s| s == build).unwrap_or(false);
+    let schema_ok = meta("schema_version")
+        .map(|s| s == SCHEMA_VERSION)
+        .unwrap_or(false);
+    build_ok && schema_ok
 }
 
 /// Machine power lookup with a sensible default for unknown classes.
@@ -180,6 +205,23 @@ mod tests {
             recipe_power(&back, dark, "Build_HadronCollider_C"),
             1000.0,
             "recipe average beats the machine estimate"
+        );
+        // Schema-version key: a matching build with a stale (or missing)
+        // schema_version must read as a cache miss.
+        conn.execute(
+            "UPDATE meta SET value = '1' WHERE key = 'schema_version'",
+            [],
+        )
+        .unwrap();
+        assert!(
+            !build_matches(&conn, "463028"),
+            "old schema version must invalidate the cache even on a build match"
+        );
+        conn.execute("DELETE FROM meta WHERE key = 'schema_version'", [])
+            .unwrap();
+        assert!(
+            !build_matches(&conn, "463028"),
+            "absent schema version (pre-existing cache) must read as stale"
         );
     }
 }

@@ -383,6 +383,8 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
                     // scales by geyser purity, which imports don't know) — an
                     // honest nameplate, and it keeps the 20-generator geo farm
                     // of a real save from reading 0 MW / "IMPORTED WORKS".
+                    // Purity-scaled truth needs geyser nodes in the world
+                    // snapshot — BACKLOG.
                     let mw = match f(c, "mPowerProduction") {
                         p if p > 0.0 => p,
                         _ => f(c, "mVariablePowerProductionFactor"),
