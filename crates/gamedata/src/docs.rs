@@ -98,6 +98,19 @@ pub struct Belt {
     pub tier: u8,
 }
 
+/// A tier-progression milestone (an `EST_Milestone` FGSchematic) — what the
+/// player buys at the HUB terminal to advance. `cost` is the build cost in
+/// (item class, quantity) pairs, all SOLID parts (no fluid m³ scaling), used
+/// by the opportunity engine's `milestone_gap` family (PR 4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Milestone {
+    pub display_name: String,
+    pub tier: u32,
+    /// (item class, quantity) — solid parts only, no cm³/1000 fluid scaling.
+    pub cost: Vec<(String, f64)>,
+}
+
 /// Any buildable in the game — the full catalog for display/search. The
 /// specialized tables (machines/belts) carry solver-relevant detail on top.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -124,6 +137,11 @@ pub struct GameData {
     /// so old catalogs load unchanged.
     #[serde(default)]
     pub schematics: BTreeMap<String, Vec<String>>,
+    /// Milestone schematic class → cost/tier/name (PR 4 `milestone_gap`).
+    /// Populated ONLY for `EST_Milestone` schematics; empty when Docs.json ships
+    /// no milestones (the trimmed fixture), so old catalogs load unchanged.
+    #[serde(default)]
+    pub milestones: BTreeMap<String, Milestone>,
 }
 
 /// Decode raw Docs.json bytes: UTF-16LE when BOM'd (real installs), UTF-8 otherwise.
@@ -528,7 +546,31 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
                     if let Some(unlocks) = c.get("mUnlocks") {
                         collect_recipe_classes(unlocks, &mut recipes);
                     }
-                    gd.schematics.insert(class_name, recipes);
+                    gd.schematics.insert(class_name.clone(), recipes);
+                    // Milestone metadata (PR 4): only EST_Milestone schematics
+                    // carry a buyable tier/cost. mTechTier is a STRING → u32
+                    // (skip the milestone if unparseable); mCost is the recipe-
+                    // ingredient item-amount form. A milestone with no parseable
+                    // cost is skipped (defensive; all real ones have costs).
+                    // Cost entries whose ItemClass doesn't resolve to a known
+                    // item are dropped in a post-pass below (never guess).
+                    if s(c, "mType") == "EST_Milestone" {
+                        let Ok(tier) = s(c, "mTechTier").parse::<u32>() else {
+                            continue;
+                        };
+                        let cost = parse_item_amounts(&s(c, "mCost"));
+                        if cost.is_empty() {
+                            continue;
+                        }
+                        gd.milestones.insert(
+                            class_name,
+                            Milestone {
+                                display_name: s(c, "mDisplayName"),
+                                tier,
+                                cost,
+                            },
+                        );
+                    }
                 }
             }
             "FGBuildableConveyorBelt" => {
@@ -560,6 +602,16 @@ pub fn parse_docs(text: &str, build_version: &str) -> Result<GameData, DocsError
     // run before burn-recipe synthesis below — fluid mEnergyValue is MJ per
     // m³, so synthesized burn amounts are born in m³/min and must never be
     // divided by 1000.
+    // Milestone costs reference item classes; drop any that don't resolve to a
+    // known item (never guess). A post-pass so Docs.json section ordering
+    // (items before or after schematics) never matters.
+    {
+        let items = &gd.items;
+        for m in gd.milestones.values_mut() {
+            m.cost.retain(|(item, _)| items.contains_key(item));
+        }
+    }
+
     let liquid_forms = ["RF_LIQUID", "RF_GAS"];
     let is_fluid: std::collections::BTreeSet<String> = gd
         .items
@@ -928,6 +980,119 @@ mod tests {
         // empty and the catalog loads unchanged (tolerant default).
         let gd = parse_docs(include_str!("../assets/docs-fixture.json"), "test").unwrap();
         assert!(gd.schematics.is_empty());
+        // No milestones parse from a fixture with no FGSchematic section — the
+        // family stays silent everywhere (byte-identical to before PR 4).
+        assert!(gd.milestones.is_empty());
+    }
+
+    #[test]
+    fn parses_est_milestone_tier_and_cost() {
+        // An EST_Milestone schematic → tier + cost pairs; the recipe-ingredient
+        // item-amount parser accepts mCost as-is (same ItemClass=/Amount= form).
+        let text = r#"[
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
+            "Classes": [
+              { "ClassName": "Desc_IronPlate_C", "mDisplayName": "Iron Plate", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" },
+              { "ClassName": "Desc_Wire_C", "mDisplayName": "Wire", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" }
+            ]
+          },
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGSchematic'",
+            "Classes": [
+              {
+                "ClassName": "Schematic_3-1_C",
+                "mDisplayName": "Coal Power",
+                "mType": "EST_Milestone",
+                "mTechTier": "3",
+                "mCost": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'\",Amount=20),(ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/Wire/Desc_Wire.Desc_Wire_C'\",Amount=10))"
+              }
+            ]
+          }
+        ]"#;
+        let gd = parse_docs(text, "test").unwrap();
+        let m = gd
+            .milestones
+            .get("Schematic_3-1_C")
+            .expect("EST_Milestone lands in milestones");
+        assert_eq!(m.display_name, "Coal Power");
+        assert_eq!(m.tier, 3);
+        assert_eq!(
+            m.cost,
+            vec![
+                ("Desc_IronPlate_C".to_string(), 20.0),
+                ("Desc_Wire_C".to_string(), 10.0),
+            ]
+        );
+        // The schematic still lands in the unchanged recipe-unlock map (empty
+        // unlocks here — the two maps are independent).
+        assert!(gd.schematics.contains_key("Schematic_3-1_C"));
+    }
+
+    #[test]
+    fn non_milestone_schematic_types_are_not_milestones() {
+        // An EST_Alternate schematic carries a cost/tier shape too, but is NOT a
+        // tier milestone — it must never land in `milestones`.
+        let text = r#"[
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
+            "Classes": [
+              { "ClassName": "Desc_IronPlate_C", "mDisplayName": "Iron Plate", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" }
+            ]
+          },
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGSchematic'",
+            "Classes": [
+              {
+                "ClassName": "Schematic_Alternate_Test_C",
+                "mDisplayName": "Alternate: Test",
+                "mType": "EST_Alternate",
+                "mTechTier": "0",
+                "mCost": "((ItemClass=\"/Game/FactoryGame/Resource/Parts/IronPlate/Desc_IronPlate.Desc_IronPlate_C'\",Amount=5))"
+              }
+            ]
+          }
+        ]"#;
+        let gd = parse_docs(text, "test").unwrap();
+        assert!(gd.milestones.is_empty(), "EST_Alternate is not a milestone");
+        // still a normal schematic (recipe-unlock map)
+        assert!(gd.schematics.contains_key("Schematic_Alternate_Test_C"));
+    }
+
+    #[test]
+    fn milestone_cost_drops_unknown_item_entries() {
+        // A cost entry naming an item the catalog doesn't carry is dropped
+        // without panic — never a guessed item. The known entry survives.
+        let text = r#"[
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
+            "Classes": [
+              { "ClassName": "Desc_IronPlate_C", "mDisplayName": "Iron Plate", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" }
+            ]
+          },
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGSchematic'",
+            "Classes": [
+              {
+                "ClassName": "Schematic_9-9_C",
+                "mDisplayName": "Mystery Tier",
+                "mType": "EST_Milestone",
+                "mTechTier": "9",
+                "mCost": "((ItemClass=\"/Game/.../Desc_IronPlate.Desc_IronPlate_C'\",Amount=20),(ItemClass=\"/Game/.../Desc_Unobtainium.Desc_Unobtainium_C'\",Amount=99))"
+              }
+            ]
+          }
+        ]"#;
+        let gd = parse_docs(text, "test").unwrap();
+        let m = gd
+            .milestones
+            .get("Schematic_9-9_C")
+            .expect("milestone parsed");
+        assert_eq!(
+            m.cost,
+            vec![("Desc_IronPlate_C".to_string(), 20.0)],
+            "the unknown-item entry is dropped, the known one survives"
+        );
     }
 
     #[test]

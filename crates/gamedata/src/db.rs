@@ -20,8 +20,9 @@ pub enum DbError {
 /// 1. serde-default fields (e.g. `Item.is_resource`) silently deserialize as
 ///    `false` from pre-versioned blobs — a wired read path would resurrect the
 ///    packaging-cycle hazard the raw-resource gate exists to prevent;
-/// 2. schematics are NOT persisted at all (no table) — a wired read would
-///    silently drop unlocked-alternate resolution.
+/// 2. schematics and milestones are NOT persisted at all (no table) — a wired
+///    read would silently drop unlocked-alternate resolution and the
+///    milestone_gap family's cost/tier data.
 ///
 /// Absence of the key = stale, which covers every pre-existing cache.
 /// v3: `Machine.footprint_m` (serde-default None) joined the persisted shape —
