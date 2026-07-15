@@ -26,6 +26,14 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:5173",
     viewport: { width: 1920, height: 1080 },
+    // Run the whole suite under prefers-reduced-motion. The flow animations
+    // honor it by design (CSS `animation: none` on the dash overlays + the map
+    // RAF loop parks itself), so a software-rasterized CI runner stops burning
+    // cores repainting animated dashes — repaint contention is what made it
+    // drop mouse events mid drag-gesture (connect(), right-drag routes). The
+    // motion assertions stay valid: they assert presence of `.edge-flowing`
+    // et al (classes, not pixels), which reduced motion does not remove.
+    contextOptions: { reducedMotion: "reduce" },
     launchOptions: process.env.PW_EXECUTABLE ? { executablePath: process.env.PW_EXECUTABLE } : {},
   },
   webServer: [

@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 
 import { test, expect, type Page } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
 test.describe.configure({ mode: "serial" });
+
+// Deterministic map boot — never inherit a dead predecessor's viewState.
+test.beforeEach(async ({ request }) => resetView(request));
 
 const SAVES = fileURLToPath(new URL("../../fixtures/saves", import.meta.url));
 

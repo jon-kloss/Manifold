@@ -8,7 +8,12 @@
 
 import { test, expect, type APIRequestContext } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
 test.describe.configure({ mode: "serial" });
+
+// Deterministic map boot — never inherit a dead predecessor's viewState.
+test.beforeEach(async ({ request }) => resetView(request));
 
 const API = "http://localhost:8791/api";
 

@@ -5,7 +5,12 @@
 
 import { test, expect } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
 test.describe.configure({ mode: "serial" });
+
+// Deterministic map boot — never inherit a dead predecessor's viewState.
+test.beforeEach(async ({ request }) => resetView(request));
 
 test("a refused delete surfaces in the status bar and leaves the UI intact", async ({ page }) => {
   await page.goto("/");

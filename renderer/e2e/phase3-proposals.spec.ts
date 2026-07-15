@@ -5,7 +5,12 @@
 
 import { test, expect } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
 test.describe.configure({ mode: "serial" });
+
+// Deterministic map boot — never inherit a dead predecessor's viewState.
+test.beforeEach(async ({ request }) => resetView(request));
 
 test("wizard → reviewable proposal → partial accept → undo", async ({ page }) => {
   await page.goto("/");

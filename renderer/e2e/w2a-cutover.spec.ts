@@ -12,7 +12,12 @@
 
 import { test, expect } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
 test.describe.configure({ mode: "serial" });
+
+// Deterministic map boot — never inherit a dead predecessor's viewState.
+test.beforeEach(async ({ request }) => resetView(request));
 
 test("plan a replacement: refactor proposal → cutover timeline + downtime", async ({ page }) => {
   test.setTimeout(120_000);

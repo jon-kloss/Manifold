@@ -10,7 +10,13 @@
 
 import { test, expect } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
 test.describe.configure({ mode: "serial" });
+
+// Deterministic map boot — never inherit a dead predecessor's viewState. (The
+// auto-present block below re-clears resumeSeen itself, via its own merge.)
+test.beforeEach(async ({ request }) => resetView(request));
 
 test("derived build queue + resume dashboard: override, undo, auto-present", async ({ page }) => {
   await page.goto("/");

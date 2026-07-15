@@ -8,6 +8,11 @@
 
 import { test, expect } from "@playwright/test";
 
+import { resetView } from "./helpers";
+
+// Deterministic map boot — never inherit a dead predecessor's viewState.
+test.beforeEach(async ({ request }) => resetView(request));
+
 test("ALT OPTIMIZER tab renders (empty in fixture) without breaking the drawer", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Escape"); // dismiss any auto-presented dashboard

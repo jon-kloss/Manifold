@@ -77,6 +77,7 @@ export default function StatusBar({ overlayMode }: { overlayMode: boolean }) {
       </span>
       <button
         className={`sb-item mono ${critEdges.length ? "sb-crit" : ""}`}
+        data-testid="sb-bottleneck"
         onClick={jumpToCrit}
         disabled={!critEdges.length}
         title="Bottleneck belts — capacity caps demanded throughput"
