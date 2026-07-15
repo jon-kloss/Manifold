@@ -41,6 +41,12 @@ use crate::session::Session;
 /// Cap on validated wildcard ideas (PR 3) — a brainstorm, not a backlog.
 const WILDCARD_CAP: usize = 3;
 
+/// Sanity ceiling for a model-invented wildcard `rate` (PR #11 M3). The value
+/// flows verbatim into the wizard prefill; a negative, zero, non-finite, or
+/// absurd figure (1e12/min) is meaningless there, so it is dropped server-side
+/// (the item prefill still stands; the wizard falls back to its own default).
+const WILDCARD_MAX_RATE: f64 = 100_000.0;
+
 /// Default provider-call timeout. Configurable per session (POST
 /// /api/ai/config `timeoutSecs`) so tests can run the timeout path fast.
 pub const DEFAULT_TIMEOUT_SECS: u64 = 20;
@@ -380,8 +386,9 @@ fn mentions_any(text: &str, keywords: &[&str]) -> bool {
 /// the SAME word-boundary clamp as notes/headline, keep `item` ONLY when it is a
 /// real catalog class (else drop the hint, keep the idea), drop empty-title
 /// entries, honor preferences (train/power ideas are suggestions — filtered like
-/// their heuristic siblings), and cap the list. `rate` rides through untouched:
-/// it is a starting hint the wizard lets the user edit, never a solver fact.
+/// their heuristic siblings), and cap the list. `rate` is a starting hint the
+/// wizard lets the user edit (never a solver fact), so it is clamped to a sane
+/// positive band and dropped otherwise (PR #11 M3) — but never trusted.
 fn validate_wildcards(
     raw: &[WildcardReply],
     catalog: &BTreeSet<String>,
@@ -403,7 +410,19 @@ fn validate_wildcards(
             rationale.to_lowercase(),
             w.item.as_deref().unwrap_or("").to_lowercase()
         );
-        if prefs.no_trains && mentions_any(&haystack, &["train", "rail", "consist", "locomotive"]) {
+        if prefs.no_trains
+            && mentions_any(
+                &haystack,
+                &[
+                    "train",
+                    "rail",
+                    "consist",
+                    "locomotive",
+                    "freight",
+                    "station",
+                ],
+            )
+        {
             continue;
         }
         if prefs.ignore_power
@@ -418,7 +437,13 @@ fn validate_wildcards(
         // stands as pure text with no prefill (and the rate goes with it — a
         // rate without a valid item is meaningless to the wizard).
         let item = w.item.clone().filter(|i| catalog.contains(i));
-        let rate = if item.is_some() { w.rate } else { None };
+        // Clamp the model-invented rate to a sane positive band (PR #11 M3):
+        // finite and 0 < rate <= WILDCARD_MAX_RATE, else drop it and let the
+        // wizard use its own default. A rate without a valid item is dropped too.
+        let rate = w
+            .rate
+            .filter(|r| r.is_finite() && *r > 0.0 && *r <= WILDCARD_MAX_RATE)
+            .filter(|_| item.is_some());
         out.push(Wildcard {
             title,
             rationale,

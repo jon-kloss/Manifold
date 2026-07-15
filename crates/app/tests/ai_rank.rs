@@ -1075,6 +1075,73 @@ fn no_trains_pref_filters_a_rail_wildcard() {
 }
 
 #[test]
+fn ignore_power_pref_filters_a_power_wildcard() {
+    // TA-#3: a power-worded wildcard is filtered out under ignore_power (kills
+    // deleting the ignore_power wildcard block); a non-power idea survives.
+    let mut s = seeded_session();
+    s.state.meta.preferences.ignore_power = true;
+    let (base, _) = stub_provider(Box::new(|request: &str| {
+        let user = user_message(request);
+        let first = user["candidates"][0]["id"].as_str().unwrap().to_string();
+        let content = serde_json::json!({
+            "order": [first],
+            "wildcards": [
+                { "title": "Add a coal generator bank", "rationale": "more headroom" },
+                { "title": "Second smelter bank", "rationale": "spare ore" },
+            ],
+        });
+        (200, completion(&content.to_string()))
+    }));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "model");
+    assert_eq!(
+        resp.wildcards.len(),
+        1,
+        "the power idea is filtered by ignore_power"
+    );
+    assert_eq!(resp.wildcards[0].title, "Second smelter bank");
+}
+
+#[test]
+fn wildcard_rate_is_clamped_to_a_sane_positive_band() {
+    // M3: the model-invented rate flows into the wizard prefill — a negative,
+    // absurd, or non-finite value is dropped server-side; a sane one survives.
+    let mut s = seeded_session();
+    let (base, _) = stub_provider(Box::new(|request: &str| {
+        let user = user_message(request);
+        let first = user["candidates"][0]["id"].as_str().unwrap().to_string();
+        let content = serde_json::json!({
+            "order": [first],
+            "wildcards": [
+                { "title": "Negative", "item": "Desc_IronRod_C", "rate": -5.0 },
+                { "title": "Absurd", "item": "Desc_IronRod_C", "rate": 1e12 },
+                { "title": "Sane", "item": "Desc_IronRod_C", "rate": 90.0 },
+            ],
+        });
+        (200, completion(&content.to_string()))
+    }));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "model");
+    assert_eq!(
+        resp.wildcards.len(),
+        3,
+        "all three ideas keep their item hint"
+    );
+    // A negative rate is meaningless to the wizard → dropped (item still stands).
+    assert_eq!(resp.wildcards[0].title, "Negative");
+    assert_eq!(resp.wildcards[0].item.as_deref(), Some("Desc_IronRod_C"));
+    assert_eq!(resp.wildcards[0].rate, None, "negative rate dropped");
+    // An absurd 1e12/min rate is past the sane band → dropped.
+    assert_eq!(resp.wildcards[1].title, "Absurd");
+    assert_eq!(resp.wildcards[1].rate, None, "out-of-band rate dropped");
+    // A sane positive rate rides through as the editable starting hint.
+    assert_eq!(resp.wildcards[2].title, "Sane");
+    assert_eq!(resp.wildcards[2].rate, Some(90.0), "sane rate survives");
+}
+
+#[test]
 fn heuristic_path_carries_no_wildcards_field() {
     // Offline path stays byte-identical: no "wildcards" key in the serialized JSON.
     let mut s = seeded_session();
