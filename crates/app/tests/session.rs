@@ -201,6 +201,7 @@ fn build_modular_frame_factory(s: &mut Session) -> (Id, Id, Id) {
     (fid, out_port, smelt)
 }
 
+#[cfg(feature = "sqlite")]
 #[test]
 fn exit_criterion_flow() {
     let dir = tempfile::tempdir().unwrap();
@@ -1617,6 +1618,7 @@ fn imported_generator_nameplate_reads_planned_delta() {
     );
 }
 
+#[cfg(feature = "sqlite")]
 #[test]
 fn floor_assignment_is_undoable_and_persists() {
     let dir = tempfile::tempdir().unwrap();
@@ -1643,6 +1645,7 @@ fn floor_assignment_is_undoable_and_persists() {
 /// PR 3: NEXT preferences persist through the endpoint, survive reopen, and ride
 /// hydrate (`plan.meta.preferences`) — but are NOT undoable and stay OUT of
 /// plan_hash (a filter toggle must not staleness-flag proposals or trip merge).
+#[cfg(feature = "sqlite")]
 #[test]
 fn next_preferences_persist_and_ride_hydrate_without_touching_plan_hash() {
     use planner_core::state::NextPreferences;
@@ -2248,6 +2251,7 @@ fn assert_disk_matches_memory(s: &Session) {
     assert!(entries.len() >= cursor);
 }
 
+#[cfg(feature = "sqlite")]
 #[test]
 fn edit_persist_failure_leaves_no_trace() {
     let dir = tempfile::tempdir().unwrap();

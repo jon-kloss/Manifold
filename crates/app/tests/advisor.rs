@@ -361,6 +361,7 @@ fn nearly_full_route_with_deficit_stays_silent() {
     );
 }
 
+#[cfg(feature = "sqlite")]
 #[test]
 fn restart_does_not_refire_still_true_conditions() {
     // M18: arming state persists — a deficit reported before shutdown must

@@ -2338,6 +2338,7 @@ fn milestone_gap_equal_gap_breaks_by_item_class() {
 /// The purchased-schematic set is save-derived and PERSISTS: an import captures
 /// the RAW ids, hydrate surfaces them, and they survive a reopen through the
 /// persist layer (mirrors the `unlocked` round-trip).
+#[cfg(feature = "sqlite")]
 #[test]
 fn purchased_schematics_survive_reopen() {
     let dir = tempfile::tempdir().unwrap();

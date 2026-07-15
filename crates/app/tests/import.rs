@@ -865,6 +865,7 @@ fn new_extractor_fields_round_trip() {
 /// W2b: import resolves the unlocked recipe set from mPurchasedSchematics ×
 /// FGSchematic unlocks, persists it as a META fact (outside the undo journal),
 /// reloads it on reopen, and surfaces it through hydrate as `unlocked`.
+#[cfg(feature = "sqlite")]
 #[test]
 fn unlocked_set_resolves_from_schematics() {
     let dir = tempfile::tempdir().unwrap();

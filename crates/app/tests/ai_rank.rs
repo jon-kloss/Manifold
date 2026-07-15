@@ -4,9 +4,13 @@
 //! edge answers with the heuristic list plus a surfaced error string, and the
 //! key never appears in any serialized view.
 
+#[cfg(feature = "native-http")]
 use std::io::{Read, Write};
+#[cfg(feature = "native-http")]
 use std::net::TcpListener;
+#[cfg(feature = "native-http")]
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "native-http")]
 use std::time::Duration;
 
 use app::ai::{
@@ -243,6 +247,7 @@ fn clearing_base_and_model_deconfigures_but_keeps_the_key() {
     assert!(public.base_url.is_empty() && public.model.is_empty());
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn timeout_is_clamped_to_one_through_120_seconds() {
     let mut s = Session::in_memory(None).unwrap();
@@ -260,10 +265,12 @@ fn timeout_is_clamped_to_one_through_120_seconds() {
 
 // ---------- stub provider plumbing (localhost only) ----------
 
+#[cfg(feature = "native-http")]
 type Responder = Box<dyn Fn(&str) -> (u16, String) + Send>;
 
 /// One-thread HTTP stub: accepts connections until the test process exits,
 /// captures each raw request (headers + body), answers via `respond`.
+#[cfg(feature = "native-http")]
 fn stub_provider(respond: Responder) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}/v1", listener.local_addr().unwrap());
@@ -308,6 +315,7 @@ fn stub_provider(respond: Responder) -> (String, Arc<Mutex<Vec<String>>>) {
 }
 
 /// Wrap a rank-schema `content` string in the chat-completions envelope.
+#[cfg(feature = "native-http")]
 fn completion(content: &str) -> String {
     serde_json::json!({ "choices": [{ "message": { "content": content } }] }).to_string()
 }
@@ -477,6 +485,7 @@ fn heuristic_ids(s: &mut Session) -> Vec<String> {
 
 // ---------- end-to-end against the stub ----------
 
+#[cfg(feature = "native-http")]
 #[test]
 fn rank_honors_stub_reorder_and_sends_key_and_candidates() {
     let mut s = seeded_session();
@@ -644,6 +653,7 @@ fn rank_state_deficits_carry_names_not_ulids() {
     }
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn malformed_reply_falls_back_to_heuristic_with_error() {
     let mut s = seeded_session();
@@ -668,6 +678,7 @@ fn malformed_reply_falls_back_to_heuristic_with_error() {
     assert!(resp.opportunities.iter().all(|o| o.note.is_none()));
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn http_500_falls_back_to_heuristic_with_error() {
     let mut s = seeded_session();
@@ -685,6 +696,7 @@ fn http_500_falls_back_to_heuristic_with_error() {
     assert_eq!(captured.lock().unwrap().len(), 1, "5xx is never retried");
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn http_400_retries_once_without_optional_params() {
     // A strict endpoint (reasoning tier) rejects `temperature` with 400; the
@@ -724,6 +736,7 @@ fn http_400_retries_once_without_optional_params() {
     }
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn persistent_http_400_surfaces_a_sanitized_snippet() {
     let mut s = seeded_session();
@@ -759,6 +772,7 @@ fn persistent_http_400_surfaces_a_sanitized_snippet() {
     assert_eq!(got, ids, "fallback list is the untouched heuristic order");
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn timeout_falls_back_to_heuristic_with_error() {
     let mut s = seeded_session();
@@ -799,6 +813,7 @@ fn unconfigured_rank_is_plain_heuristic_without_error() {
     assert!(!public.configured && !public.has_key);
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn fenced_reply_is_unfenced_before_parsing() {
     let mut s = seeded_session();
@@ -812,6 +827,7 @@ fn fenced_reply_is_unfenced_before_parsing() {
     assert_eq!(resp.opportunities[0].opportunity.id, first);
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn prose_wrapped_json_is_salvaged_and_reorder_respected() {
     // "Sure! … {valid JSON} … Let me know!" — the chatty-small-model shape.
@@ -829,6 +845,7 @@ fn prose_wrapped_json_is_salvaged_and_reorder_respected() {
     assert_eq!(resp.opportunities[0].opportunity.id, first);
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn trailing_garbage_after_the_json_is_ignored() {
     // The stream deserializer parses ONE complete value and stops — a
@@ -844,6 +861,7 @@ fn trailing_garbage_after_the_json_is_ignored() {
     assert_eq!(resp.opportunities[0].opportunity.id, first);
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn empty_object_in_prose_is_a_schema_failure() {
     // "{}" parses, but carries zero model content — shipping it as
@@ -871,6 +889,7 @@ fn empty_object_in_prose_is_a_schema_failure() {
     assert_eq!(got, ids);
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn structurally_unrelated_json_is_a_schema_failure() {
     // Valid JSON, none of the rank fields → every field defaults to empty →
@@ -891,6 +910,7 @@ fn structurally_unrelated_json_is_a_schema_failure() {
     );
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn zero_candidates_skip_the_provider_call() {
     // Configured but nothing to rank: honest silence must not spend a call.
@@ -915,12 +935,14 @@ fn zero_candidates_skip_the_provider_call() {
 // ---------- PR 3: preferences line + wildcards ----------
 
 /// Extract the parsed USER message JSON from a captured raw request.
+#[cfg(feature = "native-http")]
 fn user_message(request: &str) -> serde_json::Value {
     let body_at = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
     let envelope: serde_json::Value = serde_json::from_str(&request[body_at..]).unwrap();
     serde_json::from_str(envelope["messages"][1]["content"].as_str().unwrap()).unwrap()
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn preferences_absent_keeps_payload_shape_present_adds_a_line() {
     let mut s = seeded_session();
@@ -948,6 +970,7 @@ fn preferences_absent_keeps_payload_shape_present_adds_a_line() {
     );
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn wildcards_are_clamped_catalog_gated_and_capped() {
     let mut s = seeded_session();
@@ -995,6 +1018,7 @@ fn wildcards_are_clamped_catalog_gated_and_capped() {
     assert!(long.title.ends_with('…'));
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn wildcards_only_reply_is_model_content_not_a_schema_failure() {
     let mut s = seeded_session();
@@ -1026,6 +1050,7 @@ fn wildcards_only_reply_is_model_content_not_a_schema_failure() {
     assert_eq!(got, ids);
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn wildcards_that_all_wash_out_stay_a_schema_failure() {
     // Wildcards present but none survive (empty title) AND no order/notes/headline
@@ -1047,6 +1072,7 @@ fn wildcards_that_all_wash_out_stay_a_schema_failure() {
     assert!(resp.wildcards.is_empty());
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn no_trains_pref_filters_a_rail_wildcard() {
     let mut s = seeded_session();
@@ -1074,6 +1100,7 @@ fn no_trains_pref_filters_a_rail_wildcard() {
     assert_eq!(resp.wildcards[0].title, "Second smelter bank");
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn ignore_power_pref_filters_a_power_wildcard() {
     // TA-#3: a power-worded wildcard is filtered out under ignore_power (kills
@@ -1103,6 +1130,7 @@ fn ignore_power_pref_filters_a_power_wildcard() {
     assert_eq!(resp.wildcards[0].title, "Second smelter bank");
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn wildcard_rate_is_clamped_to_a_sane_positive_band() {
     // M3: the model-invented rate flows into the wizard prefill — a negative,
@@ -1155,6 +1183,7 @@ fn heuristic_path_carries_no_wildcards_field() {
     );
 }
 
+#[cfg(feature = "native-http")]
 #[test]
 fn keyless_call_sends_no_authorization_header() {
     // Ollama / LM Studio run keyless: the header must be absent, not blank.

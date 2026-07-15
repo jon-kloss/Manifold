@@ -9,8 +9,11 @@ use app::Session;
 use planner_core::commands::Command;
 use planner_core::entities::*;
 use planner_core::proposals::{
-    Milestone, Proposal, ProposalItem, ProposalItemKind, ProposalSource, ProposalStatus,
+    Proposal, ProposalItem, ProposalItemKind, ProposalSource, ProposalStatus,
 };
+// Used only by the sqlite-gated reopen test below.
+#[cfg(feature = "sqlite")]
+use planner_core::proposals::Milestone;
 
 fn gp(x: f64, y: f64) -> GraphPos {
     GraphPos { x, y }
@@ -1240,6 +1243,7 @@ fn multi_grid_proposal_yields_one_impact_per_touched_grid() {
 /// A total-quantity goal (milestone) rides through the solver untouched into
 /// the Proposal, and survives the JSON persist round-trip — the solve itself
 /// never read it (the rate still drives the plan).
+#[cfg(feature = "sqlite")]
 #[test]
 fn wizard_milestone_carries_into_proposal_and_persists() {
     let dir = tempfile::tempdir().unwrap();
