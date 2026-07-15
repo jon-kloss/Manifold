@@ -326,6 +326,21 @@ impl PlanFile {
         self.get_meta("unlocked").ok()
     }
 
+    /// Purchased-schematic ids (PR 4) — the RAW schematic class names the
+    /// imported save has bought (`mPurchasedSchematics`), stored as a JSON array
+    /// blob. A save-derived fact, so it lives in the meta KV store beside
+    /// `unlocked`, NOT the undo journal: undoing a plan edit must not toggle
+    /// progression, and it is excluded from plan_hash. Tolerant default — old
+    /// plan files with no "purchased_schematics" blob load as an empty set.
+    pub fn set_purchased_schematics(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("purchased_schematics", json)?;
+        Ok(())
+    }
+
+    pub fn purchased_schematics(&self) -> Option<String> {
+        self.get_meta("purchased_schematics").ok()
+    }
+
     /// Persist the plan meta blob directly (PR 3 NEXT preferences). Meta rides
     /// the `plan_meta` KV row that every command commit/checkpoint already
     /// rewrites; a preference toggle is NOT an undoable command, so it writes
