@@ -8,7 +8,10 @@ import { useState, type CSSProperties } from "react";
 import { itemAccent, itemMonogram } from "./itemChip";
 import iconManifest from "./iconManifest.json";
 
-const ICONS: ReadonlySet<string> = new Set<string>(iconManifest);
+/** The vendored-icon manifest as a set — the single "do we ship this icon?"
+ *  authority. Exported so other icon consumers (e.g. the footprint strip's
+ *  machine render) gate on it instead of firing guaranteed-404 requests. */
+export const ICONS: ReadonlySet<string> = new Set<string>(iconManifest);
 
 export default function ItemIcon({
   item,

@@ -73,6 +73,19 @@ export function flowBand(saturation: number, flow: number, bottleneck = false): 
   return "good";
 }
 
+/** MOTION = FLOW (gate: flow > 0); speed = utilization. One dash period for
+ *  the graph's .edge-flowing overlay: 4s trickle at 0% utilization down to
+ *  0.8s saturated. Saturation is quantized to EIGHTHS so mid-drag re-solves
+ *  only change animation-duration (a CSS phase jump) on bucket crossings —
+ *  never per solve frame; the endpoints stay exact (4.00s / 0.80s, 0.40s
+ *  steps). Cross-ref the map's CanvasLayer animSpeed: speed encodes
+ *  utilization WITHIN a surface; absolute px/s is per-surface tuned (graph
+ *  card-scale vs map world-scale) — deliberately not shared. */
+export function flowSpeed(saturation: number): string {
+  const u = Math.round(Math.max(0, Math.min(1, saturation)) * 8) / 8;
+  return `${(4 - 3.2 * u).toFixed(2)}s`;
+}
+
 /** "Running at capacity" within solver float noise. */
 const FULL = 0.999;
 

@@ -97,7 +97,8 @@ const TERRAIN_BOUNDS = { minX: -3246.98832031, maxX: 4253.01832031, minY: -3750,
 const TERRAIN_FILTER = "saturate(0.5) brightness(0.55) contrast(1.05)";
 const TERRAIN_URL = "/map/world.webp";
 
-// MOTION = THROUGHPUT (route animation). The moving dash phase lives on its
+// MOTION = FLOW (gate: flow > 0); speed = utilization (route animation).
+// The moving dash phase lives on its
 // own lightweight canvas above the data canvas — the full redraw (terrain
 // blit + 459 nodes + grid + chips) is far too hot to run per frame on an
 // 80-factory world, but re-stroking only the flowing polylines is ~1 ms.
@@ -106,7 +107,10 @@ const TERRAIN_URL = "/map/world.webp";
 const ANIM_FPS = 24;
 /** one dash period of the moving highlight, px */
 const ANIM_PERIOD = 18;
-/** phase speed, px/s: slow trickle at 0 utilization → fast when saturated */
+/** phase speed, px/s: slow trickle at 0 utilization → fast when saturated.
+ *  Speed encodes utilization WITHIN a surface; the absolute px/s curve here
+ *  is tuned for map world-scale legibility (the graph's flowSpeed in
+ *  lib/format.ts is card-scale tuned) — deliberately not shared. */
 const animSpeed = (saturation: number) => 14 + 46 * Math.max(0, Math.min(1, saturation));
 
 export class MapCanvasLayer extends L.Layer {
@@ -184,7 +188,8 @@ export class MapCanvasLayer extends L.Layer {
   }
 
   /** Routes that animate: derived flow > 0 while the flow layer is shown.
-   *  Idle and planned-but-unfed routes stay static (MOTION = THROUGHPUT). */
+   *  Idle and planned-but-unfed routes stay static (MOTION = FLOW; speed =
+   *  utilization). */
   private flowingRoutes(): RouteRender[] {
     // review mode dims the world under the proposal ghosts — bright moving
     // dashes above the dim scrim would fight the review focus, so pause

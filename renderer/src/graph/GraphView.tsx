@@ -294,7 +294,56 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   }, [factory, plan.groups, plan.ports, plan.junctions, selection, factoryId, floorFilter, floors.length]);
 
   const [nodes, setNodes] = useState<Node[]>(buildNodes);
-  useEffect(() => setNodes(buildNodes()), [buildNodes]);
+  // Plan/selection changes rebuild the node array — but xyflow adopts user
+  // nodes with checkEquality: an UNCHANGED OBJECT REFERENCE skips the rebuild
+  // of that node's internals entirely (measured dims, handleBounds). The old
+  // blanket `setNodes(buildNodes())` handed xyflow all-new objects without
+  // `measured`, so every EdgeWrapper returned null for the re-measure window
+  // (~190-430 ms) — unmounting every belt edge and restarting all
+  // .edge-flowing dash animations at phase 0 on any click or edit. So:
+  // - reuse the PREVIOUS node object when nothing changed. Plan objects are
+  //   immutably replaced upstream, so comparing data payloads by REFERENCE
+  //   (prev.data.group === fresh.data.group, …) is a valid cheap check;
+  // - when something DID change, return the fresh node carrying prev.measured
+  //   so handleBounds survives and edges never hit the null window.
+  // Everything keys off the setNodes callback's `prev` (never a side ref) —
+  // it must see the dimension/position updates applyNodeChanges folded in.
+  useEffect(() => {
+    setNodes((prev) => {
+      const fresh = buildNodes();
+      const prevById = new Map(prev.map((n) => [n.id, n]));
+      let identical = fresh.length === prev.length;
+      const next = fresh.map((f, i) => {
+        const p = prevById.get(f.id);
+        if (!p) {
+          identical = false;
+          return f;
+        }
+        const pd = p.data as Record<string, unknown>;
+        const fd = f.data as Record<string, unknown>;
+        const unchanged =
+          p.type === f.type &&
+          !!p.selected === !!f.selected &&
+          p.position.x === f.position.x &&
+          p.position.y === f.position.y &&
+          p.style?.opacity === f.style?.opacity &&
+          p.style?.pointerEvents === f.style?.pointerEvents &&
+          pd.group === fd.group &&
+          pd.junction === fd.junction &&
+          pd.port === fd.port &&
+          pd.factoryId === fd.factoryId &&
+          pd.showFloorBadge === fd.showFloorBadge;
+        if (unchanged) {
+          if (p !== prev[i]) identical = false;
+          return p;
+        }
+        identical = false;
+        return { ...f, measured: p.measured };
+      });
+      // nothing changed at all → keep the previous array (skip the re-render)
+      return identical ? prev : next;
+    });
+  }, [buildNodes]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {

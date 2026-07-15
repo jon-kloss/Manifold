@@ -2,12 +2,13 @@
 // chip), recipe row, footer IN n / OUT n / power. Status grammar on the card
 // frame; selected = 2px orange border + corner cut.
 
+import { useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore } from "../state/store";
 import { fmtClock, fmtPower, fmtRate } from "../lib/format";
 import { footprintFor, FOOTPRINT_MAX_PX, FOOTPRINT_SCALE } from "./footprints";
 import { POWER_ITEM, type GameData, type MachineGroup } from "../state/types";
-import ItemIcon from "../lib/ItemIcon";
+import ItemIcon, { ICONS } from "../lib/ItemIcon";
 
 export interface GroupNodeData {
   group: MachineGroup;
@@ -30,6 +31,11 @@ function FootprintStrip({
   machine: string;
   count: number;
 }) {
+  // Failed-load latch KEYED BY MACHINE CLASS: a machine swap on this card
+  // retries the new class's icon. React owns the <img> node — never detach it
+  // (the old onError remove() left a dead node that ate later src swaps); the
+  // ICONS manifest gate kills guaranteed-404 requests for unvendored machines.
+  const [failedIcon, setFailedIcon] = useState<string | null>(null);
   const f = footprintFor(gamedata, machine);
   const scale = Math.min(FOOTPRINT_SCALE, FOOTPRINT_MAX_PX / Math.max(f.w, f.l));
   const w = Math.max(5, Math.round(f.w * scale));
@@ -43,8 +49,8 @@ function FootprintStrip({
           <span key={i} className="fp-box" style={{ width: w, height: l }}>
             {/* the machine render sits on the first pad; the rest stay bare
                 outlines so a ×12 bank reads as pads, not a sprite sheet */}
-            {i === 0 && (
-              <img src={`/icons/${machine}.png`} alt="" draggable={false} onError={(e) => e.currentTarget.remove()} />
+            {i === 0 && ICONS.has(machine) && failedIcon !== machine && (
+              <img src={`/icons/${machine}.png`} alt="" draggable={false} onError={() => setFailedIcon(machine)} />
             )}
           </span>
         ))}

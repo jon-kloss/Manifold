@@ -5,7 +5,7 @@
 
 import type { CSSProperties } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
-import { flowBand, type FlowBand } from "../lib/format";
+import { flowBand, flowSpeed, type FlowBand } from "../lib/format";
 import { fmtRate, fmtPercent } from "../lib/format";
 import { beltCapacity, type BeltEdge } from "../state/types";
 import type { EdgeGeom } from "./edgeLayout";
@@ -49,17 +49,13 @@ const STROKE: Record<FlowBand, { width: number; dash?: string; color: string }> 
 
 const BAND_NOTE: Record<FlowBand, string> = {
   good: "",
-  under: " · UNDER-USED",
+  under: " · UNDER-USED — over-built or starved upstream",
   bottleneck: " · BOTTLENECK — this belt caps demanded throughput",
 };
 
-/** MOTION = THROUGHPUT: animation-duration for one dash period, mapped from
- *  utilization — ~4s trickle at 0% up to 0.8s when saturated (clamped). The
- *  keyframes travel a fixed 18px period, so speed scales inversely. */
-function flowSpeed(saturation: number): string {
-  const u = Math.max(0, Math.min(1, saturation));
-  return `${(4 - 3.2 * u).toFixed(2)}s`;
-}
+// Dash-period duration comes from the shared flowSpeed (lib/format.ts):
+// MOTION = FLOW (gate: flow > 0); speed = utilization. The keyframes travel
+// a fixed 18px period, so speed scales inversely with the duration.
 
 export default function BeltEdgeView(props: EdgeProps) {
   const data = props.data as BeltEdgeData;
@@ -86,8 +82,9 @@ export default function BeltEdgeView(props: EdgeProps) {
   const capacity = beltCapacity(data.edge.tier);
   const s = data.flowOverlay ? STROKE[band] : { width: 2, dash: undefined, color: "var(--steel-500)" };
   const isBottleneck = data.flowOverlay && band === "bottleneck";
-  // MOTION = THROUGHPUT: only edges with derived flow > 0 animate; idle belts
-  // stay static — independent of the band (an under-used belt still trickles).
+  // MOTION = FLOW (gate: flow > 0); speed = utilization: only edges with
+  // derived flow > 0 animate; idle belts stay static — independent of the
+  // band (an under-used belt still trickles).
   // Motion rides a separate neutral-ink overlay path so the base line keeps
   // its status color + weight (color stays status-only).
   const flowing = data.flowOverlay && data.flow > 0;
