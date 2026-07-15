@@ -312,8 +312,9 @@ fn power_deficit_fires_on_overdraw_only() {
 
     let opps = next(&mut s);
     let o = find_kind(&opps, OpportunityKind::PowerDeficit).expect("overdrawn grid fires");
-    assert!(o.title.contains("overdrawn by"), "{}", o.title);
-    assert!(o.evidence.contains("MW"), "{}", o.evidence);
+    // S5 literal pins: 128 MW drawn of 75 generated → 53 MW overdraw, whole-MW.
+    assert_eq!(o.title, "GRID A is overdrawn by 53 MW");
+    assert_eq!(o.evidence, "128 MW demand against 75 MW generated");
     assert_eq!(
         o.action,
         OpportunityAction::OpenAudit {
@@ -395,12 +396,8 @@ fn deficit_repair_groups_by_item_and_prefills_wizard() {
 
     let opps = next(&mut s);
     let o = find_kind(&opps, OpportunityKind::DeficitRepair).expect("starved chain fires");
-    assert!(o.title.contains("Iron Ingot"), "{}", o.title);
-    assert!(
-        o.title.contains("short 50.0/min empire-wide"),
-        "{}",
-        o.title
-    );
+    // S5 literal pin: the full title format, not fragments.
+    assert_eq!(o.title, "Iron Ingot is short 50.0/min empire-wide");
     assert_eq!(o.item.as_deref(), Some("Desc_IronIngot_C"));
     assert_eq!(
         o.evidence, "need 60.0/min, supplied 10.0/min across 1 port(s)",
@@ -425,6 +422,56 @@ fn deficit_repair_groups_by_item_and_prefills_wizard() {
     );
 }
 
+/// S2: two consumers starved on the SAME item (both over slack routes — pure
+/// production gaps) collapse into exactly ONE empire-wide card whose number,
+/// evidence row count, and wizard rate are the SUM: gaps 49.5 + 80.0 = 129.5,
+/// prefill ceil(129.5) = 130.
+#[test]
+fn deficit_repair_sums_two_consumers_of_one_item() {
+    let mut s = Session::in_memory(None).unwrap();
+    // Pair 1: 60-rod sink fed by a producer that will dip to 10.5/min.
+    let (_, out_a) = ingot_factory(&mut s, "SMELT A", 0.0, 0.0, 4, 60.0);
+    let (_, in_a, rod_a) = rod_sink(&mut s, "SINK A", 500.0, 0.0, 4);
+    belt_route(&mut s, &out_a, &in_a, 4);
+    set_rate(&mut s, &rod_a, 60.0); // satisfiable now
+                                    // Pair 2: 120-rod sink fed by a producer that will dip to 40/min.
+    let (_, out_b) = ingot_factory(&mut s, "SMELT B", 0.0, 1000.0, 4, 120.0);
+    let (_, in_b, rod_b) = rod_sink(&mut s, "SINK B", 500.0, 1000.0, 8);
+    belt_route(&mut s, &out_b, &in_b, 4);
+    set_rate(&mut s, &rod_b, 120.0); // satisfiable now
+                                     // Both upstreams dip — two pure production gaps on Iron Ingot.
+    set_rate(&mut s, &out_a, 10.5); // gap 60 − 10.5 = 49.5
+    set_rate(&mut s, &out_b, 40.0); // gap 120 − 40 = 80.0
+
+    let opps = next(&mut s);
+    assert_eq!(
+        count_kind(&opps, OpportunityKind::DeficitRepair),
+        1,
+        "one item → one empire-wide card, never one per starved port"
+    );
+    let o = find_kind(&opps, OpportunityKind::DeficitRepair).unwrap();
+    assert_eq!(o.id, "deficit_repair:Desc_IronIngot_C");
+    assert_eq!(o.title, "Iron Ingot is short 129.5/min empire-wide");
+    assert_eq!(
+        o.evidence, "need 180.0/min, supplied 50.5/min across 2 port(s)",
+        "both rows aggregate; slack routes earn no transport suffix"
+    );
+    match &o.action {
+        OpportunityAction::WizardGoal { item, rate } => {
+            assert_eq!(item, "Desc_IronIngot_C");
+            assert_eq!(*rate, 130.0, "exact ceil of the summed gaps (129.5)");
+        }
+        other => panic!("expected WizardGoal, got {other:?}"),
+    }
+    // Both routes have slack — no transport story anywhere.
+    assert!(
+        !opps
+            .iter()
+            .any(|o| o.kind == OpportunityKind::RouteBottleneckFix),
+        "slack routes must not fire route_bottleneck_fix"
+    );
+}
+
 /// H1 case A (route-capped only): upstream already produces the full need —
 /// the deficit card would plan REDUNDANT machines, so it stays silent and the
 /// route card leads with the recoverable rate and the SMALLEST sufficient
@@ -442,15 +489,14 @@ fn route_capped_deficit_yields_route_card_only() {
         "production covers the need — no deficit card"
     );
     let o = find_kind(&opps, OpportunityKind::RouteBottleneckFix).expect("route card fires");
-    assert!(
-        o.title.contains("caps demand — bump it to Mk.3"),
-        "60 flow + 180 recoverable needs 240 → Mk.3 (skip Mk.2): {}",
-        o.title
+    // S5 literal pins: 60 flow + 180 recoverable needs 240 → Mk.3 (skip Mk.2).
+    assert_eq!(
+        o.title,
+        "BIG SMELT → ROD SINK caps demand — bump it to Mk.3"
     );
-    assert!(
-        o.evidence.contains("180.0/min recoverable through it"),
-        "{}",
-        o.evidence
+    assert_eq!(
+        o.evidence,
+        "60.0/60.0 per min at 100% with 180.0/min recoverable through it"
     );
     assert_eq!(o.action, OpportunityAction::SelectRoute { id: route });
     // No class 0/1 present → the route card leads the list.
@@ -467,26 +513,21 @@ fn mixed_gap_fires_both_cards_with_own_numbers() {
 
     let opps = next(&mut s);
     let d = find_kind(&opps, OpportunityKind::DeficitRepair).expect("production gap fires");
-    assert!(
-        d.title.contains("short 120.0/min empire-wide"),
-        "production gap only (240 needed − 120 produced): {}",
-        d.title
-    );
-    assert!(
-        d.evidence
-            .contains("; 60.0/min more capped by full route(s)"),
-        "the transport share is named, not summed in: {}",
-        d.evidence
+    // S5 literal pins: production gap only (240 needed − 120 produced) in the
+    // title; the transport share named — not summed in — as the suffix.
+    assert_eq!(d.title, "Iron Ingot is short 120.0/min empire-wide");
+    assert_eq!(
+        d.evidence,
+        "need 240.0/min, supplied 60.0/min across 1 port(s); 60.0/min more capped by full route(s)"
     );
     match &d.action {
         OpportunityAction::WizardGoal { rate, .. } => assert_eq!(*rate, 120.0),
         other => panic!("expected WizardGoal, got {other:?}"),
     }
     let r = find_kind(&opps, OpportunityKind::RouteBottleneckFix).expect("transport gap fires");
-    assert!(
-        r.evidence.contains("60.0/min recoverable through it"),
-        "{}",
-        r.evidence
+    assert_eq!(
+        r.evidence,
+        "60.0/60.0 per min at 100% with 60.0/min recoverable through it"
     );
     assert!(
         r.title.contains("bump it to Mk.2"),
@@ -513,17 +554,12 @@ fn starved_at_cap_is_deficit_with_route_mention() {
 
     let opps = next(&mut s);
     let d = find_kind(&opps, OpportunityKind::DeficitRepair).expect("real production gap fires");
-    assert!(
-        d.title.contains("short 180.0/min empire-wide"),
-        "{}",
-        d.title
-    );
-    assert!(
-        d.evidence.contains(
-            "; the Mk.1 route is already full — upgrading it is also required once production rises"
-        ),
-        "the full route is mentioned, not carded: {}",
-        d.evidence
+    // S5 literal pins: the whole gap is production; the full route is
+    // mentioned as the next wall, not carded.
+    assert_eq!(d.title, "Iron Ingot is short 180.0/min empire-wide");
+    assert_eq!(
+        d.evidence,
+        "need 240.0/min, supplied 60.0/min across 1 port(s); the Mk.1 route is already full — upgrading it is also required once production rises"
     );
     assert!(
         !opps
@@ -742,8 +778,9 @@ fn power_margin_fires_in_warn_band_only() {
 
     let opps = next(&mut s);
     let o = find_kind(&opps, OpportunityKind::PowerMargin).expect("thin-headroom grid fires");
-    assert!(o.title.contains("headroom"), "{}", o.title);
-    assert!(o.evidence.contains("MW"), "{}", o.evidence);
+    // S5 literal pins: 11/75 = 14.67% headroom floors to 14 in both strings.
+    assert_eq!(o.title, "GRID A has only 14% headroom");
+    assert_eq!(o.evidence, "14% headroom (64 of 75 MW drawn)");
     assert!(
         !opps.iter().any(|o| o.kind == OpportunityKind::PowerDeficit),
         "warn band is not an overdraw"
@@ -797,6 +834,41 @@ fn power_margin_floors_the_percentage() {
     );
     assert!(o.evidence.starts_with("19% headroom ("), "{}", o.evidence);
     let _ = plant;
+}
+
+/// S3+S6: with TWO thin grids, the THINNER margin ranks first within the
+/// class — and the creation order deliberately OPPOSES the rank order (the
+/// 14% grid is drawn first, the 4% grid second, so circuit enumeration order
+/// alone would get this backwards without the magnitude sort). Both floored
+/// percentage strings are pinned.
+#[test]
+fn power_margin_thinner_grid_leads_despite_creation_order() {
+    let mut s = Session::in_memory(None).unwrap();
+    // GRID A drawn FIRST: 75 MW over a 64 MW load → 14.67% headroom → "14%".
+    let plant_a = coal_plant(&mut s, "THICK PLANT", 40000.0, 40000.0, 75.0);
+    let (load_a, _) = ingot_factory(&mut s, "THICK LOAD", 40100.0, 40000.0, 16, 480.0);
+    power_route(&mut s, &plant_a, &load_a);
+    // GRID B drawn SECOND: 67 MW over 64 → 4.48% headroom → "4%" (thinner).
+    let plant_b = coal_plant(&mut s, "THIN PLANT", 44000.0, 40000.0, 67.0);
+    let (load_b, _) = ingot_factory(&mut s, "THIN LOAD", 44100.0, 40000.0, 16, 480.0);
+    power_route(&mut s, &plant_b, &load_b);
+
+    let opps = next(&mut s);
+    let margins: Vec<&Opportunity> = opps
+        .iter()
+        .filter(|o| o.kind == OpportunityKind::PowerMargin)
+        .collect();
+    assert_eq!(margins.len(), 2, "both thin grids fire");
+    // Thinner margin leads — 4% before 14%, the reverse of creation order.
+    assert_eq!(margins[0].title, "GRID B has only 4% headroom");
+    assert_eq!(margins[0].evidence, "4% headroom (64 of 67 MW drawn)");
+    assert_eq!(margins[1].title, "GRID A has only 14% headroom");
+    assert_eq!(margins[1].evidence, "14% headroom (64 of 75 MW drawn)");
+    // Neither grid is overdrawn — margin only, no deficit cards.
+    assert!(
+        !opps.iter().any(|o| o.kind == OpportunityKind::PowerDeficit),
+        "thin margins are not overdraws"
+    );
 }
 
 /// M3: with NO power routes drawn (zero circuits) but empire totals proving
@@ -1302,6 +1374,129 @@ fn untapped_node_entrance_wins_over_override() {
     );
 }
 
+/// S7: the top untapped card matches an INDEPENDENT nearest-pure computation
+/// over the raw catalog — same anchor, same hypot, same (distance, id)
+/// tie-break — so the engine can't drift from the data it claims to read.
+#[test]
+fn untapped_node_matches_independent_nearest_computation() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (fx, fy) = (-1100.0, -500.0);
+    mk_factory(&mut s, "PROSPECT CAMP", fx, fy);
+
+    // Independent oracle: global nearest pure node within the 2 500 m radius,
+    // entrance-anchored when one exists, ties broken by id ascending. (No
+    // claims and no overrides exist in this plan.)
+    let mut oracle: Option<(f64, String)> = None;
+    for n in &s.world.nodes {
+        if n.purity != "pure" {
+            continue;
+        }
+        let (nx, ny) = match &n.entrance {
+            Some(e) => (e.x, e.y),
+            None => (n.x, n.y),
+        };
+        let dist = (fx - nx).hypot(fy - ny);
+        if dist > 2500.0 {
+            continue;
+        }
+        let better = oracle
+            .as_ref()
+            .is_none_or(|(d, id)| (dist, n.id.as_str()) < (*d, id.as_str()));
+        if better {
+            oracle = Some((dist, n.id.clone()));
+        }
+    }
+    let (dist, id) = oracle.expect("the camp sits on a known pure cluster");
+
+    let opps = next(&mut s);
+    let untapped: Vec<&Opportunity> = opps
+        .iter()
+        .filter(|o| o.kind == OpportunityKind::UntappedNode)
+        .collect();
+    assert!(!untapped.is_empty(), "pure cluster in range must surface");
+    assert_eq!(untapped[0].id, format!("untapped_node:{id}"));
+    assert_eq!(
+        untapped[0].evidence,
+        format!("~{dist:.0} m from PROSPECT CAMP · pure · {id}")
+    );
+}
+
+/// S8: the 2 500 m radius boundary is INCLUSIVE — a pure node exactly on the
+/// line surfaces; one 100 m past it does not. (Catalog replaced wholesale —
+/// the established license for boundary-exact world fixtures.)
+#[test]
+fn untapped_node_radius_boundary_is_inclusive() {
+    let mut s = Session::in_memory(None).unwrap();
+    mk_factory(&mut s, "LONE CAMP", 0.0, 0.0);
+    let node = |id: &str, item: &str, x: f64| WorldNode {
+        id: id.into(),
+        item: item.into(),
+        purity: "pure".into(),
+        x,
+        y: 0.0,
+        z: 0.0,
+        zone: "surface".into(),
+        entrance: None,
+        region: "grass-fields".into(),
+    };
+    s.world.nodes = vec![
+        node("edge_2400", "Desc_OreIron_C", 2400.0),
+        node("edge_2500", "Desc_OreCopper_C", 2500.0),
+        node("edge_2600", "Desc_Coal_C", 2600.0),
+    ];
+
+    let opps = next(&mut s);
+    let ids: Vec<&str> = opps
+        .iter()
+        .filter(|o| o.kind == OpportunityKind::UntappedNode)
+        .map(|o| o.id.as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        vec!["untapped_node:edge_2400", "untapped_node:edge_2500"],
+        "2500 m is in (<= boundary), 2600 m is out"
+    );
+}
+
+/// S9: every surfaced untapped id resolves in the catalog to purity "pure" —
+/// an inverted filter would surface normal nodes mislabeled "Pure". A normal
+/// node parked 50 m from the camp is the bait: nearer than every pure
+/// candidate, it would LEAD the list if the filter flipped.
+#[test]
+fn untapped_node_surfaces_only_catalog_pure_nodes() {
+    let mut s = Session::in_memory(None).unwrap();
+    mk_factory(&mut s, "PURITY CAMP", -1100.0, -500.0);
+    s.world.nodes.push(WorldNode {
+        id: "test_normal_bait".into(),
+        item: "Desc_OreCopper_C".into(),
+        purity: "normal".into(),
+        x: -1050.0,
+        y: -500.0,
+        z: 0.0,
+        zone: "surface".into(),
+        entrance: None,
+        region: "grass-fields".into(),
+    });
+
+    let opps = next(&mut s);
+    let untapped: Vec<&Opportunity> = opps
+        .iter()
+        .filter(|o| o.kind == OpportunityKind::UntappedNode)
+        .collect();
+    assert!(!untapped.is_empty(), "the pure cluster still surfaces");
+    for o in &untapped {
+        let nid = o.id.strip_prefix("untapped_node:").unwrap();
+        assert_ne!(nid, "test_normal_bait", "normal nodes never surface");
+        let n = s
+            .world
+            .nodes
+            .iter()
+            .find(|n| n.id == nid)
+            .expect("surfaced id resolves in the catalog");
+        assert_eq!(n.purity, "pure", "surfaced {nid} must be catalog-pure");
+    }
+}
+
 /// Ranking: class order is broken → savings → growth, and the list caps at 12
 /// even when more candidates exist.
 #[test]
@@ -1365,4 +1560,245 @@ fn ranking_class_order_and_cap() {
         "{}",
         clock_card.title
     );
+}
+
+/// S11: the wire shape is a CONTRACT — the renderer destructures these exact
+/// keys. One Opportunity per action variant, compared as whole JSON values:
+/// camelCase field keys, tagged actions, `item` key ABSENT when None
+/// (skip_serializing_if), and all eight snake_case kind strings.
+#[test]
+fn opportunity_serde_shape_is_pinned() {
+    use serde_json::{json, to_value};
+
+    // All eight kind strings, in class order.
+    for (kind, wire) in [
+        (OpportunityKind::PowerDeficit, "power_deficit"),
+        (OpportunityKind::DeficitRepair, "deficit_repair"),
+        (OpportunityKind::RouteBottleneckFix, "route_bottleneck_fix"),
+        (OpportunityKind::PowerMargin, "power_margin"),
+        (OpportunityKind::MilestoneGap, "milestone_gap"),
+        (OpportunityKind::AltAdopt, "alt_adopt"),
+        (OpportunityKind::UnderExtracted, "under_extracted"),
+        (OpportunityKind::UntappedNode, "untapped_node"),
+    ] {
+        assert_eq!(to_value(kind).unwrap(), json!(wire));
+    }
+
+    // wizardGoal — `item` PRESENT (Some).
+    let o = Opportunity {
+        id: "deficit_repair:Desc_IronIngot_C".into(),
+        kind: OpportunityKind::DeficitRepair,
+        title: "Iron Ingot is short 50.0/min empire-wide".into(),
+        evidence: "need 60.0/min, supplied 10.0/min across 1 port(s)".into(),
+        item: Some("Desc_IronIngot_C".into()),
+        action: OpportunityAction::WizardGoal {
+            item: "Desc_IronIngot_C".into(),
+            rate: 50.0,
+        },
+    };
+    assert_eq!(
+        to_value(&o).unwrap(),
+        json!({
+            "id": "deficit_repair:Desc_IronIngot_C",
+            "kind": "deficit_repair",
+            "title": "Iron Ingot is short 50.0/min empire-wide",
+            "evidence": "need 60.0/min, supplied 10.0/min across 1 port(s)",
+            "item": "Desc_IronIngot_C",
+            "action": { "kind": "wizardGoal", "item": "Desc_IronIngot_C", "rate": 50.0 },
+        })
+    );
+
+    // selectRoute — `item` key ABSENT when None (whole-value equality is the
+    // absence proof: an extra "item": null would fail the compare).
+    let o = Opportunity {
+        id: "route_bottleneck_fix:R1".into(),
+        kind: OpportunityKind::RouteBottleneckFix,
+        title: "A → B caps demand — bump it to Mk.2".into(),
+        evidence: "60.0/60.0 per min at 100% with 60.0/min recoverable through it".into(),
+        item: None,
+        action: OpportunityAction::SelectRoute { id: "R1".into() },
+    };
+    assert_eq!(
+        to_value(&o).unwrap(),
+        json!({
+            "id": "route_bottleneck_fix:R1",
+            "kind": "route_bottleneck_fix",
+            "title": "A → B caps demand — bump it to Mk.2",
+            "evidence": "60.0/60.0 per min at 100% with 60.0/min recoverable through it",
+            "action": { "kind": "selectRoute", "id": "R1" },
+        })
+    );
+
+    // selectNode
+    let o = Opportunity {
+        id: "untapped_node:bp_resourcenode114".into(),
+        kind: OpportunityKind::UntappedNode,
+        title: "Pure Iron Ore node near CAMP, unclaimed".into(),
+        evidence: "~900 m from CAMP · pure · bp_resourcenode114".into(),
+        item: Some("Desc_OreIron_C".into()),
+        action: OpportunityAction::SelectNode {
+            id: "bp_resourcenode114".into(),
+        },
+    };
+    assert_eq!(
+        to_value(&o).unwrap(),
+        json!({
+            "id": "untapped_node:bp_resourcenode114",
+            "kind": "untapped_node",
+            "title": "Pure Iron Ore node near CAMP, unclaimed",
+            "evidence": "~900 m from CAMP · pure · bp_resourcenode114",
+            "item": "Desc_OreIron_C",
+            "action": { "kind": "selectNode", "id": "bp_resourcenode114" },
+        })
+    );
+
+    // selectFactory
+    let o = Opportunity {
+        id: "under_extracted:C1".into(),
+        kind: OpportunityKind::UnderExtracted,
+        title: "Pure Iron Ore node is extracting at 50% clock".into(),
+        evidence: "bp_resourcenode114 · claimed by MINE · +120.0/min available at 100%".into(),
+        item: Some("Desc_OreIron_C".into()),
+        action: OpportunityAction::SelectFactory { id: "F1".into() },
+    };
+    assert_eq!(
+        to_value(&o).unwrap(),
+        json!({
+            "id": "under_extracted:C1",
+            "kind": "under_extracted",
+            "title": "Pure Iron Ore node is extracting at 50% clock",
+            "evidence": "bp_resourcenode114 · claimed by MINE · +120.0/min available at 100%",
+            "item": "Desc_OreIron_C",
+            "action": { "kind": "selectFactory", "id": "F1" },
+        })
+    );
+
+    // openAudit
+    let o = Opportunity {
+        id: "power_deficit:GRID A".into(),
+        kind: OpportunityKind::PowerDeficit,
+        title: "GRID A is overdrawn by 53 MW".into(),
+        evidence: "128 MW demand against 75 MW generated".into(),
+        item: None,
+        action: OpportunityAction::OpenAudit {
+            tab: "power".into(),
+        },
+    };
+    assert_eq!(
+        to_value(&o).unwrap(),
+        json!({
+            "id": "power_deficit:GRID A",
+            "kind": "power_deficit",
+            "title": "GRID A is overdrawn by 53 MW",
+            "evidence": "128 MW demand against 75 MW generated",
+            "action": { "kind": "openAudit", "tab": "power" },
+        })
+    );
+}
+
+/// S12: one composite plan that fires ALL SEVEN firable families at once
+/// (milestone_gap is honest-silent by design): an overdrawn grid, a thin
+/// grid, a slack-route ore deficit, a full route capping a DIFFERENT item,
+/// an injected cheaper alternate, a demanded under-clocked claim, and a
+/// factory parked on a pure cluster. The overdraw leads and the class order
+/// never regresses along the list.
+#[test]
+fn composite_plan_fires_all_seven_families_in_class_order() {
+    let mut s = Session::in_memory(None).unwrap();
+    // Class 1 (+6, +7): ore chain starved by PRODUCTION near the pure
+    // cluster — mine dips to 30 of the 120 the smelter's target needs over a
+    // slack Mk.4 route (90/min ore production gap); the mine's half-clock
+    // claim on a pure iron node is therefore demanded, and the mine itself
+    // anchors untapped pure nodes.
+    let (mine, ore_out) = ore_mine(&mut s, "SHORT SUPPLY", -1100.0, -500.0, 120.0);
+    let (_, ore_in, ingot_out) = ore_smelter(&mut s, "WANTS MORE", -600.0, -500.0, 4);
+    belt_route(&mut s, &ore_out, &ore_in, 4);
+    set_rate(&mut s, &ingot_out, 120.0); // satisfiable now
+    set_rate(&mut s, &ore_out, 30.0); // upstream dips → ore deficit
+    s.edit(vec![Command::ClaimNode {
+        factory: mine,
+        node: "bp_resourcenode114".into(),
+        extractor: "Build_MinerMk2_C".into(),
+        clock: 0.5,
+    }])
+    .unwrap();
+    // Class 2 on a DIFFERENT item: iron ingots produced in full (240) but
+    // squeezed through a Mk.1 belt — transport-only, so no ingot deficit.
+    capped_chain(&mut s, 8, 240.0, 16, 240.0, None);
+    // Class 0: a 10 MW plant under a 16 MW load — overdrawn grid.
+    let p0 = coal_plant(&mut s, "OVER PLANT", 40000.0, 40000.0, 10.0);
+    let (l0, _) = ingot_factory(&mut s, "OVER LOAD", 40100.0, 40000.0, 4, 120.0);
+    power_route(&mut s, &p0, &l0);
+    // Class 3: a 75 MW plant under a 64 MW load — 14% headroom.
+    let p1 = coal_plant(&mut s, "THIN PLANT", 44000.0, 40000.0, 75.0);
+    let (l1, _) = ingot_factory(&mut s, "THIN LOAD", 44100.0, 40000.0, 16, 480.0);
+    power_route(&mut s, &p1, &l1);
+    // Class 5: inject + unlock a strictly-cheaper alternate ingot recipe.
+    let std = s
+        .gamedata
+        .recipes
+        .get("Recipe_IngotIron_C")
+        .unwrap()
+        .clone();
+    let doubled = std
+        .products
+        .iter()
+        .map(|(i, n)| (i.clone(), n * 2.0))
+        .collect();
+    s.gamedata.recipes.insert(
+        "Recipe_Alt_IngotIron_C".into(),
+        Recipe {
+            class_name: "Recipe_Alt_IngotIron_C".into(),
+            display_name: "Pure Iron Ingot".into(),
+            products: doubled,
+            alternate: true,
+            ..std
+        },
+    );
+    s.unlocked.insert("Recipe_Alt_IngotIron_C".into());
+
+    let opps = next(&mut s);
+    use OpportunityKind::*;
+    for kind in [
+        PowerDeficit,
+        DeficitRepair,
+        RouteBottleneckFix,
+        PowerMargin,
+        AltAdopt,
+        UnderExtracted,
+        UntappedNode,
+    ] {
+        assert!(
+            find_kind(&opps, kind).is_some(),
+            "{kind:?} must fire in the composite plan"
+        );
+    }
+    assert_eq!(
+        count_kind(&opps, MilestoneGap),
+        0,
+        "milestone_gap stays honest-silent"
+    );
+    // The broken grid leads everything.
+    assert_eq!(opps[0].kind, PowerDeficit);
+    // Windows-monotone class order across the whole list.
+    let class = |k: OpportunityKind| -> u8 {
+        match k {
+            PowerDeficit => 0,
+            DeficitRepair => 1,
+            RouteBottleneckFix => 2,
+            PowerMargin => 3,
+            MilestoneGap => 4,
+            AltAdopt => 5,
+            UnderExtracted => 6,
+            UntappedNode => 7,
+        }
+    };
+    for w in opps.windows(2) {
+        assert!(
+            class(w[0].kind) <= class(w[1].kind),
+            "class order must be monotone: {:?} then {:?}",
+            w[0].kind,
+            w[1].kind
+        );
+    }
 }
