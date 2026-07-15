@@ -1,6 +1,7 @@
 //! `PlanStore` — the persistence seam `Session` drives (SDD §10).
 //!
-//! `Session` used to hold a concrete SQLite [`crate::plan_file::SqlitePlanStore`].
+//! `Session` used to hold a concrete SQLite `SqlitePlanStore` (in `crate::plan_file`,
+//! compiled only under the `sqlite` feature).
 //! This trait factors out the exact method set it calls so a future web build
 //! can swap SQLite for an IndexedDB-backed store without touching `Session`.
 //! The trait is object-safe: `Session` holds a `Box<dyn PlanStore>` (dynamic

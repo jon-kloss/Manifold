@@ -2,7 +2,7 @@
 //! journal. WAL mode; every committed command writes in one transaction, so
 //! there is never unsaved state; a rolling `.bak` is taken on open.
 //!
-//! `SqlitePlanStore` is the desktop [`PlanStore`] impl. The `open`/`in_memory`
+//! `SqlitePlanStore` is the desktop [`crate::store::PlanStore`] impl. The `open`/`in_memory`
 //! constructors and the WAL/`.bak`/`:memory:` specifics stay INHERENT (off the
 //! trait) — trait objects can't carry constructors, and those file concerns
 //! don't generalize to a browser store. The `PlanStore` surface `Session`

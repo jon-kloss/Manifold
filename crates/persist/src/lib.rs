@@ -3,8 +3,9 @@
 //!
 //! `Session` drives persistence through the [`PlanStore`] trait, not the
 //! concrete file type, so a future web build can swap SQLite for an
-//! IndexedDB-backed store. [`SqlitePlanStore`] is the desktop impl (the
-//! `PlanFile` alias keeps its historical name); [`MemoryPlanStore`] is a
+//! IndexedDB-backed store. `SqlitePlanStore` is the desktop impl (compiled
+//! under the `sqlite` feature; the `PlanFile` alias keeps its historical
+//! name); [`MemoryPlanStore`] is a
 //! pure-Rust impl that proves the seam is SQLite-independent.
 
 pub mod memory;

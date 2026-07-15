@@ -24,6 +24,12 @@ jobs:
         run: cargo clippy --workspace --exclude app -- -D warnings && cargo clippy -p app --no-default-features -- -D warnings
       - name: test
         run: cargo test --workspace --exclude app && cargo test -p app --no-default-features
+      - name: app native-feature tests (headless — sqlite+ureq, no Tauri/shell)
+        # --no-default-features drops the sqlite+native-http tests (SQLite
+        # reopen/persist/fault + the ai_rank ureq-provider suite); re-run them
+        # with just those features on. Neither pulls Tauri, so it stays
+        # headless-safe on the runner (no WebKitGTK).
+        run: cargo test -p app --no-default-features --features sqlite,native-http
       - name: tokens in sync
         run: cargo run -p app --no-default-features --bin gen-tokens && git diff --exit-code renderer/src/tokens
       - name: solver builds for wasm
@@ -51,7 +57,10 @@ jobs:
           node-version: 22
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
-          version: latest
+          # Pin the wasm-pack binary (was `latest` — a network-resolved
+          # download that can flake); v0.13.1 is a recent stable that runs
+          # `wasm-pack test --node` for this crate.
+          version: v0.13.1
       - name: web wasm smoke (node)
         working-directory: crates/web
         run: wasm-pack test --node
