@@ -111,10 +111,18 @@ impl JobRegistry {
     }
 }
 
-/// Wall-clock RFC3339 without pulling a chrono dep.
+/// Wall-clock RFC3339 without pulling a chrono dep. `std::time::SystemTime`
+/// aborts on `wasm32-unknown-unknown`, so read the clock through `web-time`
+/// there (it bridges to JS `Date.now()`); native is unchanged.
 pub fn now_rfc3339() -> String {
+    #[cfg(not(target_arch = "wasm32"))]
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    #[cfg(target_arch = "wasm32")]
+    let secs = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     // days-since-epoch → civil date (Howard Hinnant's algorithm)

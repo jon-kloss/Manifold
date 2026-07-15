@@ -6,14 +6,32 @@ license.workspace = true
 
 [features]
 default = ["shell"]
-# The Tauri desktop shell. The dev-bridge binary builds without it, so a
-# container lacking WebKitGTK can still drive the full core headlessly.
-shell = ["dep:tauri", "dep:tauri-plugin-opener", "dep:tauri-build"]
+# The Tauri desktop shell. Pulls the full native feature set (bridge +
+# native-http + sqlite) so a desktop build is byte-identical to before the
+# wasm split. The dev-bridge binary builds without `shell` (no Tauri /
+# WebKitGTK) but WITH the native deps it needs — see `bridge` — so a headless
+# container can still drive the full core.
+shell = [
+    "dep:tauri",
+    "dep:tauri-plugin-opener",
+    "dep:tauri-build",
+    "bridge",
+    "native-http",
+    "sqlite",
+]
 # Production shell: serve the embedded renderer bundle instead of pointing the
 # window at devUrl (localhost:5173). Tauri gates this on its custom-protocol
 # feature — `cargo tauri build` enables it implicitly, but we invoke cargo
 # directly, so shipping builds MUST use `--features prod`.
 prod = ["shell", "tauri/custom-protocol"]
+# The headless HTTP dev bridge (tiny_http). Needs a plan file, hence sqlite.
+bridge = ["dep:tiny_http", "sqlite"]
+# The blocking HTTP client (ureq) behind the AI provider call. Off for wasm —
+# `execute_rank` then returns the heuristic fallback (JS fetch is Phase 4).
+native-http = ["dep:ureq"]
+# The SQLite plan-file + gamedata cache backends. Off for wasm (rusqlite is
+# native C); the wasm build runs over MemoryPlanStore via `Session::with_store`.
+sqlite = ["persist/sqlite", "gamedata/sqlite"]
 
 [[bin]]
 name = "app"
@@ -27,24 +45,31 @@ path = "src/bin/gen_tokens.rs"
 [[bin]]
 name = "dev-bridge"
 path = "src/bin/dev_bridge.rs"
+required-features = ["bridge"]
 
 [dependencies]
 planner-core = { path = "../planner-core" }
 solver = { path = "../solver" }
-gamedata = { path = "../gamedata" }
-persist = { path = "../persist" }
+gamedata = { path = "../gamedata", default-features = false }
+persist = { path = "../persist", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 tauri = { version = "2", optional = true }
 tauri-plugin-opener = { version = "2", optional = true }
-tiny_http = "0.12"
+tiny_http = { version = "0.12", optional = true }
 # PR 10 model-ranking client. Smallest footprint that still does HTTPS:
 # default-features off, "tls" = rustls + webpki-roots (NEVER openssl — the
 # build must stay hermetic on every platform); no json/gzip/charset features
 # (serde_json already in-tree; providers speak plain JSON).
-ureq = { version = "2.12", default-features = false, features = ["tls"] }
+ureq = { version = "2.12", default-features = false, features = ["tls"], optional = true }
+
+# On wasm the wall clock is read through web-time (`std::time::SystemTime`
+# aborts on wasm32-unknown-unknown); native keeps std. web-time is already in
+# the tree via ulid, so this pins no new native dep.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [], optional = true }
@@ -53,4 +78,6 @@ tauri-build = { version = "2", features = [], optional = true }
 tempfile = "3.27.0"
 # Enables the deterministic persist-failure seam for app's test targets only
 # (resolver = "2": dev-dependency features never reach production builds).
-persist = { path = "../persist", features = ["fault-injection"] }
+# default-features off so a bare `cargo test -p app --no-default-features`
+# stays rusqlite-free — the fault seam lives on MemoryPlanStore too.
+persist = { path = "../persist", default-features = false, features = ["fault-injection"] }

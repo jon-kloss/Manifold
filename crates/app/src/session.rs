@@ -4,6 +4,7 @@
 //! Disk commits first — see [`Session::commit_mutation`] for the invariant.
 
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "sqlite")]
 use std::path::Path;
 
 use planner_core::commands::{self, Command, DomainError, Transaction};
@@ -19,8 +20,11 @@ use crate::cutover::{derive_cutovers, Cutover, CutoverPlan, Dip};
 
 use gamedata::docs::GameData;
 use gamedata::worldnodes::WorldSnapshot;
-use persist::plan_file::{PersistError, SqlitePlanStore};
+use persist::plan_file::PersistError;
+#[cfg(feature = "sqlite")]
+use persist::plan_file::SqlitePlanStore;
 use persist::store::PlanStore;
+use persist::MemoryPlanStore;
 use serde::Serialize;
 use solver::model::{
     EdgeSpec, FactorySnapshot, GroupSpec, InputPortSpec, NodeRef, OutputPortSpec, RecipeSpec,
@@ -330,7 +334,10 @@ pub struct Session {
 
 impl Session {
     /// Open a session against a plan file. Gamedata comes from `docs_json`
-    /// bytes if given (real install), else the bundled fixture.
+    /// bytes if given (real install), else the bundled fixture. SQLite-backed,
+    /// so only available in the desktop/native build (the `sqlite` feature);
+    /// the wasm build injects its own store via [`Session::with_store`].
+    #[cfg(feature = "sqlite")]
     pub fn open(
         plan_path: impl AsRef<Path>,
         docs_json: Option<Vec<u8>>,
@@ -340,12 +347,16 @@ impl Session {
         Self::with_file(file, docs_json, game_build)
     }
 
+    /// A throwaway in-memory session (tests, dev). Backed by the pure-Rust
+    /// [`MemoryPlanStore`] — NOT SQLite `:memory:` — so it needs no native
+    /// backend and doubles as the proof the [`PlanStore`] seam is SQLite-free
+    /// (the precondition for the wasm build). Semantics mirror the SQLite impl.
     pub fn in_memory(docs_json: Option<Vec<u8>>) -> Result<Self, SessionError> {
-        let file = SqlitePlanStore::in_memory().map_err(SessionError::Persist)?;
-        Self::with_file(file, docs_json, "fixture")
+        Self::with_store(Box::new(MemoryPlanStore::new()), docs_json, "fixture")
     }
 
     /// Desktop constructor: box the concrete SQLite store behind the trait.
+    #[cfg(feature = "sqlite")]
     fn with_file(
         file: SqlitePlanStore,
         docs_json: Option<Vec<u8>>,
@@ -1502,10 +1513,7 @@ impl Session {
     /// Run the advisor gate over fresh derived state and persist new cards.
     fn advise(&mut self, derived: &Derived) {
         let events = crate::advisor::evaluate(&self.state, derived);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let now = epoch_secs();
         let created = self.advisor.gate(events, now, &crate::jobs::now_rfc3339());
         for card in &created {
             let _ = self
@@ -1818,7 +1826,7 @@ impl Session {
     /// back into canonical state (counts/clocks, clamped edited target, route
     /// manifests) — all inside the causing command's undo entry.
     fn empire_solve(&mut self, trigger: &T0Edit, mut tx: Option<&mut Transaction>) -> Derived {
-        let started = std::time::Instant::now();
+        let started = now_us();
         let mut derived = Derived::default();
         let (order, cyclic) = self.empire_order();
         derived.empire_cycle = cyclic;
@@ -2300,7 +2308,7 @@ impl Session {
         // Reuse the queue just computed above rather than deriving it twice.
         derived.cutovers =
             crate::cutover::derive_cutovers_with(&self.state, &self.gamedata, &derived.build_queue);
-        derived.recompute_us = started.elapsed().as_micros() as u64;
+        derived.recompute_us = now_us().saturating_sub(started);
         derived
     }
 
@@ -2603,6 +2611,42 @@ fn item_or(manifest: &[(String, f64)], src_port: &Id, state: &PlanState) -> Stri
         .map(|(i, _)| i.clone())
         .or_else(|| state.ports.get(src_port).map(|p| p.item.clone()))
         .unwrap_or_default()
+}
+
+/// Microsecond wall clock for solve telemetry. `std::time::Instant` aborts on
+/// `wasm32-unknown-unknown`, so read real time natively and stub zero on wasm
+/// (the browser measures wall time with `performance.now()` at the JS layer) —
+/// same pattern the solver crate uses.
+#[cfg(not(target_arch = "wasm32"))]
+fn now_us() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn now_us() -> u64 {
+    0
+}
+
+/// Unix epoch seconds for the advisor gate. `std::time::SystemTime` aborts on
+/// `wasm32-unknown-unknown`; `web-time` bridges to JS `Date.now()` there.
+#[cfg(not(target_arch = "wasm32"))]
+fn epoch_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn epoch_secs() -> u64 {
+    web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

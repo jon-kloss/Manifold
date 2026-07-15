@@ -30,6 +30,7 @@
 //! persistence later — see DECISIONS.md).
 
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "native-http")]
 use std::time::Duration;
 
 use planner_core::state::NextPreferences;
@@ -39,12 +40,14 @@ use crate::opportunities::Opportunity;
 use crate::session::Session;
 
 /// Cap on validated wildcard ideas (PR 3) — a brainstorm, not a backlog.
+#[cfg(feature = "native-http")]
 const WILDCARD_CAP: usize = 3;
 
 /// Sanity ceiling for a model-invented wildcard `rate` (PR #11 M3). The value
 /// flows verbatim into the wizard prefill; a negative, zero, non-finite, or
 /// absurd figure (1e12/min) is meaningless there, so it is dropped server-side
 /// (the item prefill still stands; the wizard falls back to its own default).
+#[cfg(feature = "native-http")]
 const WILDCARD_MAX_RATE: f64 = 100_000.0;
 
 /// Default provider-call timeout. Configurable per session (POST
@@ -378,6 +381,7 @@ pub fn preferences_prompt(prefs: &NextPreferences) -> String {
 }
 
 /// Case-insensitive keyword hit for the wildcard preference filter (PR 3).
+#[cfg(feature = "native-http")]
 fn mentions_any(text: &str, keywords: &[&str]) -> bool {
     keywords.iter().any(|k| text.contains(k))
 }
@@ -389,6 +393,7 @@ fn mentions_any(text: &str, keywords: &[&str]) -> bool {
 /// their heuristic siblings), and cap the list. `rate` is a starting hint the
 /// wizard lets the user edit (never a solver fact), so it is clamped to a sane
 /// positive band and dropped otherwise (PR #11 M3) — but never trusted.
+#[cfg(feature = "native-http")]
 fn validate_wildcards(
     raw: &[WildcardReply],
     catalog: &BTreeSet<String>,
@@ -460,6 +465,7 @@ fn validate_wildcards(
 /// Strip a courtesy markdown fence (```json … ```): some small models fence
 /// despite instructions, and unfencing is lossless — the inner text still has
 /// to parse as the strict schema or we fall back.
+#[cfg(feature = "native-http")]
 fn strip_fences(content: &str) -> &str {
     let t = content.trim();
     let Some(rest) = t.strip_prefix("```") else {
@@ -475,6 +481,7 @@ fn strip_fences(content: &str) -> &str {
 /// after it, so "Sure! {…} Let me know!" succeeds where a first-`{`/last-`}`
 /// window would not. Prose braces BEFORE the real JSON still fail the parse
 /// → heuristic fallback (never worse than the old strict parse).
+#[cfg(feature = "native-http")]
 fn extract_reply(content: &str) -> Option<ModelReply> {
     let t = strip_fences(content);
     let start = t.find('{')?;
@@ -487,11 +494,13 @@ fn extract_reply(content: &str) -> Option<ModelReply> {
 /// Provider-call failure: a SHORT user-facing message (status-bar chip) plus
 /// the HTTP status when there was one, so [`execute_rank`] can decide
 /// whether a lean retry makes sense. The key never appears in any message.
+#[cfg(feature = "native-http")]
 struct ProviderError {
     status: Option<u16>,
     message: String,
 }
 
+#[cfg(feature = "native-http")]
 impl ProviderError {
     fn plain(message: impl Into<String>) -> Self {
         Self {
@@ -504,6 +513,7 @@ impl ProviderError {
 /// One blocking OpenAI-compatible chat-completions call. Errors map to SHORT
 /// user-facing strings (status-bar chip); the key travels only in the
 /// Authorization header and never appears in any error text.
+#[cfg(feature = "native-http")]
 fn call_provider(
     base_url: &str,
     api_key: Option<&str>,
@@ -570,6 +580,11 @@ fn call_provider(
 /// `user` is the fully-serialized USER MESSAGE (empire state + candidate
 /// list, one JSON string): [`execute_rank`]'s lean retry rebuilds a request
 /// BODY from it without ever re-touching the session.
+///
+/// Without `native-http` (the wasm build) only `candidates` is read — the
+/// provider fields are still snapshotted by [`prepare_rank`] for shape
+/// parity, so silence the dead-code lint rather than fork the struct.
+#[cfg_attr(not(feature = "native-http"), allow(dead_code))]
 pub struct RankJob {
     base_url: String,
     model: String,
@@ -703,6 +718,7 @@ pub fn prepare_rank(s: &mut Session) -> RankPrep {
 /// `max_tokens` scales with the candidate count: a flat cap would truncate
 /// the reply JSON mid-string at megabase scale and MANUFACTURE the very
 /// parse failure it exists to prevent.
+#[cfg(feature = "native-http")]
 fn request_body(job: &RankJob, lean: bool) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": job.model,
@@ -726,6 +742,7 @@ fn request_body(job: &RankJob, lean: bool) -> serde_json::Value {
 /// `engine:"model"` with zero model content — a silent no-op wearing the AI
 /// badge. Partial replies still degrade per field (see [`ModelReply`]), and
 /// the pure firewall keeps its own empty-tolerance as defense in depth.
+#[cfg(feature = "native-http")]
 fn ranked_response(job: RankJob, reply: &ModelReply) -> RankResponse {
     // Validate wildcards FIRST (catalog + preferences): a reply that carries
     // ONLY valid wildcards is still model CONTENT, not a schema failure. But a
@@ -760,6 +777,23 @@ fn ranked_response(job: RankJob, reply: &ModelReply) -> RankResponse {
 /// model — the same request meets the same miss) and 429 (rate limit — an
 /// immediate retry only digs the hole deeper). Every failure path answers
 /// with the heuristic list plus a surfaced `error`.
+///
+/// Without the `native-http` feature (the wasm build), there is no blocking
+/// HTTP client to make the call: return the untouched heuristic list plus a
+/// clear error. The JS-`fetch` path that reinstates model ranking in the
+/// browser is Phase 4 — the pure firewall (`apply_model_ranking`) and
+/// `prepare_rank` stay available for it.
+#[cfg(not(feature = "native-http"))]
+pub fn execute_rank(job: RankJob) -> RankResponse {
+    heuristic(
+        job.candidates,
+        Some(
+            "model ranking needs the host runtime — provider call unavailable in this build".into(),
+        ),
+    )
+}
+
+#[cfg(feature = "native-http")]
 pub fn execute_rank(job: RankJob) -> RankResponse {
     let full = request_body(&job, false);
     match call_provider(
