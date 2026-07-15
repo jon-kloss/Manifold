@@ -1,0 +1,34 @@
+# Caddy static server for the FICSIT Planner web build (Web Phase 4a).
+# The whole app runs client-side (wasm Session in a Web Worker over IndexedDB) —
+# there is NO backend here, so this only serves the built `dist-web` bundle.
+#
+# Railway injects $PORT; Caddy binds it (default 8080 for local `docker run`).
+# admin/auto_https are off because Railway terminates TLS at its edge and gives
+# us a plain HTTP port to listen on.
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+
+	# Correct MIME for the wasm module — a wrong type makes the browser refuse
+	# streaming instantiation. Caddy's default map already sets application/wasm,
+	# but pin it so the deploy never depends on the base image's mime table.
+	@wasm path *.wasm
+	header @wasm Content-Type application/wasm
+
+	# Vite fingerprints every asset (content hash in the name), so they are
+	# immutable — cache them hard. index.html and the app shell must NOT be
+	# cached long, so a deploy is picked up immediately.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+
+	# Single-page app: unknown paths fall back to the shell (harmless here — the
+	# app has no client-side router yet — but correct if one is added later).
+	try_files {path} /index.html
+	file_server
+}

@@ -1,0 +1,15 @@
+# Railway deploy config for the FICSIT Planner web build (Web Phase 4a).
+# Railway builds the Dockerfile with the repo root as context and routes public
+# traffic to the $PORT the Caddy server binds (deploy/Caddyfile). The app is a
+# pure static client-side bundle — no database, no server state.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "deploy/Dockerfile"
+
+[deploy]
+# The served index is a cheap liveness probe — a healthy Caddy returns it 200.
+healthcheckPath = "/"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

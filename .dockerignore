@@ -1,0 +1,14 @@
+# Keep the Docker build context small and reproducible. The web image (see
+# deploy/Dockerfile) only needs `renderer/` sources + the committed wasm pkg;
+# everything below is either rebuilt in-image, host-only, or irrelevant.
+**/node_modules
+**/dist
+**/dist-web
+target
+.git
+**/test-results
+**/playwright-report
+**/*.log
+# Rust workspace + desktop shell are not part of the web image.
+crates
+src-tauri

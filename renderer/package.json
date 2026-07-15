@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:wasm": "bash ../scripts/regen-web-wasm.sh build",
     "build:web": "pnpm build:wasm && tsc -b && vite build --mode web",
+    "build:web:static": "tsc -b && vite build --mode web",
     "preview": "vite preview",
     "preview:web": "vite preview --outDir dist-web",
     "typecheck": "tsc -b",
