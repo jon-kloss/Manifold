@@ -11,10 +11,15 @@
 
 # ---- build ----
 FROM node:22-alpine AS build
-# Pin pnpm 10 explicitly — the repo has no packageManager field, so a bare
-# `corepack enable` would leave the pnpm version unresolved. This matches the CI
-# jobs (pnpm/action-setup version: 10).
-RUN corepack enable && corepack prepare pnpm@10 --activate
+# Let corepack fetch the pinned pnpm non-interactively (no TTY in a build).
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# Use the pnpm version pinned in renderer/package.json (packageManager field),
+# so the image, CI, and local dev all build on the SAME pnpm — corepack reads
+# that field once the package.json is copied. Pinning matters: pnpm's default
+# blocking of dependency build scripts is a hard error outside a CI/interactive
+# shell, and renderer/pnpm-workspace.yaml's `allowBuilds` (the pnpm-11 format)
+# is what approves esbuild's build here.
+RUN corepack enable
 WORKDIR /app/renderer
 
 # Install deps against the lockfile first (cached until the lockfile changes).

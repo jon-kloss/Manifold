@@ -93,7 +93,7 @@ jobs:
           fi
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.13.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -123,7 +123,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.13.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -179,7 +179,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.13.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22

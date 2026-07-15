@@ -1,0 +1,8 @@
+# pnpm config (pnpm 10+ uses this file for settings, not just workspace defs).
+# esbuild (a vite/vitest dependency) ships a postinstall that fetches its
+# prebuilt platform binary. pnpm blocks dependency build scripts by default and
+# treats an un-decided one as a HARD ERROR outside an interactive/CI shell — so
+# `docker build` (no CI env) fails on it unless we make the decision explicit.
+# Approve esbuild's build so the install is deterministic in every environment.
+allowBuilds:
+  esbuild: true
