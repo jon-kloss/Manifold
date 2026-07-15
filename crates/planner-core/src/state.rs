@@ -16,6 +16,14 @@ pub struct PlanMeta {
     pub schema_version: u32,
     pub game_build: String,
     pub name: String,
+    /// Plan-scoped NEXT-MOVES preferences (PR 3). Advisory filters that steer
+    /// the opportunity engine and the model prompt — they hide *suggestions*,
+    /// never *facts* (a `power_deficit` is demoted-and-noted, never removed).
+    /// serde-default so plan files predating PR 3 load unchanged, and excluded
+    /// from `plan_hash` (a filter toggle is not plan geometry, so it must not
+    /// stale open proposals or trip the per-edit merge).
+    #[serde(default)]
+    pub preferences: NextPreferences,
 }
 
 impl Default for PlanMeta {
@@ -24,8 +32,22 @@ impl Default for PlanMeta {
             schema_version: 1,
             game_build: String::new(),
             name: "NEW WORLD".into(),
+            preferences: NextPreferences::default(),
         }
     }
+}
+
+/// NEXT-MOVES preferences (PR 3) — plan-scoped, persisted with the plan meta.
+/// Deliberately small and extensible: named after the user's own examples,
+/// serde-default so every field (and the whole struct) tolerates absence.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NextPreferences {
+    /// The player does not want rail/consist suggestions.
+    pub no_trains: bool,
+    /// Deprioritize power topics: advisory power cards hide, the overdraw FACT
+    /// only demotes-and-notes (never disappears).
+    pub ignore_power: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

@@ -10,7 +10,7 @@ use planner_core::commands::{self, Command, DomainError, Transaction};
 use planner_core::entities::*;
 use planner_core::patch::PatchBatch;
 use planner_core::proposals::{fnv1a, resolve_aliases, Proposal, ProposalItem, ProposalStatus};
-use planner_core::state::{Entity, PlanState};
+use planner_core::state::{Entity, NextPreferences, PlanState};
 use planner_core::undo::UndoLog;
 
 use crate::advisor::{AdvisorFeed, AdvisorState};
@@ -188,6 +188,16 @@ pub struct GoalCheck {
     pub item: String,
     pub requested: f64,
     pub achieved: f64,
+}
+
+/// PR 3: what `POST /api/next/preferences` returns — the persisted preferences
+/// plus the freshly-derived heuristic opportunity list (the renderer folds it in
+/// immediately and bumps its rank epoch for a full re-rank).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreferencesView {
+    pub preferences: NextPreferences,
+    pub opportunities: Vec<crate::opportunities::Opportunity>,
 }
 
 /// Live partial-accept consequence (mock 3a footer + amber strip).
@@ -571,6 +581,13 @@ impl Session {
         let mut projection = self.state.project();
         if let Some(map) = projection.as_object_mut() {
             map.remove("proposals");
+            // PR 3: NEXT preferences are an advisory filter, not plan geometry —
+            // excluded so a preference toggle never staleness-flags open
+            // proposals or trips the per-edit merge (and old plans stay
+            // hash-stable — they serialized no `preferences` key at all).
+            if let Some(meta) = map.get_mut("meta").and_then(|m| m.as_object_mut()) {
+                meta.remove("preferences");
+            }
         }
         fnv1a(projection.to_string().as_bytes())
     }
@@ -2271,7 +2288,29 @@ impl Session {
             &derived,
             &self.world,
             &self.unlocked,
+            &self.state.meta.preferences,
         )
+    }
+
+    /// PR 3: set the plan-scoped NEXT-MOVES preferences and persist them.
+    /// NOT undoable (a filter toggle is not plan geometry) and excluded from
+    /// `plan_hash`, so it never staleness-flags open proposals; it persists via
+    /// the plan meta row and reaches the renderer through hydrate
+    /// (`plan.meta.preferences`). Returns the fresh heuristic view so the caller
+    /// can render immediately (the renderer also bumps its epoch to re-rank).
+    pub fn set_next_preferences(
+        &mut self,
+        preferences: NextPreferences,
+    ) -> Result<PreferencesView, SessionError> {
+        self.state.meta.preferences = preferences;
+        self.file
+            .save_meta(&self.state.meta)
+            .map_err(SessionError::Persist)?;
+        let opportunities = self.next_moves();
+        Ok(PreferencesView {
+            preferences: self.state.meta.preferences.clone(),
+            opportunities,
+        })
     }
 
     /// Read-only train answer-sheet for a PROSPECTIVE route (task #49): given

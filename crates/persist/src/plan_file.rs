@@ -325,6 +325,16 @@ impl PlanFile {
     pub fn unlocked(&self) -> Option<String> {
         self.get_meta("unlocked").ok()
     }
+
+    /// Persist the plan meta blob directly (PR 3 NEXT preferences). Meta rides
+    /// the `plan_meta` KV row that every command commit/checkpoint already
+    /// rewrites; a preference toggle is NOT an undoable command, so it writes
+    /// the row on its own. `load()` reads it straight back into `state.meta`,
+    /// and hydrate projects `plan.meta.preferences` to the renderer.
+    pub fn save_meta(&self, meta: &PlanMeta) -> Result<(), PersistError> {
+        self.set_meta("plan_meta", &serde_json::to_string(meta)?)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

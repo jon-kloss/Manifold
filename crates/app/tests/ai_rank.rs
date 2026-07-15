@@ -38,6 +38,7 @@ fn reply(order: &[&str]) -> ModelReply {
         order: order.iter().map(|s| s.to_string()).collect(),
         headline: Some("do the thing".into()),
         notes: Default::default(),
+        wildcards: Default::default(),
     }
 }
 
@@ -88,6 +89,7 @@ fn firewall_clamps_headline_and_notes() {
         order: vec!["a".into()],
         headline: Some("h".repeat(5000)),
         notes: Default::default(),
+        wildcards: Default::default(),
     };
     r.notes.insert("a".into(), "n".repeat(5000));
     let (headline, ranked) = apply_model_ranking(cands, &r);
@@ -907,6 +909,182 @@ fn zero_candidates_skip_the_provider_call() {
     assert!(
         captured.lock().unwrap().is_empty(),
         "no provider call for zero candidates"
+    );
+}
+
+// ---------- PR 3: preferences line + wildcards ----------
+
+/// Extract the parsed USER message JSON from a captured raw request.
+fn user_message(request: &str) -> serde_json::Value {
+    let body_at = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
+    let envelope: serde_json::Value = serde_json::from_str(&request[body_at..]).unwrap();
+    serde_json::from_str(envelope["messages"][1]["content"].as_str().unwrap()).unwrap()
+}
+
+#[test]
+fn preferences_absent_keeps_payload_shape_present_adds_a_line() {
+    let mut s = seeded_session();
+    let (base, captured) = stub_provider(Box::new(|_| (200, completion("{\"order\":[]}"))));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+
+    // No preferences: the user message carries exactly {state, candidates} —
+    // no "preferences" key, byte-identical in shape to PR 10.
+    let _ = rank_next_moves(&mut s);
+    let user0 = user_message(&captured.lock().unwrap()[0]);
+    assert!(
+        user0.get("preferences").is_none(),
+        "no-prefs payload must add nothing: {user0}"
+    );
+    assert!(user0.get("state").is_some() && user0.get("candidates").is_some());
+
+    // Preferences set: the soft-nudge sentence appears in the user message.
+    s.state.meta.preferences.no_trains = true;
+    s.state.meta.preferences.ignore_power = true;
+    let _ = rank_next_moves(&mut s);
+    let user1 = user_message(&captured.lock().unwrap()[1]);
+    assert_eq!(
+        user1["preferences"].as_str().unwrap(),
+        "Player preferences: avoid recommending trains; deprioritize power for now.",
+    );
+}
+
+#[test]
+fn wildcards_are_clamped_catalog_gated_and_capped() {
+    let mut s = seeded_session();
+    let (base, _) = stub_provider(Box::new(|request: &str| {
+        let user = user_message(request);
+        let first = user["candidates"][0]["id"].as_str().unwrap().to_string();
+        let content = serde_json::json!({
+            "order": [first],
+            "wildcards": [
+                // dropped: empty title (before the cap is reached)
+                { "title": "", "rationale": "no title" },
+                // kept: known catalog item + rate
+                { "title": "Rod line", "rationale": "spare ingots", "item": "Desc_IronRod_C", "rate": 60.0 },
+                // kept-as-idea: unknown item is dropped, rate goes with it
+                { "title": "Mystery", "rationale": "unknown item", "item": "Desc_FakeItem_C", "rate": 30.0 },
+                // kept: long title clamps to 240 chars with an ellipsis
+                { "title": "z".repeat(400), "rationale": "long" },
+                // over the cap of 3 — never reached
+                { "title": "fourth", "rationale": "too many" },
+            ],
+        });
+        (200, completion(&content.to_string()))
+    }));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "model");
+    assert_eq!(
+        resp.wildcards.len(),
+        3,
+        "empty-title dropped, cap of 3 enforced"
+    );
+
+    let known = &resp.wildcards[0];
+    assert_eq!(known.title, "Rod line");
+    assert_eq!(known.item.as_deref(), Some("Desc_IronRod_C"));
+    assert_eq!(known.rate, Some(60.0));
+
+    let unknown = &resp.wildcards[1];
+    assert_eq!(unknown.title, "Mystery");
+    assert_eq!(unknown.item, None, "unknown item dropped");
+    assert_eq!(unknown.rate, None, "rate drops with an invalid item");
+
+    let long = &resp.wildcards[2];
+    assert_eq!(long.title.chars().count(), 240, "clamp applied to title");
+    assert!(long.title.ends_with('…'));
+}
+
+#[test]
+fn wildcards_only_reply_is_model_content_not_a_schema_failure() {
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    let (base, _) = stub_provider(Box::new(|_| {
+        (
+            200,
+            completion(
+                "{\"wildcards\":[{\"title\":\"Try aluminum\",\"rationale\":\"bauxite nearby\"}]}",
+            ),
+        )
+    }));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(
+        resp.engine, "model",
+        "a reply with only valid wildcards is model content: {:?}",
+        resp.error
+    );
+    assert_eq!(resp.error, None);
+    assert_eq!(resp.wildcards.len(), 1);
+    assert_eq!(resp.wildcards[0].title, "Try aluminum");
+    // No order → candidates appended in heuristic order (firewall unchanged).
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids);
+}
+
+#[test]
+fn wildcards_that_all_wash_out_stay_a_schema_failure() {
+    // Wildcards present but none survive (empty title) AND no order/notes/headline
+    // → still a schema failure; a bare "{}" must never earn engine:"model".
+    let mut s = seeded_session();
+    let (base, _) = stub_provider(Box::new(|_| {
+        (
+            200,
+            completion("{\"wildcards\":[{\"rationale\":\"no title here\"}]}"),
+        )
+    }));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "heuristic");
+    assert_eq!(
+        resp.error.as_deref(),
+        Some("model reply did not match the rank schema")
+    );
+    assert!(resp.wildcards.is_empty());
+}
+
+#[test]
+fn no_trains_pref_filters_a_rail_wildcard() {
+    let mut s = seeded_session();
+    s.state.meta.preferences.no_trains = true;
+    let (base, _) = stub_provider(Box::new(|request: &str| {
+        let user = user_message(request);
+        let first = user["candidates"][0]["id"].as_str().unwrap().to_string();
+        let content = serde_json::json!({
+            "order": [first],
+            "wildcards": [
+                { "title": "Lay a rail line to the coast", "rationale": "long haul" },
+                { "title": "Second smelter bank", "rationale": "spare ore" },
+            ],
+        });
+        (200, completion(&content.to_string()))
+    }));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "model");
+    assert_eq!(
+        resp.wildcards.len(),
+        1,
+        "the rail idea is filtered by no_trains"
+    );
+    assert_eq!(resp.wildcards[0].title, "Second smelter bank");
+}
+
+#[test]
+fn heuristic_path_carries_no_wildcards_field() {
+    // Offline path stays byte-identical: no "wildcards" key in the serialized JSON.
+    let mut s = seeded_session();
+    let resp = rank_next_moves(&mut s); // unconfigured
+    assert_eq!(resp.engine, "heuristic");
+    assert!(resp.wildcards.is_empty());
+    let json = serde_json::to_string(&resp).unwrap();
+    assert!(
+        !json.contains("wildcards"),
+        "offline path must omit the wildcards field: {json}"
     );
 }
 

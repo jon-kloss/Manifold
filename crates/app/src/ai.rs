@@ -32,10 +32,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+use planner_core::state::NextPreferences;
 use serde::{Deserialize, Serialize};
 
 use crate::opportunities::Opportunity;
 use crate::session::Session;
+
+/// Cap on validated wildcard ideas (PR 3) — a brainstorm, not a backlog.
+const WILDCARD_CAP: usize = 3;
 
 /// Default provider-call timeout. Configurable per session (POST
 /// /api/ai/config `timeoutSecs`) so tests can run the timeout path fast.
@@ -180,6 +184,43 @@ pub struct ModelReply {
     pub headline: Option<String>,
     #[serde(default)]
     pub notes: BTreeMap<String, String>,
+    /// PR 3 — the ONE labeled firewall exception: ideas BEYOND the derived
+    /// candidate list. Every field degrades individually (all serde-default),
+    /// validated server-side in [`validate_wildcards`] before it can surface.
+    #[serde(default)]
+    pub wildcards: Vec<WildcardReply>,
+}
+
+/// Raw, UNTRUSTED wildcard from the model reply. `title`/`rationale` are clamped
+/// prose; `item` is kept only if it exists in the catalog; `rate` is a starting
+/// hint the user edits in the wizard — NEVER a solver fact.
+#[derive(Debug, Default, Deserialize)]
+pub struct WildcardReply {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub rationale: Option<String>,
+    #[serde(default)]
+    pub item: Option<String>,
+    #[serde(default)]
+    pub rate: Option<f64>,
+}
+
+/// A validated wildcard idea (PR 3). Structurally segregated from `Opportunity`:
+/// it carries NO engine action and NO trusted numbers. The renderer fences it
+/// behind an AI badge + a "solve it to make it real" disclaimer, and "TRY IT"
+/// hands it to the wizard — it never writes plan state.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wildcard {
+    pub title: String,
+    pub rationale: String,
+    /// Catalog-validated item class (dropped if unknown), for the wizard prefill.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    /// Untrusted starting rate the user edits — only meaningful with an `item`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate: Option<f64>,
 }
 
 /// One ranked move: the untouched engine card plus (at most) an attached
@@ -207,6 +248,10 @@ pub struct RankResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub opportunities: Vec<RankedOpportunity>,
+    /// PR 3 wildcard ideas — model-only and additive; omitted (skip) when empty
+    /// so the heuristic/offline path stays byte-identical to PR 10.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub wildcards: Vec<Wildcard>,
 }
 
 fn heuristic(candidates: Vec<Opportunity>, error: Option<String>) -> RankResponse {
@@ -222,6 +267,8 @@ fn heuristic(candidates: Vec<Opportunity>, error: Option<String>) -> RankRespons
                 note: None,
             })
             .collect(),
+        // The engine does not brainstorm — the offline path carries no ideas.
+        wildcards: Vec::new(),
     }
 }
 
@@ -303,6 +350,86 @@ pub fn apply_model_ranking(
         .map(clamp)
         .filter(|h| !h.is_empty());
     (headline, ranked)
+}
+
+/// PR 3: a one-line preferences nudge injected into the USER message (never the
+/// checked-in system prompt). Empty string when no preferences are set, so the
+/// no-prefs request body stays byte-identical to PR 10 (the prefs field is only
+/// added to the JSON when this is non-empty). The heuristic engine filter is the
+/// hard guarantee; this prose line is the documented soft nudge.
+pub fn preferences_prompt(prefs: &NextPreferences) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if prefs.no_trains {
+        parts.push("avoid recommending trains");
+    }
+    if prefs.ignore_power {
+        parts.push("deprioritize power for now");
+    }
+    if parts.is_empty() {
+        return String::new();
+    }
+    format!("Player preferences: {}.", parts.join("; "))
+}
+
+/// Case-insensitive keyword hit for the wildcard preference filter (PR 3).
+fn mentions_any(text: &str, keywords: &[&str]) -> bool {
+    keywords.iter().any(|k| text.contains(k))
+}
+
+/// Validate untrusted wildcard ideas (PR 3 firewall exception): clamp prose with
+/// the SAME word-boundary clamp as notes/headline, keep `item` ONLY when it is a
+/// real catalog class (else drop the hint, keep the idea), drop empty-title
+/// entries, honor preferences (train/power ideas are suggestions — filtered like
+/// their heuristic siblings), and cap the list. `rate` rides through untouched:
+/// it is a starting hint the wizard lets the user edit, never a solver fact.
+fn validate_wildcards(
+    raw: &[WildcardReply],
+    catalog: &BTreeSet<String>,
+    prefs: &NextPreferences,
+) -> Vec<Wildcard> {
+    let mut out: Vec<Wildcard> = Vec::new();
+    for w in raw {
+        let title = w.title.as_deref().map(clamp).unwrap_or_default();
+        if title.is_empty() {
+            continue; // no title, no idea
+        }
+        let rationale = w.rationale.as_deref().map(clamp).unwrap_or_default();
+        // Preference filter — wildcards are all SUGGESTIONS (never facts), so a
+        // train idea is dropped under `no_trains` and a power idea under
+        // `ignore_power`, exactly as their heuristic counterparts hide.
+        let haystack = format!(
+            "{} {} {}",
+            title.to_lowercase(),
+            rationale.to_lowercase(),
+            w.item.as_deref().unwrap_or("").to_lowercase()
+        );
+        if prefs.no_trains && mentions_any(&haystack, &["train", "rail", "consist", "locomotive"]) {
+            continue;
+        }
+        if prefs.ignore_power
+            && mentions_any(
+                &haystack,
+                &["power", "generator", "grid", "megawatt", " mw"],
+            )
+        {
+            continue;
+        }
+        // Item hint survives only if the catalog knows it; otherwise the idea
+        // stands as pure text with no prefill (and the rate goes with it — a
+        // rate without a valid item is meaningless to the wizard).
+        let item = w.item.clone().filter(|i| catalog.contains(i));
+        let rate = if item.is_some() { w.rate } else { None };
+        out.push(Wildcard {
+            title,
+            rationale,
+            item,
+            rate,
+        });
+        if out.len() >= WILDCARD_CAP {
+            break;
+        }
+    }
+    out
 }
 
 /// Strip a courtesy markdown fence (```json … ```): some small models fence
@@ -425,6 +552,12 @@ pub struct RankJob {
     timeout_secs: u64,
     candidates: Vec<Opportunity>,
     user: String,
+    /// Catalog item classes (snapshotted under the lock) — the wildcard
+    /// firewall keeps an `item` hint only when it names a real one.
+    catalog_items: BTreeSet<String>,
+    /// Plan preferences (snapshotted under the lock) — filter train/power
+    /// wildcard ideas consistently with the heuristic engine.
+    prefs: NextPreferences,
 }
 
 /// Outcome of the under-lock half of a rank: either the answer is already
@@ -517,7 +650,16 @@ pub fn prepare_rank(s: &mut Session) -> RankPrep {
             })
         })
         .collect();
-    let user = serde_json::json!({ "state": state, "candidates": cand_view }).to_string();
+    // PR 3: inject the preferences line into the USER message. Added as a JSON
+    // field ONLY when non-empty, so the no-prefs payload is byte-identical to
+    // PR 10 (pins the request-shape tests).
+    let prefs = s.state.meta.preferences.clone();
+    let prefs_line = preferences_prompt(&prefs);
+    let mut user_obj = serde_json::json!({ "state": state, "candidates": cand_view });
+    if !prefs_line.is_empty() {
+        user_obj["preferences"] = serde_json::Value::String(prefs_line);
+    }
+    let user = user_obj.to_string();
     RankPrep::Call(RankJob {
         base_url: s.ai.base_url.trim_end_matches('/').to_string(),
         model: s.ai.model.clone(),
@@ -525,6 +667,8 @@ pub fn prepare_rank(s: &mut Session) -> RankPrep {
         timeout_secs: s.ai.timeout_secs,
         candidates,
         user,
+        catalog_items: s.gamedata.items.keys().cloned().collect(),
+        prefs,
     })
 }
 
@@ -558,8 +702,14 @@ fn request_body(job: &RankJob, lean: bool) -> serde_json::Value {
 /// badge. Partial replies still degrade per field (see [`ModelReply`]), and
 /// the pure firewall keeps its own empty-tolerance as defense in depth.
 fn ranked_response(job: RankJob, reply: &ModelReply) -> RankResponse {
+    // Validate wildcards FIRST (catalog + preferences): a reply that carries
+    // ONLY valid wildcards is still model CONTENT, not a schema failure. But a
+    // bare `{}` (or wildcards that all wash out — empty titles, filtered by
+    // preference) leaves nothing, so it still falls back and never earns the
+    // `engine:"model"` badge.
+    let wildcards = validate_wildcards(&reply.wildcards, &job.catalog_items, &job.prefs);
     let headline_blank = reply.headline.as_deref().unwrap_or("").trim().is_empty();
-    if reply.order.is_empty() && reply.notes.is_empty() && headline_blank {
+    if reply.order.is_empty() && reply.notes.is_empty() && headline_blank && wildcards.is_empty() {
         return heuristic(
             job.candidates,
             Some("model reply did not match the rank schema".to_string()),
@@ -572,6 +722,7 @@ fn ranked_response(job: RankJob, reply: &ModelReply) -> RankResponse {
         headline,
         error: None,
         opportunities,
+        wildcards,
     }
 }
 

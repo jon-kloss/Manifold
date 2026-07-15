@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use gamedata::docs::{extraction_rate, GameData};
 use gamedata::worldnodes::WorldSnapshot;
 use planner_core::entities::*;
-use planner_core::state::PlanState;
+use planner_core::state::{NextPreferences, PlanState};
 use serde::Serialize;
 
 use crate::session::{circuit_level, Derived};
@@ -50,6 +50,17 @@ const UNTAPPED_LIMIT: usize = 3;
 
 /// Ranked list cap — a shortlist, not a report.
 const CAP: usize = 12;
+
+/// Within-class demotion offset for a `power_deficit` under the `ignore_power`
+/// preference (PR 3): the overdraw FACT never leaves the list, it sorts to the
+/// bottom of its class instead. Subtracting a value far past any real MW figure
+/// keeps demoted cards below every non-demoted class-0 card while preserving
+/// their relative overdraw order among themselves.
+const IGNORE_POWER_DEMOTE: f64 = 1e12;
+
+/// Honest note appended to a demoted `power_deficit` (PR 3): the preference
+/// quieted the SUGGESTIONS, it cannot un-overdraw a grid.
+const IGNORE_POWER_NOTE: &str = " — power ignored by preference — this grid is still overdrawn";
 
 /// Candidate family, in ranking-class order (the discriminant IS the class).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -221,7 +232,23 @@ fn production_gaps(state: &PlanState, derived: &Derived) -> BTreeMap<String, f64
 /// there is deliberately NO empire-level `power_margin` fallback. The
 /// `total_generation_mw > 0` gate keeps mid-planning bases (machines drawn, no
 /// generators yet) un-nagged.
-fn power_deficit(derived: &Derived, out: &mut Vec<Candidate>) {
+fn power_deficit(derived: &Derived, prefs: &NextPreferences, out: &mut Vec<Candidate>) {
+    // PR 3: `ignore_power` may DEMOTE + NOTE this card (a real overdraw is a
+    // FACT, never hidden), but it can never suppress it.
+    let ignored = prefs.ignore_power;
+    let magnitude = |overdraw: f64| {
+        if ignored {
+            overdraw - IGNORE_POWER_DEMOTE
+        } else {
+            overdraw
+        }
+    };
+    let note = |mut evidence: String| {
+        if ignored {
+            evidence.push_str(IGNORE_POWER_NOTE);
+        }
+        evidence
+    };
     for c in &derived.circuits {
         let (headroom, _) = circuit_level(c.generation_mw, c.demand_mw);
         if headroom >= 0.0 {
@@ -230,7 +257,7 @@ fn power_deficit(derived: &Derived, out: &mut Vec<Candidate>) {
         let overdraw = c.demand_mw - c.generation_mw;
         out.push(Candidate {
             class: 0,
-            magnitude: overdraw,
+            magnitude: magnitude(overdraw),
             opp: Opportunity {
                 id: format!("power_deficit:{}", c.name),
                 kind: OpportunityKind::PowerDeficit,
@@ -239,10 +266,10 @@ fn power_deficit(derived: &Derived, out: &mut Vec<Candidate>) {
                     c.name,
                     fmt_overdraw_mw(overdraw)
                 ),
-                evidence: format!(
+                evidence: note(format!(
                     "{:.0} MW demand against {:.0} MW generated",
                     c.demand_mw, c.generation_mw
-                ),
+                )),
                 item: None,
                 action: OpportunityAction::OpenAudit {
                     tab: "power".into(),
@@ -257,7 +284,7 @@ fn power_deficit(derived: &Derived, out: &mut Vec<Candidate>) {
         let overdraw = derived.total_power_mw - derived.total_generation_mw;
         out.push(Candidate {
             class: 0,
-            magnitude: overdraw,
+            magnitude: magnitude(overdraw),
             opp: Opportunity {
                 id: "power_deficit:empire".into(),
                 kind: OpportunityKind::PowerDeficit,
@@ -265,10 +292,10 @@ fn power_deficit(derived: &Derived, out: &mut Vec<Candidate>) {
                     "Plan-wide power demand exceeds generation by {} MW",
                     fmt_overdraw_mw(overdraw)
                 ),
-                evidence: format!(
+                evidence: note(format!(
                     "{:.0} MW demand vs {:.0} MW generated — no power routes drawn, per-grid balance unknown",
                     derived.total_power_mw, derived.total_generation_mw
-                ),
+                )),
                 item: None,
                 action: OpportunityAction::OpenAudit {
                     tab: "power".into(),
@@ -376,6 +403,7 @@ fn route_bottleneck_fix(
     state: &PlanState,
     gd: &GameData,
     derived: &Derived,
+    prefs: &NextPreferences,
     out: &mut Vec<Candidate>,
 ) {
     for (rid, dr) in &derived.routes {
@@ -394,6 +422,11 @@ fn route_bottleneck_fix(
         let Some(route) = state.routes.get(rid) else {
             continue;
         };
+        // PR 3: `no_trains` suppresses RAIL route-fix suggestions (the fix names
+        // a "+1 consist"); belt/pipe/truck/drone route cards are unaffected.
+        if prefs.no_trains && matches!(route.kind, RouteKind::Rail { .. }) {
+            continue;
+        }
         let endpoints = route_endpoints(state, route);
         let fix = match &route.kind {
             RouteKind::Belt { tier } => {
@@ -436,7 +469,12 @@ fn route_bottleneck_fix(
 /// NEGATED headroom: thinner margin ranks first within the class. The
 /// percentage FLOORS in title and evidence both — 19.5% headroom must read
 /// "19%", never round up out of its own alarm band.
-fn power_margin(derived: &Derived, out: &mut Vec<Candidate>) {
+fn power_margin(derived: &Derived, prefs: &NextPreferences, out: &mut Vec<Candidate>) {
+    // PR 3: `ignore_power` HIDES this purely-advisory card entirely (headroom
+    // is a suggestion, not a fact — nothing is broken yet).
+    if prefs.ignore_power {
+        return;
+    }
     for c in &derived.circuits {
         let (headroom, level) = circuit_level(c.generation_mw, c.demand_mw);
         if headroom < 0.0 || level == "ok" {
@@ -815,12 +853,13 @@ pub fn derive_opportunities(
     derived: &Derived,
     world: &WorldSnapshot,
     unlocked: &BTreeSet<String>,
+    prefs: &NextPreferences,
 ) -> Vec<Opportunity> {
     let mut cands: Vec<Candidate> = Vec::new();
-    power_deficit(derived, &mut cands);
+    power_deficit(derived, prefs, &mut cands);
     deficit_repair(state, gd, derived, &mut cands);
-    route_bottleneck_fix(state, gd, derived, &mut cands);
-    power_margin(derived, &mut cands);
+    route_bottleneck_fix(state, gd, derived, prefs, &mut cands);
+    power_margin(derived, prefs, &mut cands);
     milestone_gap(gd, unlocked, &mut cands);
     alt_adopt(state, gd, unlocked, &mut cands);
     under_extracted(state, gd, derived, world, &mut cands);

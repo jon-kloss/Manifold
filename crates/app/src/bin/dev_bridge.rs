@@ -228,6 +228,18 @@ fn main() -> anyhow::Result<()> {
                 (Method::Get, "/api/next") => {
                     ok(&serde_json::json!({ "opportunities": s.next_moves() }))
                 }
+                // PR 3: set plan-scoped NEXT preferences (persisted, not undoable,
+                // outside plan_hash). Returns the updated view; the renderer bumps
+                // its rank epoch to re-rank.
+                (Method::Post, "/api/next/preferences") => {
+                    match serde_json::from_str::<planner_core::state::NextPreferences>(&body) {
+                        Ok(prefs) => match s.set_next_preferences(prefs) {
+                            Ok(view) => ok(&view),
+                            Err(e) => err(500, e),
+                        },
+                        Err(e) => err(400, e),
+                    }
+                }
                 // ---- PR 10 bring-your-own-model ranking ----
                 // Config lives in memory on the Session; the GET view never
                 // carries the key (hasKey boolean only — key hygiene).

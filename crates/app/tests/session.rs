@@ -1640,6 +1640,61 @@ fn floor_assignment_is_undoable_and_persists() {
     assert_eq!(s.state.groups[&gid].floor, 2, "floor survives reopen");
 }
 
+/// PR 3: NEXT preferences persist through the endpoint, survive reopen, and ride
+/// hydrate (`plan.meta.preferences`) — but are NOT undoable and stay OUT of
+/// plan_hash (a filter toggle must not staleness-flag proposals or trip merge).
+#[test]
+fn next_preferences_persist_and_ride_hydrate_without_touching_plan_hash() {
+    use planner_core::state::NextPreferences;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("world.ficsit");
+    {
+        let mut s = Session::open(&path, None, "fixture").unwrap();
+        let hash_before = s.plan_hash();
+        let can_undo_before = s.undo.can_undo();
+        let view = s
+            .set_next_preferences(NextPreferences {
+                no_trains: true,
+                ignore_power: false,
+            })
+            .unwrap();
+        assert!(view.preferences.no_trains && !view.preferences.ignore_power);
+        // A preference toggle is not plan geometry: hash is stable, no undo entry.
+        assert_eq!(s.plan_hash(), hash_before, "prefs stay out of plan_hash");
+        assert_eq!(
+            s.undo.can_undo(),
+            can_undo_before,
+            "prefs must not be undoable"
+        );
+        // hydrate carries them to the renderer.
+        let hydrate = s.hydrate();
+        assert_eq!(hydrate["plan"]["meta"]["preferences"]["noTrains"], true);
+        assert_eq!(hydrate["plan"]["meta"]["preferences"]["ignorePower"], false);
+    }
+    // Reopen: preferences survive (persisted with the plan meta row).
+    let s = Session::open(&path, None, "fixture").unwrap();
+    assert!(
+        s.state.meta.preferences.no_trains && !s.state.meta.preferences.ignore_power,
+        "preferences survive reopen"
+    );
+}
+
+/// PR 3: an old plan file (no `preferences` in its meta blob) loads unchanged —
+/// serde-default fills the struct, no migration.
+#[test]
+fn plan_without_preferences_key_loads_with_defaults() {
+    use planner_core::state::PlanMeta;
+    // A meta blob shaped like a pre-PR-3 file — no `preferences` key at all.
+    let legacy = serde_json::json!({
+        "schemaVersion": 1,
+        "gameBuild": "fixture",
+        "name": "OLD WORLD"
+    });
+    let meta: PlanMeta = serde_json::from_value(legacy).unwrap();
+    assert_eq!(meta.name, "OLD WORLD");
+    assert!(!meta.preferences.no_trains && !meta.preferences.ignore_power);
+}
+
 #[test]
 fn failed_multi_command_edit_rolls_back() {
     let mut s = Session::in_memory(None).unwrap();

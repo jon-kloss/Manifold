@@ -72,7 +72,15 @@ fn set_rate(s: &mut Session, port: &Id, rate: f64) {
 
 fn next(s: &mut Session) -> Vec<Opportunity> {
     let derived = s.solve_all_readonly();
-    derive_opportunities(&s.state, &s.gamedata, &derived, &s.world, &s.unlocked)
+    let prefs = s.state.meta.preferences.clone();
+    derive_opportunities(
+        &s.state,
+        &s.gamedata,
+        &derived,
+        &s.world,
+        &s.unlocked,
+        &prefs,
+    )
 }
 
 /// ore in → smelter bank → ingot out at `rate` (a cleanly-solving producer).
@@ -1801,4 +1809,100 @@ fn composite_plan_fires_all_seven_families_in_class_order() {
             w[1].kind
         );
     }
+}
+
+// ---------- PR 3 preferences: hide suggestions, never facts ----------
+
+/// `no_trains` suppresses a RAIL route-fix card (a "+1 consist" suggestion),
+/// while the identical full-belt case still fires — belt/pipe/truck/drone route
+/// cards are untouched.
+#[test]
+fn no_trains_suppresses_rail_route_card() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (_, ingot_out) = ingot_factory(&mut s, "BIG SMELT", 0.0, 0.0, 8, 240.0);
+    let (_, ingot_in, rod_out) = rod_sink(&mut s, "ROD SINK", 80000.0, 0.0, 16);
+    let route = s
+        .edit(vec![Command::AddRoute {
+            kind: RouteKind::Belt { tier: 4 },
+            from: ingot_out.clone(),
+            to: ingot_in.clone(),
+            path: vec![
+                MapPos {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                MapPos {
+                    x: 80000.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+            ],
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    set_rate(&mut s, &rod_out, 240.0);
+    s.edit(vec![Command::SetRouteSpec {
+        id: route,
+        kind: RouteKind::Rail {
+            spec: RailSpec::default(),
+        },
+    }])
+    .unwrap();
+
+    // Default (no preference): the rail route-fix fires.
+    assert!(
+        find_kind(&next(&mut s), OpportunityKind::RouteBottleneckFix).is_some(),
+        "rail route card fires without the preference"
+    );
+    // no_trains: the rail suggestion is suppressed.
+    s.state.meta.preferences.no_trains = true;
+    assert!(
+        find_kind(&next(&mut s), OpportunityKind::RouteBottleneckFix).is_none(),
+        "no_trains must suppress the rail route-fix suggestion"
+    );
+}
+
+/// `ignore_power` HIDES the advisory `power_margin` card entirely, but only
+/// DEMOTES the `power_deficit` FACT to the bottom of its class and appends an
+/// honest note — never removes it.
+#[test]
+fn ignore_power_hides_margin_but_demotes_deficit_with_note() {
+    // Thin grid alone: power_margin present by default, hidden under ignore_power.
+    let mut thin = Session::in_memory(None).unwrap();
+    let plant = coal_plant(&mut thin, "POWER RIDGE", 0.0, 0.0, 75.0);
+    let (load, _) = ingot_factory(&mut thin, "LOAD BLOCK", 100.0, 0.0, 16, 480.0);
+    power_route(&mut thin, &plant, &load);
+    assert!(
+        find_kind(&next(&mut thin), OpportunityKind::PowerMargin).is_some(),
+        "thin grid fires power_margin by default"
+    );
+    thin.state.meta.preferences.ignore_power = true;
+    assert!(
+        find_kind(&next(&mut thin), OpportunityKind::PowerMargin).is_none(),
+        "ignore_power must HIDE the advisory power_margin card"
+    );
+
+    // Overdrawn grid: the FACT survives ignore_power — demoted + noted.
+    let mut over = Session::in_memory(None).unwrap();
+    let p = coal_plant(&mut over, "OVER PLANT", 0.0, 0.0, 75.0);
+    let (l, _) = ingot_factory(&mut over, "OVER LOAD", 100.0, 0.0, 32, 960.0);
+    power_route(&mut over, &p, &l);
+    let before = next(&mut over);
+    let d = find_kind(&before, OpportunityKind::PowerDeficit).expect("overdraw fires by default");
+    assert!(!d.evidence.contains("ignored by preference"));
+
+    over.state.meta.preferences.ignore_power = true;
+    let after = next(&mut over);
+    let d = find_kind(&after, OpportunityKind::PowerDeficit)
+        .expect("the overdraw FACT is never removed by ignore_power");
+    assert!(
+        d.evidence.contains("power ignored by preference")
+            && d.evidence.contains("still overdrawn"),
+        "demoted deficit carries the honest note: {}",
+        d.evidence
+    );
+    // The title (the actual overdraw figure) is unchanged — the fact is intact.
+    assert!(d.title.contains("overdrawn by"), "{}", d.title);
 }

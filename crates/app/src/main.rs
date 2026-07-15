@@ -210,6 +210,16 @@ fn next_moves(state: State<AppState>) -> Vec<app::opportunities::Opportunity> {
     state.0.lock().unwrap().next_moves()
 }
 
+/// PR 3: set plan-scoped NEXT preferences — persisted, not undoable, outside
+/// plan_hash. Returns the updated view (preferences + fresh heuristic list).
+#[tauri::command]
+fn set_next_preferences(
+    state: State<AppState>,
+    prefs: planner_core::state::NextPreferences,
+) -> Result<app::session::PreferencesView, SessionError> {
+    state.0.lock().unwrap().set_next_preferences(prefs)
+}
+
 /// PR 10: public view of the in-memory model config — hasKey, never the key.
 #[tauri::command]
 fn ai_config_get(state: State<AppState>) -> app::ai::AiConfigPublic {
@@ -304,6 +314,7 @@ fn main() {
             optimize_adopt,
             next_moves,
             next_rank,
+            set_next_preferences,
             ai_config_get,
             ai_config_set,
             route_calc
