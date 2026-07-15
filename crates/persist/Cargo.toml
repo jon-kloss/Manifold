@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [features]
+default = ["sqlite"]
+# The SQLite plan-file backend (rusqlite → native C, no wasm). Default-on so
+# desktop builds are byte-identical; `--no-default-features` drops rusqlite and
+# `SqlitePlanStore`, leaving the pure `PlanStore` trait + `MemoryPlanStore` for
+# the wasm build.
+sqlite = ["dep:rusqlite"]
 # Deterministic persist-failure injection for tests. Never enabled by
 # production builds: app pulls it in via [dev-dependencies] only, and with
 # resolver = "2" dev-dependency features don't leak into normal builds.
@@ -15,7 +21,7 @@ planner-core = { path = "../planner-core" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-rusqlite.workspace = true
+rusqlite = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = "3"

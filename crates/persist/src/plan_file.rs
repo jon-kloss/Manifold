@@ -8,17 +8,27 @@
 //! don't generalize to a browser store. The `PlanStore` surface `Session`
 //! drives lives in the trait impl below.
 
+#[cfg(feature = "sqlite")]
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "sqlite")]
 use planner_core::patch::{PatchBatch, PatchOp};
+#[cfg(feature = "sqlite")]
 use planner_core::state::{PlanMeta, PlanState};
+#[cfg(feature = "sqlite")]
 use planner_core::undo::UndoEntry;
+#[cfg(feature = "sqlite")]
 use rusqlite::Connection;
 
+#[cfg(feature = "sqlite")]
 use crate::store::PlanStore;
 
+/// Persistence error. `PersistError` (minus the SQLite variant) is always
+/// available so the wasm build's `MemoryPlanStore` / `Session` can surface it;
+/// the `Sqlite` variant only exists when the SQLite backend is compiled in.
 #[derive(Debug, thiserror::Error)]
 pub enum PersistError {
+    #[cfg(feature = "sqlite")]
     #[error("sqlite: {0}")]
     Sqlite(#[from] rusqlite::Error),
     #[error("json: {0}")]
@@ -29,6 +39,7 @@ pub enum PersistError {
     Corrupt(String),
 }
 
+#[cfg(feature = "sqlite")]
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS entities (id TEXT PRIMARY KEY, collection TEXT NOT NULL, json TEXT NOT NULL);
@@ -54,6 +65,7 @@ pub struct FaultPlan {
     pub fail_checkpoints: u32,
 }
 
+#[cfg(feature = "sqlite")]
 pub struct SqlitePlanStore {
     conn: Connection,
     pub path: PathBuf,
@@ -65,8 +77,10 @@ pub struct SqlitePlanStore {
 /// Historical name for [`SqlitePlanStore`] (it was `PlanFile` before the
 /// [`PlanStore`] trait was extracted). Kept as an alias so every desktop caller
 /// and test that names `PlanFile` compiles unchanged.
+#[cfg(feature = "sqlite")]
 pub type PlanFile = SqlitePlanStore;
 
+#[cfg(feature = "sqlite")]
 impl SqlitePlanStore {
     /// Open (or create) a plan file. Takes the rolling `.bak` before touching
     /// an existing file.
@@ -137,6 +151,7 @@ impl SqlitePlanStore {
     }
 }
 
+#[cfg(feature = "sqlite")]
 impl PlanStore for SqlitePlanStore {
     /// Hydrate canonical state + the applied undo journal.
     fn load(&self) -> Result<(PlanState, Vec<UndoEntry>, usize), PersistError> {
@@ -372,7 +387,7 @@ impl PlanStore for SqlitePlanStore {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "sqlite"))]
 mod tests {
     use super::*;
     use planner_core::commands::{apply, Command};

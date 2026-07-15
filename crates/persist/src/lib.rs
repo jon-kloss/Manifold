@@ -12,7 +12,9 @@ pub mod plan_file;
 pub mod store;
 
 pub use memory::MemoryPlanStore;
-pub use plan_file::{PersistError, PlanFile, SqlitePlanStore};
+pub use plan_file::PersistError;
+#[cfg(feature = "sqlite")]
+pub use plan_file::{PlanFile, SqlitePlanStore};
 pub use store::PlanStore;
 
 #[cfg(feature = "fault-injection")]
