@@ -16,8 +16,9 @@ export interface SheetMachine {
   machine: string;
   clock: string;
   recipe: string;
-  /** Per-machine build footprint "8 × 10 m" (Docs clearance data) — players
-   *  size foundation pads with this. Null when the catalog carries none. */
+  /** Per-machine footprint "8 × 10 m clearance" (Docs clearance data — the
+   *  top-down build + approach pad, not wall-to-wall dims) — players size
+   *  foundation pads with this. Null when the catalog carries none. */
   footprint: string | null;
 }
 export interface SheetPort {
@@ -93,7 +94,7 @@ export function composeBuildSheet(
         machine: gamedata.machines[g.machine]?.displayName ?? g.machine,
         clock: fmtClock(effClock(g)),
         recipe: recipe?.displayName ?? g.recipe,
-        footprint: fp ? `${fp[0]} × ${fp[1]} m` : null,
+        footprint: fp ? `${fp[0]} × ${fp[1]} m clearance` : null,
       };
     });
 

@@ -103,6 +103,12 @@ test("build sheet: derived spec renders + clipboard copy", async ({ page, reques
   await expect(page.getByTestId("group-Recipe_IronRod_C")).toContainText(
     /\d+(\.\d+)? × \d+(\.\d+)? m/,
   );
+  // …and its strip tooltip names the provenance: the fixture Constructor's
+  // dims come from the game's own clearance data, not the community table.
+  await expect(page.getByTestId("group-Recipe_IronRod_C").locator(".fp-strip")).toHaveAttribute(
+    "title",
+    /game clearance data/,
+  );
 
   // ---- open the BUILD SHEET ----
   await page.getByTestId("btn-build-sheet").click();
@@ -136,9 +142,10 @@ test("build sheet: derived spec renders + clipboard copy", async ({ page, reques
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toContain("BSHEET ROD DEPOT");
   expect(clip).toContain("4× Constructor");
-  // Per-machine footprint rides the machine stage line — players size
-  // foundation pads with this (Docs clearance data: Constructor 8 × 10 m).
-  expect(clip).toContain("· 8 × 10 m each");
+  // Per-machine footprint rides the machine stage line, labeled for what it
+  // is — the clearance pad (build + approach), not wall-to-wall dims (Docs
+  // clearance data: Constructor 8 × 10 m).
+  expect(clip).toContain("· 8 × 10 m clearance each");
   expect(clip).toContain("MACHINES");
   expect(clip).toContain("BSHEET SCREW DEPOT");
 });

@@ -251,7 +251,12 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
     return rows.sort((a, b) => rank[b.band] - rank[a.band] || b.saturation - a.saturation);
   }, [plan, derived, dispatch, setSelection, setView, gamedata.items]);
 
-  const hotCount = satRows.filter((r) => r.band !== "good").length;
+  // Badge = the ALARM channel: bottlenecks only, matching the status bar's
+  // bottleneck-only ⚠. Under-used rows are waste — listed (and ranked) in the
+  // tab, never alarmed; counting them branded healthy bases with triple-digit
+  // badges. The ≤50% boundary itself is user-pinned (see DECISIONS
+  // efficiency-grammar-completion + its OPEN Mk1-amber question).
+  const alarmCount = satRows.filter((r) => r.band === "bottleneck").length;
   const deficitCount = derived.deficits.length + Object.values(derived.nodes).filter((n) => n.conflict).length;
   const powerRows = useMemo(
     () =>
@@ -279,7 +284,7 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
     return (
       <button className="audit-handle mono" onClick={onToggle} data-testid="audit-handle">
         ▲ AUDIT (TAB)
-        {hotCount + deficitCount > 0 && <span className="audit-badge">{hotCount + deficitCount}</span>}
+        {alarmCount + deficitCount > 0 && <span className="audit-badge">{alarmCount + deficitCount}</span>}
       </button>
     );
   }
@@ -289,7 +294,7 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
       <header className="audit-head">
         {(
           [
-            ["saturation", `SATURATION`, hotCount],
+            ["saturation", `SATURATION`, alarmCount],
             ["deficits", `DEFICITS`, deficitCount],
             ["power", `POWER`, powerBadge],
             ["drift", `PLAN DRIFT`, 0],
@@ -330,7 +335,11 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
                       ? "Bottleneck — this link runs full while downstream demand goes unmet"
                       : r.band === "under"
                         ? "Under-used — flowing at ≤50% of rated capacity (over-built or starved upstream)"
-                        : "Good — a full belt that meets demand is optimal"
+                        : r.flow === 0
+                          ? "Idle — no derived flow through this link"
+                          : r.saturation >= 0.999
+                            ? "Good — a full belt that meets demand is optimal"
+                            : "Good — >50% utilized"
                   }
                 >
                   {fmtPercent(r.saturation)}

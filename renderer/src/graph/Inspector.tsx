@@ -94,6 +94,10 @@ export default function Inspector({
   }, [ceiling, gamedata.items]);
 
   const dgSel = selectedGroup ? df?.groups[selectedGroup.id] : null;
+  // One footprint lookup per render; "clearance" = the game's own Docs
+  // clearance data, "est." = the community fallback table (same provenance
+  // grammar as the card strip's tooltip).
+  const fp = selectedGroup ? footprintFor(gamedata, selectedGroup.machine) : null;
   const feedEdges = selectedGroup
     ? Object.values(plan.edges).filter((e) => e.to.kind === "group" && e.to.id === selectedGroup.id)
     : [];
@@ -220,16 +224,21 @@ export default function Inspector({
                 </button>
               </div>
             </div>
-            <div className="drawer-row">
-              <span className="drawer-row-name">Footprint</span>
-              <span className="t-data-12">
-                {footprintFor(gamedata, selectedGroup.machine).w} ×{" "}
-                {footprintFor(gamedata, selectedGroup.machine).l} m · ×{selectedGroup.count} →{" "}
-                {fmtRate(footprintArea(footprintFor(gamedata, selectedGroup.machine), selectedGroup.count))} m²
-              </span>
-            </div>
+            {fp && (
+              <div className="drawer-row">
+                <span className="drawer-row-name">Footprint</span>
+                <span
+                  className="t-data-12"
+                  title="Top-down clearance pad (build + approach), not wall-to-wall dims"
+                >
+                  {fp.w} × {fp.l} m {fp.derived ? "clearance" : "est."} · ×{selectedGroup.count} →{" "}
+                  {fmtRate(footprintArea(fp, selectedGroup.count))} m²
+                </span>
+              </div>
+            )}
             <div className="insp-note">
-              Belts to other floors render as lifts (⇅). Footprints are per machine, top-down.
+              Belts to other floors render as lifts (⇅). Footprints are per-machine clearance pads
+              (build + approach), top-down — not wall-to-wall dims.
             </div>
           </section>
 

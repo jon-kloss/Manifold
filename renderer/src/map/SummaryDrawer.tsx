@@ -191,6 +191,12 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
               <span className="drawer-row-name">{gamedata.items[p.item]?.displayName ?? p.item}</span>
               {ceiling != null && (
                 <span className="minibar" aria-hidden title={`${fmtRate(used)} of ${fmtRate(ceiling)}/min node ceiling`}>
+                  {/* Node-extraction ceiling keeps CONGESTION thresholds
+                      (0.7 warn / 0.95 crit) deliberately: a resource node is
+                      a hard cap you consume toward — same family as power
+                      (powerLevel), not a belt that can be optimally full.
+                      The efficiency grammar (flowBand) covers belts/routes
+                      only; see DECISIONS efficiency-grammar-completion. */}
                   <span
                     className={frac >= 0.95 ? "crit" : frac >= 0.7 ? "warn" : ""}
                     style={{ width: `${frac * 100}%` }}

@@ -233,6 +233,9 @@ test("empire: belt route, power grid, audit drawer", async ({ page, request }) =
   await expect(page.getByTestId("audit-drawer")).toBeVisible();
   await page.locator(".audit-tab", { hasText: "DEFICITS" }).click();
   await expect(page.getByTestId("audit-drawer")).toContainText("ROD CITY starved of Iron Ingot");
+  // the dip cascades one hop: fewer rods leave ROD CITY, so SCREW WORKS
+  // starves too — two honest deficits, still zero route bottlenecks
+  await expect(page.getByTestId("audit-drawer")).toContainText("SCREW WORKS starved of Iron Rod");
 
   // EFFICIENCY GRAMMAR honesty: ROD CITY starves because upstream dipped to
   // 10/min — the ingot route itself is SLACK, so it must NOT read bottleneck
@@ -242,6 +245,11 @@ test("empire: belt route, power grid, audit drawer", async ({ page, request }) =
   await expect(page.locator(".audit-load.under").first()).toBeVisible();
   await expect(page.locator(".audit-load.bottleneck")).toHaveCount(0);
   await page.keyboard.press("Tab");
+
+  // The closed-drawer handle badge is the ALARM channel: exactly the deficit
+  // count — the amber under-used rows just asserted above must NOT inflate it
+  // (zero bottlenecks here, so badge = the 2 cascaded deficits, nothing more).
+  await expect(page.getByTestId("audit-handle").locator(".audit-badge")).toHaveText("2");
 
   // ---- POWER overlay chip toggles with key 2 ----
   const powerChip = page.locator(".overlay-chip", { hasText: "POWER" });

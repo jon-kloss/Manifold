@@ -302,8 +302,15 @@ function TransportDrawer({ route }: { route: Route }) {
   const title = kind === "rail" ? "RAIL ROUTE" : kind === "truck" ? "TRUCK ROUTE" : "DRONE ROUTE";
   const demand = dr?.flow ?? 0;
   const throughput = t?.throughputPerMin ?? 0;
-  const ratio = demand / Math.max(1e-9, throughput);
-  const level = ratio >= 0.95 ? "crit" : ratio >= 0.7 ? "warn" : "ok";
+  const short = throughput > 0 && demand > throughput + 1e-6;
+  // Shared efficiency grammar (lib/format) — the same banding as the map
+  // polyline behind this drawer: a 96%-loaded rail meeting demand reads ✓
+  // here exactly as it reads green on the map. "crit" is reserved for honest
+  // shortfall evidence: throughput short of demand, or a downstream deficit
+  // routed through a full link.
+  const bn = short || routeBottleneck(route.id, dr?.saturation ?? 0, derived.deficits);
+  const band = flowBand(dr?.saturation ?? 0, demand, bn);
+  const level = band === "bottleneck" ? "crit" : band === "under" ? "warn" : "ok";
 
   const respec = (patch: Record<string, unknown>) => {
     if (route.kind.kind === "rail") {
@@ -324,7 +331,6 @@ function TransportDrawer({ route }: { route: Route }) {
   const rail: RailSpec | null = route.kind.kind === "rail" ? route.kind.spec : null;
   const truck = route.kind.kind === "truck" ? route.kind.spec : null;
   const drone = route.kind.kind === "drone" ? route.kind.spec : null;
-  const short = throughput > 0 && demand > throughput + 1e-6;
   // Header tile: the routed item (rail manifests are single-item in v1).
   const routedItem = route.manifest[0]?.[0] ?? null;
 
@@ -467,7 +473,7 @@ function TransportDrawer({ route }: { route: Route }) {
               <span>DEMAND</span>
               <span className="math-note" />
               <span className="projected">
-                {fmtRate(demand)}/min {level === "crit" ? "⚠ CRIT" : level === "warn" ? "⚠" : "✓"}
+                {fmtRate(demand)}/min {level === "crit" ? "⚠ SHORT" : level === "warn" ? "UNDER" : "✓"}
               </span>
             </div>
             {t.batteriesPerMin != null && (

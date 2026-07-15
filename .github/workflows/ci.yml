@@ -69,6 +69,8 @@ jobs:
       - name: typecheck
         working-directory: renderer
         run: pnpm typecheck
+      - name: icon manifest ↔ public/icons in sync
+        run: node scripts/check-icon-manifest.mjs
       - name: build
         working-directory: renderer
         run: pnpm build
