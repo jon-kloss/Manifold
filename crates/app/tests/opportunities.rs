@@ -2080,10 +2080,11 @@ fn milestone_gap_fires_and_pins_the_card() {
     let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("unpurchased milestone fires");
     assert_eq!(o.id, "milestone_gap:Schematic_3-1_C");
     assert_eq!(o.title, "Advance to Coal Power (Tier 3)");
-    // 5000 needed − 30/min·60 = 3200 short of a 1-hour build.
+    // 5000 needed − 30/min·60 = 3200 short of a 1-hour build. Single-item
+    // milestone → no "+N more" bill; B3 gross-production disclosure appended.
     assert_eq!(
         o.evidence,
-        "needs 5000 Iron Ingot; empire makes 30/min — 3200 short of a 1-hour build"
+        "needs 5000 Iron Ingot; empire makes 30/min — 3200 short of a 1-hour build · based on current production; stockpiles not counted"
     );
     assert_eq!(o.item.as_deref(), Some("Desc_IronIngot_C"));
     // Produce the remainder in ~1 h, ceiled: ceil(3200/60) = 54/min.
@@ -2163,9 +2164,10 @@ fn milestone_gap_picks_the_largest_gap_item() {
     let opps = next(&mut s);
     let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("fires");
     assert_eq!(o.item.as_deref(), Some("Desc_IronPlate_C"));
+    // Two-item cost → the B4 "+1 more" bill; B3 disclosure appended.
     assert_eq!(
         o.evidence,
-        "needs 500 Iron Plate; empire makes 0/min — 500 short of a 1-hour build"
+        "needs 500 Iron Plate; empire makes 0/min — 500 short of a 1-hour build · +1 more in this milestone · based on current production; stockpiles not counted"
     );
     assert_eq!(
         o.action,
@@ -2176,40 +2178,161 @@ fn milestone_gap_picks_the_largest_gap_item() {
     );
 }
 
-/// Lowest-tier unpurchased milestone is the one picked, ordered by (tier,
-/// class) — a higher tier waits even when a lower one is already purchased.
+/// B2 (frontier-anchored selection, replaces the old lowest-across-the-tree
+/// TA-H1 pin): the next milestone is the lowest UNPURCHASED one AT the FRONTIER
+/// tier (= the highest purchased tier), never a low tier the player already
+/// SKIPPED. The ids are constructed so tier order and class-name order DIVERGE
+/// — the frontier winner is NOT the globally-lowest class name — so a naive
+/// class-name-only sort would pick the wrong (skipped-low) milestone. Also pins
+/// the nothing-purchased → lowest-overall fallback and the frontier-cleared →
+/// silent branch.
 #[test]
-fn milestone_gap_picks_lowest_unpurchased_tier() {
+fn milestone_gap_anchors_to_the_frontier_tier() {
+    let mut s = Session::in_memory(None).unwrap();
+    // Empire makes no iron plate → every milestone below has a real full gap.
+    ingot_factory(&mut s, "SMELT", 0.0, 0.0, 1, 30.0);
+    let plate_cost = || vec![("Desc_IronPlate_C".to_string(), 500.0)];
+    // A SKIPPED-low unpurchased tier-2 milestone whose class name "Schematic_A…"
+    // sorts FIRST globally — the trap a class-name-only sort falls into.
+    s.gamedata.milestones.insert(
+        "Schematic_A_2_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Skipped Low".into(),
+            tier: 2,
+            cost: plate_cost(),
+        },
+    );
+    // Two PURCHASED milestones establish the frontier at tier 5.
+    s.gamedata.milestones.insert(
+        "Schematic_C_3_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Bought Tier 3".into(),
+            tier: 3,
+            cost: plate_cost(),
+        },
+    );
+    s.gamedata.milestones.insert(
+        "Schematic_D_5_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Bought Tier 5".into(),
+            tier: 5,
+            cost: plate_cost(),
+        },
+    );
+    // Two UNPURCHASED milestones AT the frontier tier 5; "Schematic_B…" < "…E…"
+    // by class name, so B wins the frontier — but B is NOT the globally-lowest
+    // class name (A is), so tier and class-name order genuinely diverge.
+    s.gamedata.milestones.insert(
+        "Schematic_E_5_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Frontier E".into(),
+            tier: 5,
+            cost: plate_cost(),
+        },
+    );
+    s.gamedata.milestones.insert(
+        "Schematic_B_5_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Frontier B".into(),
+            tier: 5,
+            cost: plate_cost(),
+        },
+    );
+
+    // (1) Nothing purchased yet → fall back to the lowest-overall milestone
+    // (tier 2, the genuine first step of a fresh import).
+    let opps = next(&mut s);
+    let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("fresh import fires tier-1-ish");
+    assert_eq!(o.title, "Advance to Skipped Low (Tier 2)");
+
+    // (2) Purchase the two frontier-establishing milestones → frontier = tier 5.
+    // The card names the FRONTIER-tier milestone (Frontier B), NOT the skipped
+    // low tier-2 one, and NOT Frontier E (B < E by class name).
+    s.purchased_schematics.insert("Schematic_C_3_C".into());
+    s.purchased_schematics.insert("Schematic_D_5_C".into());
+    let opps = next(&mut s);
+    let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("frontier tier fires");
+    assert_eq!(
+        o.title, "Advance to Frontier B (Tier 5)",
+        "frontier-tier pick by class name, never the skipped low milestone"
+    );
+    assert_eq!(o.id, "milestone_gap:Schematic_B_5_C");
+    assert_eq!(count_kind(&opps, OpportunityKind::MilestoneGap), 1);
+
+    // (3) Clear the frontier tier (buy both remaining tier-5 milestones) → the
+    // next tier is phase-gated and invisible to us, so we stay SILENT even
+    // though the skipped tier-2 milestone is still unpurchased below.
+    s.purchased_schematics.insert("Schematic_B_5_C".into());
+    s.purchased_schematics.insert("Schematic_E_5_C".into());
+    assert_eq!(
+        count_kind(&next(&mut s), OpportunityKind::MilestoneGap),
+        0,
+        "frontier cleared → honest silence, never back-fill the skipped low tier"
+    );
+}
+
+/// B1 (engine belt-and-suspenders): a low-tier EMPTY-cost milestone (every cost
+/// item was unknown and dropped) must NOT be selected and shadow a higher
+/// real-gap milestone — the higher card fires. Guards against the case where a
+/// zero-cost entry slipped the parse-time drop.
+#[test]
+fn milestone_gap_empty_cost_does_not_shadow_real_milestone() {
     let mut s = Session::in_memory(None).unwrap();
     ingot_factory(&mut s, "SMELT", 0.0, 0.0, 1, 30.0);
-    let cost = vec![("Desc_IronIngot_C".into(), 5000.0)];
+    // A low-tier milestone with an EMPTY cost (all-unknown, post-retain).
     s.gamedata.milestones.insert(
         "Schematic_2-1_C".into(),
         gamedata::docs::Milestone {
-            display_name: "Tier 2 Thing".into(),
+            display_name: "Phantom".into(),
             tier: 2,
-            cost: cost.clone(),
+            cost: vec![],
         },
     );
+    // A higher milestone with a real, unmet gap.
     s.gamedata.milestones.insert(
-        "Schematic_5-1_C".into(),
+        "Schematic_4-1_C".into(),
         gamedata::docs::Milestone {
-            display_name: "Tier 5 Thing".into(),
-            tier: 5,
-            cost,
+            display_name: "Real Wall".into(),
+            tier: 4,
+            cost: vec![("Desc_IronPlate_C".into(), 500.0)],
         },
     );
-    // Tier 2 outstanding → it is the pick.
+
+    let opps = next(&mut s);
+    let o = find_kind(&opps, OpportunityKind::MilestoneGap)
+        .expect("the real higher milestone fires, not silenced by the empty one");
+    assert_eq!(o.title, "Advance to Real Wall (Tier 4)");
+    assert_eq!(count_kind(&opps, OpportunityKind::MilestoneGap), 1);
+}
+
+/// L2: an equal-gap tie between two cost items breaks by item CLASS (the
+/// deterministic `item < *bi`), so the pick is stable across re-fetches. The
+/// empire makes neither item and both cost the same → identical gaps; the
+/// lexicographically-smaller class ("Desc_IronPlate_C" < "Desc_IronRod_C")
+/// wins.
+#[test]
+fn milestone_gap_equal_gap_breaks_by_item_class() {
+    let mut s = Session::in_memory(None).unwrap();
+    ingot_factory(&mut s, "SMELT", 0.0, 0.0, 1, 30.0);
+    s.gamedata.milestones.insert(
+        "Schematic_3-1_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Coal Power".into(),
+            tier: 3,
+            // identical quantities, empire produces neither → equal gaps.
+            cost: vec![
+                ("Desc_IronRod_C".into(), 400.0),
+                ("Desc_IronPlate_C".into(), 400.0),
+            ],
+        },
+    );
     let opps = next(&mut s);
     let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("fires");
-    assert_eq!(o.title, "Advance to Tier 2 Thing (Tier 2)");
-    // Purchase tier 2 → the next one up (tier 5) becomes the single pick.
-    s.purchased_schematics.insert("Schematic_2-1_C".into());
-    let opps = next(&mut s);
-    let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("next tier fires");
-    assert_eq!(o.title, "Advance to Tier 5 Thing (Tier 5)");
-    // Exactly one milestone card, never one per outstanding tier.
-    assert_eq!(count_kind(&opps, OpportunityKind::MilestoneGap), 1);
+    assert_eq!(
+        o.item.as_deref(),
+        Some("Desc_IronPlate_C"),
+        "equal gaps break by the smaller item class, deterministically"
+    );
 }
 
 /// The purchased-schematic set is save-derived and PERSISTS: an import captures
@@ -2241,6 +2364,29 @@ fn purchased_schematics_survive_reopen() {
             .as_array()
             .expect("hydrate carries purchasedSchematics");
         assert_eq!(arr.len(), 2);
+        // M1: a RE-import with an EMPTY unlocked_schematics set (a transient
+        // absent schematic parse) must NOT wipe the prior purchases — the
+        // non-empty guard mirrors `unlocked`. The set AND its persisted blob
+        // both survive.
+        let empty = app::import::ImportSnapshot {
+            save_name: "MILE-01-REIMPORT".into(),
+            machines: vec![app::import::ImportMachine {
+                class: "Build_SmelterMk1_C".into(),
+                recipe: Some("Recipe_IngotIron_C".into()),
+                clock: 1.0,
+                ..Default::default()
+            }],
+            unlocked_schematics: vec![],
+            ..Default::default()
+        };
+        s.import_save(empty).unwrap();
+        assert_eq!(
+            s.purchased_schematics.len(),
+            2,
+            "an empty re-import must not wipe prior purchases"
+        );
+        assert!(s.purchased_schematics.contains("Schematic_3-1_C"));
+        assert!(s.purchased_schematics.contains("Schematic_2-4_C"));
     }
     // reopen: the META blob round-trips through the persist layer.
     let s2 = app::Session::open(&path, None, "fixture").unwrap();
@@ -2249,4 +2395,56 @@ fn purchased_schematics_survive_reopen() {
         "purchased set survives reopen"
     );
     assert_eq!(s2.purchased_schematics.len(), 2);
+}
+
+/// M2: `plan_hash()` is UNCHANGED across a `purchased_schematics` mutation — the
+/// save-derived purchased set is advisory input to `milestone_gap`, never plan
+/// geometry, so it must stay OUT of the hash (cheap insurance that it can never
+/// staleness-flag proposals or trip the per-edit merge, exactly like `unlocked`
+/// and `preferences`).
+#[test]
+fn purchased_schematics_never_enter_plan_hash() {
+    let mut s = Session::in_memory(None).unwrap();
+    ingot_factory(&mut s, "SMELT", 0.0, 0.0, 1, 30.0);
+    let before = s.plan_hash();
+    s.purchased_schematics.insert("Schematic_3-1_C".into());
+    s.purchased_schematics.insert("Schematic_2-4_C".into());
+    assert_eq!(
+        s.plan_hash(),
+        before,
+        "the purchased set is save-derived advisory input, never plan geometry"
+    );
+}
+
+/// L1: an item the empire produces NONE of renders "empire makes 0/min", never
+/// "-0/min" — the `+ 0.0` normalizer over `empire_output(..).max(0.0)` keeps a
+/// signed zero from ever reaching the evidence. (A genuine -0.0 in derived
+/// `out_rates` is unreachable through the command API — solver rates are
+/// non-negative magnitudes — so this pins the positive-zero rendering the
+/// normalizer guarantees.)
+#[test]
+fn milestone_gap_renders_positive_zero_production() {
+    let mut s = Session::in_memory(None).unwrap();
+    // Empire makes ingots but ZERO iron plate anywhere.
+    ingot_factory(&mut s, "SMELT", 0.0, 0.0, 1, 30.0);
+    s.gamedata.milestones.insert(
+        "Schematic_3-1_C".into(),
+        gamedata::docs::Milestone {
+            display_name: "Coal Power".into(),
+            tier: 3,
+            cost: vec![("Desc_IronPlate_C".into(), 500.0)],
+        },
+    );
+    let opps = next(&mut s);
+    let o = find_kind(&opps, OpportunityKind::MilestoneGap).expect("fires");
+    assert!(
+        o.evidence.contains("empire makes 0/min"),
+        "positive zero, never '-0/min': {}",
+        o.evidence
+    );
+    assert!(
+        !o.evidence.contains("-0/min"),
+        "the signed-zero normalizer holds: {}",
+        o.evidence
+    );
 }

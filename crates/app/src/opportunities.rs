@@ -535,6 +535,15 @@ fn power_margin(derived: &Derived, prefs: &NextPreferences, out: &mut Vec<Candid
 /// (`gen_of` / `total_generation_mw`) use for POWER_ITEM; pure over `derived`,
 /// no re-solve, and gross production is the honest "how much the empire makes"
 /// figure (matching buildqueue's "milestone built = gross production").
+///
+/// B3 (PR 4 review) — GROSS, disclosed, not NET: a per-item net surplus
+/// (`out_rates − in_rates` across groups) is CHEAPLY derivable, but it is not
+/// unambiguously "correct" as a divertable figure — a milestone part fully
+/// consumed by an unrelated line nets to 0 and would render a misleading
+/// "makes 0/min" for an empire visibly producing it, trading gross's
+/// overstatement for an equal understatement. Since neither denominator is
+/// unambiguously right (and HUB stockpiles are untracked either way), we keep
+/// the informative gross figure and DISCLOSE its framing in the evidence.
 fn empire_output(derived: &Derived, item: &str) -> f64 {
     derived
         .factories
@@ -545,32 +554,61 @@ fn empire_output(derived: &Derived, item: &str) -> f64 {
 }
 
 /// Class 4 — `milestone_gap`: the single next HUB milestone the empire can't
-/// yet build from an hour of its own production. The next milestone is the
-/// lowest UNPURCHASED one by `(tier, class_name)` (tier ≠ ClassName prefix in a
-/// few cases, so order by the parsed tier). For each costed item, `gap =
-/// max(0, qty − 60·production)` — units still short of a one-hour build at the
-/// empire's current OUTPUT rate; the largest-gap item is surfaced with a
-/// WizardGoal producing the remainder in ~60 min (`(gap / 60).ceil()`, a clean
-/// ≥1 number, the deficit_repair grammar).
+/// yet build from an hour of its own production. The next milestone is chosen
+/// FRONTIER-anchored (B2, PR 4 review): Satisfactory lets a player SKIP
+/// milestones freely, so "lowest unpurchased across the whole tree" nags a
+/// veteran to back-fill an early tier they deliberately passed. Instead the
+/// FRONTIER is the highest `tier` among PURCHASED milestones, and the next
+/// honest step is the lowest UNPURCHASED milestone AT that frontier tier (by
+/// class name). If the frontier tier has no unpurchased milestone left, the
+/// next tier is Space-Elevator-phase-gated — invisible to us — so we stay
+/// SILENT rather than point at a milestone the player can't yet buy. When
+/// NOTHING is purchased (a fresh import), fall back to the lowest-overall
+/// milestone by `(tier, class_name)` — a genuine tier-1 first step.
+///
+/// For each costed item, `gap = max(0, qty − 60·production)` — units still
+/// short of a one-hour build at the empire's current gross OUTPUT rate; the
+/// largest-gap item is surfaced with a WizardGoal producing the remainder in
+/// ~60 min (`(gap / 60).ceil()`, a clean ≥1 number, the deficit_repair
+/// grammar), and a multi-item bill flags the rest ("· +N more in this
+/// milestone", B4) so the single surfaced item never reads as the whole cost.
 ///
 /// HONEST FRAMING: HUB inventory is untracked (the save carries no
-/// lifetime-crafted counter), so we never claim to know what's already stocked
-/// — we help PRODUCE the parts as a rate, and stay SILENT when the empire
-/// already out-produces every cost within an hour (`gap ≤ ε`). Silent, too,
-/// when no milestones are parsed (the trimmed fixture) or all are purchased.
-/// Exactly ONE card — the next milestone — never a per-milestone nag.
+/// lifetime-crafted counter) AND `produced` is GROSS production (never nets
+/// downstream consumption), so the number is neither an inventory claim nor a
+/// divertable-surplus claim — the evidence DISCLOSES this ("based on current
+/// production; stockpiles not counted", B3). We help PRODUCE the parts as a
+/// rate, and stay SILENT when the empire already out-produces every cost
+/// within an hour (`gap ≤ ε`). Silent, too, when no milestones are parsed (the
+/// trimmed fixture) or the frontier tier is cleared/all purchased. Exactly ONE
+/// card — the next milestone — never a per-milestone nag.
 fn milestone_gap(
     gd: &GameData,
     purchased: &BTreeSet<String>,
     derived: &Derived,
     out: &mut Vec<Candidate>,
 ) {
-    // Next milestone = lowest unpurchased by (tier, class_name). None left (all
-    // purchased, or none parsed) → honest silence.
+    // Frontier = highest tier among PURCHASED milestones (None → nothing
+    // purchased yet, a fresh import).
+    let frontier: Option<u32> = gd
+        .milestones
+        .iter()
+        .filter(|(id, _)| purchased.contains(id.as_str()))
+        .map(|(_, m)| m.tier)
+        .max();
+    // Candidates: unpurchased, non-empty-cost (B1 belt-and-suspenders — an
+    // empty-cost milestone that slipped the parse-time drop must never be
+    // selected and silence the family), AT the frontier tier when one exists.
+    // No frontier → all tiers eligible (lowest overall wins below). A cleared
+    // frontier (nothing left at that tier) yields None → honest silence.
     let Some((class, m)) = gd
         .milestones
         .iter()
-        .filter(|(id, _)| !purchased.contains(id.as_str()))
+        .filter(|(id, m)| {
+            !purchased.contains(id.as_str())
+                && !m.cost.is_empty()
+                && frontier.is_none_or(|t| m.tier == t)
+        })
         .min_by(|(a_id, a), (b_id, b)| a.tier.cmp(&b.tier).then_with(|| a_id.cmp(b_id)))
     else {
         return;
@@ -599,6 +637,15 @@ fn milestone_gap(
     if gap <= EPS {
         return; // the empire already out-produces every cost within an hour
     }
+    // B4: a milestone costs >1 item — flag the rest so the surfaced (largest-
+    // gap) item never reads as the whole bill (mitigates the largest-RAW-unit
+    // pick landing on the numerous-but-trivial item over the real wall).
+    let more = m.cost.len() - 1;
+    let bill = if more > 0 {
+        format!(" · +{more} more in this milestone")
+    } else {
+        String::new()
+    };
     out.push(Candidate {
         class: 4,
         magnitude: gap,
@@ -606,8 +653,10 @@ fn milestone_gap(
             id: format!("milestone_gap:{class}"),
             kind: OpportunityKind::MilestoneGap,
             title: format!("Advance to {} (Tier {})", m.display_name, m.tier),
+            // B3: `produced` is GROSS output — disclose the framing so the
+            // number isn't read as an inventory or divertable-surplus claim.
             evidence: format!(
-                "needs {qty} {}; empire makes {produced:.0}/min — {gap:.0} short of a 1-hour build",
+                "needs {qty} {}; empire makes {produced:.0}/min — {gap:.0} short of a 1-hour build{bill} · based on current production; stockpiles not counted",
                 item_name(gd, item)
             ),
             item: Some(item.clone()),
