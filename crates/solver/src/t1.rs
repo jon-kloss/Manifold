@@ -273,7 +273,7 @@ fn attribute_shortfall(
 }
 
 pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, SolveError> {
-    let start = std::time::Instant::now();
+    let start = now_us();
 
     let mut targets: BTreeMap<String, f64> = snapshot
         .outputs
@@ -414,6 +414,23 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
         total_power_mw: total_power,
         target_ceiling,
         clamped,
-        solve_us: start.elapsed().as_micros() as u64,
+        solve_us: now_us().saturating_sub(start),
     })
+}
+
+/// Monotonic-ish microsecond clock for the solve-time telemetry. `Instant`
+/// aborts on `wasm32-unknown-unknown`, so mirror t0: real time natively, a
+/// zero stub on wasm (the browser measures wall time with `performance.now()`).
+#[cfg(not(target_arch = "wasm32"))]
+fn now_us() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn now_us() -> u64 {
+    0
 }
