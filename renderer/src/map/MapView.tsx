@@ -269,11 +269,23 @@ export default function MapView() {
     setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
 
     map.on("zoomend", () => setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100)));
+    // Testability stamp (M5): world-coord center on the map-root element — a
+    // cheap string piggybacked on the settle we already handle, so the fly
+    // e2e can assert the camera actually moved after a SHOW click. Stamped
+    // once at init too: the boot setView/fitBounds settled before this
+    // listener existed.
+    const stampCenter = () => {
+      const w = fromLatLng(map.getCenter());
+      const rootEl = map.getContainer().closest<HTMLElement>('[data-testid="map-root"]');
+      (rootEl ?? map.getContainer()).dataset.center = `${w.x.toFixed(0)},${w.y.toFixed(0)}`;
+    };
     map.on("moveend", () => {
       const c = map.getCenter();
       // Principle 1: position is never lost — persisted on every settle.
       useStore.getState().saveViewState({ map: { center: [c.lat, c.lng], zoom: map.getZoom() } });
+      stampCenter();
     });
+    stampCenter();
 
     return () => {
       map.remove();
@@ -593,6 +605,17 @@ export default function MapView() {
   const panTo = useCallback((pos: { x: number; y: number }) => {
     mapRef.current?.panTo(toLatLng(pos));
   }, []);
+
+  // PR 9 flyTo: consume-and-clear, mirroring the auditRequest idiom. Runs on
+  // mount too, so a SHOW clicked from graph view still lands — setView swaps
+  // in MapView first, then this effect pans once the map exists.
+  const flyTo = useStore((s) => s.flyTo);
+  const clearFly = useStore((s) => s.clearFly);
+  useEffect(() => {
+    if (!flyTo) return;
+    panTo(flyTo);
+    clearFly();
+  }, [flyTo, panTo, clearFly]);
 
   const zoomBy = (d: number) => mapRef.current?.setZoom((mapRef.current?.getZoom() ?? 2) + d);
 

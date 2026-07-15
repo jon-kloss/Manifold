@@ -174,20 +174,70 @@ test("next moves: ranked families over API + dashboard cards with live actions",
   await expect(page.getByTestId("wizard-modal")).not.toBeVisible();
 
   // OPEN on the power-margin card (when it made the top 3) → audit drawer
-  // opens on the POWER tab through the store-level request
+  // opens on the POWER tab through the store-level request. The branch is
+  // decided by the PAYLOAD — only opportunities[0..3] render as cards — never
+  // by a racy isVisible probe that turns a slow render into a silent skip.
   await page.keyboard.press("h");
   await expect(page.getByTestId("dashboard")).toBeVisible();
-  const marginCard = page.getByTestId("next-move").filter({ hasText: "headroom" }).first();
-  if (await marginCard.isVisible().catch(() => false)) {
+  await expect(page.getByTestId("next-moves")).toBeVisible();
+  if (opportunities.slice(0, 3).some((o) => o.kind === "power_margin")) {
+    const marginCard = page.getByTestId("next-move").filter({ hasText: "headroom" }).first();
     await marginCard.getByTestId("next-move-action").click();
     await expect(page.getByTestId("dashboard")).not.toBeVisible();
     await expect(page.getByTestId("audit-drawer")).toBeVisible();
     await expect(page.locator(".audit-tab.active")).toContainText("POWER");
     await page.keyboard.press("Tab"); // close the drawer again
+    await expect(page.getByTestId("audit-drawer")).not.toBeVisible();
+    // Repeat the IDENTICAL OPEN cycle. A dropped clearAuditRequest would
+    // leave auditRequest latched on "power" — the second, identical set()
+    // becomes a no-op, App's open-effect never re-fires, and the drawer
+    // stays shut. Reopening proves the request is consume-and-clear.
+    await page.keyboard.press("h");
+    await expect(page.getByTestId("dashboard")).toBeVisible();
+    await marginCard.getByTestId("next-move-action").click();
+    await expect(page.getByTestId("dashboard")).not.toBeVisible();
+    await expect(page.getByTestId("audit-drawer")).toBeVisible();
+    await expect(page.locator(".audit-tab.active")).toContainText("POWER");
+    await page.keyboard.press("Tab");
   } else {
     // margin ranked below the top 3 — the API half already proved the
     // family + action; just dismiss the dashboard.
     await page.keyboard.press("Escape");
   }
   await expect(page.getByTestId("audit-drawer")).not.toBeVisible();
+
+  // ---- SHOW flies the camera to the subject (M5) ----
+  // Repair this spec's own broken/trending causes so a growth-class map
+  // -subject card can enter the rendered top 3: copper satisfied again (240
+  // is the smelter bank's exact ceiling, so it sticks) and the coal grid
+  // fattened past the 20% warn band (4 generators cover 100 MW). Leftover
+  // deficits from earlier serial specs may still rank first — the pick stays
+  // payload-derived; only its top-3 placement is asserted.
+  await edit(request, [{ type: "set_port_rate", id: bayOut, rate: 240 }]);
+  await edit(request, [{ type: "set_port_rate", id: mwOut, rate: 100 }]);
+  const res2 = await request.get(`${API}/next`);
+  expect(res2.ok()).toBeTruthy();
+  const fresh = ((await res2.json()) as { opportunities: Move[] }).opportunities;
+  const flyIdx = fresh.findIndex(
+    (o) => o.action.kind === "selectNode" || o.action.kind === "selectRoute",
+  );
+  expect(flyIdx, "seed must surface a map-subject SHOW card").toBeGreaterThanOrEqual(0);
+  expect(flyIdx, "the SHOW card must be rendered (top 3)").toBeLessThan(3);
+  const fly = fresh[flyIdx];
+
+  // moveend stamps the settled world-coord center on map-root (M5 testability)
+  const before = await page.getByTestId("map-root").getAttribute("data-center");
+  expect(before, "map stamps its settled center").toBeTruthy();
+  await page.keyboard.press("h");
+  await expect(page.getByTestId("dashboard")).toBeVisible();
+  const flyCard = page.getByTestId("next-move").nth(flyIdx);
+  await expect(flyCard).toContainText(fly.title);
+  await flyCard.getByTestId("next-move-action").click();
+  // dashboard dismissed, the camera actually moved (stamp changed on settle),
+  // and the subject's drawer is open over the revealed map.
+  await expect(page.getByTestId("dashboard")).not.toBeVisible();
+  await expect(page.getByTestId("map-root")).not.toHaveAttribute("data-center", before!);
+  await expect(
+    page.getByTestId(fly.action.kind === "selectNode" ? "node-drawer" : "route-drawer"),
+  ).toBeVisible();
 });

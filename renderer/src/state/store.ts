@@ -126,6 +126,13 @@ export interface AppStore {
       the one store-visible signal: App opens the drawer when it appears, the
       drawer selects the tab and clears it. */
   auditRequest: AuditTab | null;
+  /** pending "pan the map camera here" request (PR 9 NEXT MOVES SHOW
+      actions). Same consume-and-clear idiom as auditRequest: ONLY the
+      dashboard's actMove sets it (map clicks/search/drawers never pan through
+      this path), MapView pans and clears it. Living in the store — not a prop
+      — lets the request survive the MapView remount when a SHOW lands while
+      the app is in graph view. */
+  flyTo: { x: number; y: number } | null;
 
   hydrate(): Promise<void>;
   /** Resolves with the created ids, or null when the backend refused the
@@ -171,6 +178,9 @@ export interface AppStore {
   /** PR 9: ask for the audit drawer on a specific tab (openAudit action). */
   openAuditTab(tab: AuditTab): void;
   clearAuditRequest(): void;
+  /** PR 9: ask the map to pan to a world position (NEXT MOVES SHOW action). */
+  requestFly(pos: { x: number; y: number }): void;
+  clearFly(): void;
 }
 
 export const useStore = create<AppStore>((set, get) => ({
@@ -200,6 +210,7 @@ export const useStore = create<AppStore>((set, get) => ({
   unlocked: new Set(),
   dashboardOpen: false,
   auditRequest: null,
+  flyTo: null,
 
   async hydrate() {
     try {
@@ -412,6 +423,14 @@ export const useStore = create<AppStore>((set, get) => ({
 
   clearAuditRequest() {
     set({ auditRequest: null });
+  },
+
+  requestFly(pos) {
+    set({ flyTo: pos });
+  },
+
+  clearFly() {
+    set({ flyTo: null });
   },
 
   // W2b-D: the optimizer is derived/advisory — a read-only fetch, never a

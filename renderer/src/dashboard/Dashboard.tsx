@@ -51,6 +51,9 @@ export default function Dashboard() {
   const cutoverPlan = useStore((s) => s.cutoverPlan);
   const nextMoves = useStore((s) => s.nextMoves);
   const openAuditTab = useStore((s) => s.openAuditTab);
+  const requestFly = useStore((s) => s.requestFly);
+  const world = useStore((s) => s.world);
+  const planHash = useStore((s) => s.planHash);
 
   const itemName = (cls: string) => gamedata.items[cls]?.displayName ?? cls;
   const queue = derived.buildQueue;
@@ -97,7 +100,10 @@ export default function Dashboard() {
     return () => {
       live = false;
     };
-  }, [nextMoves]);
+    // planHash: refetch when an edit lands while the dashboard is open — a
+    // card whose subject vanished refreshes away instead of dead-clicking;
+    // the in-flight click window stays fail-quiet.
+  }, [nextMoves, planHash]);
 
   const doneCount = useMemo(() => queue.filter((s) => s.done).length, [queue]);
   const partial = useMemo(() => queue.filter((s) => s.state === "partial"), [queue]);
@@ -117,25 +123,50 @@ export default function Dashboard() {
 
   const dismiss = () => setDashboardOpen(false);
 
+  // Where the camera should land for a select action (M5). Node resolution
+  // uses the SAME precedence as the Rust untapped ranking (post-L3): a cave
+  // node's ENTRANCE always wins (you route via it), the plan-local override
+  // corrects entrance-less nodes, else the catalog x/y. Missing subject →
+  // null (fail-quiet: the selection still dispatches, the map just doesn't
+  // pan — same contract as a GO THERE onto a deleted step).
+  const movePos = (a: Opportunity["action"]): { x: number; y: number } | null => {
+    if (a.kind === "selectFactory") return plan.factories[a.id]?.position ?? null;
+    if (a.kind === "selectNode") {
+      const n = world.nodes.find((w) => w.id === a.id);
+      const pos = n?.entrance ?? plan.nodeOverrides[a.id]?.pos ?? n;
+      return pos ? { x: pos.x, y: pos.y } : null;
+    }
+    if (a.kind === "selectRoute") {
+      const p = plan.routes[a.id]?.path ?? [];
+      if (p.length === 0) return null;
+      // path midpoint: middle vertex, or the average of the middle pair
+      const lo = p[Math.floor((p.length - 1) / 2)];
+      const hi = p[Math.ceil((p.length - 1) / 2)];
+      return { x: (lo.x + hi.x) / 2, y: (lo.y + hi.y) / 2 };
+    }
+    return null;
+  };
+
   // NEXT MOVES actions — every one lands on an existing pipe: the wizard
-  // prefill (FIX WITH SOLVER pattern), a map selection (same as GO THERE), or
-  // an audit tab. The dashboard always dismisses so the target shows through.
+  // prefill (FIX WITH SOLVER pattern), a map selection (same as GO THERE) plus
+  // a camera fly to the subject, or an audit tab. The dashboard always
+  // dismisses so the target shows through.
   const actMove = (o: Opportunity) => {
     const a = o.action;
     if (a.kind === "wizardGoal") {
       dismiss();
       setWizard({ open: true, prefill: { item: a.item, rate: a.rate } });
-    } else if (a.kind === "selectRoute") {
+    } else if (a.kind === "selectRoute" || a.kind === "selectNode" || a.kind === "selectFactory") {
       setView({ mode: "map" });
-      setSelection({ kind: "route", id: a.id });
-      dismiss();
-    } else if (a.kind === "selectNode") {
-      setView({ mode: "map" });
-      setSelection({ kind: "node", id: a.id });
-      dismiss();
-    } else if (a.kind === "selectFactory") {
-      setView({ mode: "map" });
-      setSelection({ kind: "factory", id: a.id });
+      setSelection(
+        a.kind === "selectRoute"
+          ? { kind: "route", id: a.id }
+          : a.kind === "selectNode"
+            ? { kind: "node", id: a.id }
+            : { kind: "factory", id: a.id },
+      );
+      const pos = movePos(a);
+      if (pos) requestFly(pos);
       dismiss();
     } else {
       dismiss();
