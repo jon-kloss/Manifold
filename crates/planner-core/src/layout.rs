@@ -41,7 +41,10 @@ fn height(kind: LKind) -> f64 {
     match kind {
         LKind::Group => 220.0,
         LKind::Junction => 120.0,
-        LKind::InPort | LKind::OutPort => 96.0,
+        // The round resource token is a 96px disc plus a caption below it
+        // (item name + source); reserve the extra so stacked ports in a column
+        // don't have their captions collide with the next disc.
+        LKind::InPort | LKind::OutPort => 120.0,
     }
 }
 

@@ -41,24 +41,29 @@ export default function BoundaryPortNode({ data, selected }: { data: PortNodeDat
     return claimed ? "FROM NODE CLAIM" : "UNROUTED — SUPPLY ASSUMED";
   })();
 
+  // Resources (the raw input entering and the finished output leaving) read as
+  // round tokens so they're instantly distinct from the rectangular machines
+  // between them. Direction is also carried by ring colour and column side.
   return (
     <div
-      className={`port-card ${port.direction} frame-${port.status} ${selected ? "selected" : ""}`}
+      className={`port-node ${port.direction} frame-${port.status} ${selected ? "selected" : ""}`}
       data-testid={`port-${port.direction}-${port.item}`}
+      title={`${port.direction === "in" ? "INPUT" : "OUTPUT"}: ${item}`}
     >
-      <div className="port-card-dir t-label">{port.direction === "in" ? "INPUT" : "OUTPUT"}</div>
-      <div className="port-card-item">
-        <ItemIcon item={port.item} displayName={item} size={20} />
-        <span>{item}</span>
+      <div className="port-disc">
+        <ItemIcon item={port.item} displayName={item} size={28} />
+        <div className={`port-disc-rate t-data-12 ${numCls} ${capped ? "capped" : ""}`}>
+          {fmtRate(rate)}
+          <span className="unit">/min</span>
+        </div>
       </div>
-      <div className={`t-data-12 ${numCls}`}>
-        {fmtRate(rate)}
-        <span className="unit">/min</span>
+      <div className="port-node-caption">
+        <div className="port-node-name">{item}</div>
         {port.direction === "in" && port.rateCeiling != null && (
-          <span className={`port-ceiling ${capped ? "capped" : ""}`}> / {fmtRate(port.rateCeiling)}</span>
+          <div className={`port-ceiling ${capped ? "capped" : ""}`}>cap {fmtRate(port.rateCeiling)}/min</div>
         )}
+        <div className="port-card-src mono">{src}</div>
       </div>
-      <div className="port-card-src mono">{src}</div>
       {port.direction === "in" ? (
         <Handle type="source" position={Position.Right} className="belt-handle" />
       ) : (

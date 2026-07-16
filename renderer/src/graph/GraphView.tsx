@@ -438,7 +438,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       geoms[n.id] = {
         x: n.position.x,
         y: n.position.y,
-        w: m?.width ?? (n.type === "group" ? 248 : n.type === "junction" ? 168 : 200),
+        w: m?.width ?? (n.type === "group" ? 248 : n.type === "junction" ? 168 : 96),
         h: m?.height ?? (n.type === "group" ? 150 : n.type === "junction" ? 52 : 96),
       };
     }
