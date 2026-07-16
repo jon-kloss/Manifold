@@ -5,7 +5,7 @@
 // solver math lives here; every number is read from the derived projection.
 
 import { fmtClock, fmtKm, fmtPower, fmtRate } from "../lib/format";
-import { prettyClass } from "../lib/format";
+import { itemLabel } from "../lib/format";
 import { effClock, effCount } from "../state/types";
 import type { Derived, GameData, Id, Plan, RouteKind, World } from "../state/types";
 
@@ -68,8 +68,7 @@ function tierLabel(kind: RouteKind): string {
   }
 }
 
-const itemName = (gamedata: GameData, cls: string) =>
-  gamedata.items[cls]?.displayName ?? prettyClass(cls);
+const itemName = (gamedata: GameData, cls: string) => itemLabel(gamedata.items, cls);
 
 /** Compose the read-only sheet for one factory from store + derived state. */
 export function composeBuildSheet(

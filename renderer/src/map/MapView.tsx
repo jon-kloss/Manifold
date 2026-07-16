@@ -20,7 +20,7 @@ import RoutePopover from "./RoutePopover";
 import Legend from "./Legend";
 import SearchBox from "./SearchBox";
 import ImportModal from "../import/ImportModal";
-import { fmtPower, prettyClass, routeBottleneck } from "../lib/format";
+import { fmtPower, itemLabel, routeBottleneck } from "../lib/format";
 import "./map.css";
 
 /** Cargo route kinds drawn with the saturation line grammar (A3.1). Pipe is
@@ -365,7 +365,7 @@ export default function MapView() {
           bottleneck: routeBottleneck(r.id, d?.saturation ?? 0, derived.deficits),
           kind: r.kind.kind as "belt" | "rail" | "truck" | "drone",
           tag: r.kind.kind === "belt" ? `MK.${r.kind.tier}` : r.kind.kind.toUpperCase(),
-          itemName: (gamedata.items[itemClass]?.displayName ?? prettyClass(itemClass)).toUpperCase(),
+          itemName: itemLabel(gamedata.items, itemClass).toUpperCase(),
           selected: selection?.kind === "route" && selection.id === r.id,
           ...(laneOf.get(r.id) ?? { lane: 0, lanes: 1 }),
         };
@@ -868,7 +868,7 @@ export default function MapView() {
 function NodeTooltip({ node }: { node: WorldNode }) {
   const items = useStore((s) => s.gamedata.items);
   // save-only nodes carry item:"" — degrade to a readable label, never blank.
-  const name = items[node.item]?.displayName ?? (node.item || "RESOURCE NODE");
+  const name = itemLabel(items, node.item) || "RESOURCE NODE";
   return (
     <div className="node-tooltip chip">
       {name.toUpperCase()} · {(node.purity || "UNKNOWN").toUpperCase()}

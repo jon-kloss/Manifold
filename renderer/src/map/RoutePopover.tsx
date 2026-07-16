@@ -16,7 +16,7 @@ import {
   type RouteKind,
   type TrainAnswer,
 } from "../state/types";
-import { fmtRate } from "../lib/format";
+import { fmtRate, itemLabel } from "../lib/format";
 import TrainAnswerBlock from "./TrainAnswerBlock";
 
 interface Candidate {
@@ -72,7 +72,7 @@ export default function RoutePopover({
       const p = plan.ports[pid];
       if (!p || p.direction !== "out" || p.boundRoute) continue;
       if (p.item === POWER_ITEM) continue; // power moves on lines, not belts
-      const itemName = gamedata.items[p.item]?.displayName ?? p.item;
+      const itemName = itemLabel(gamedata.items, p.item);
       const match = dst.ports
         .map((id) => plan.ports[id])
         .find((q) => q && q.direction === "in" && !q.boundRoute && q.item === p.item);
@@ -265,7 +265,7 @@ export default function RoutePopover({
                 kind: transport as "rail" | "truck" | "drone",
                 from: plan.factories[fromFactory]?.name ?? "?",
                 to: plan.factories[toFactory]?.name ?? "?",
-                item: gamedata.items[cand.item]?.displayName ?? cand.item,
+                item: itemLabel(gamedata.items, cand.item),
               }}
               onDemandChange={(r) => setTarget(r)}
             />

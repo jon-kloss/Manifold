@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
+import { itemLabel } from "../lib/format";
 
 interface Hit {
   key: string;
@@ -47,7 +48,7 @@ export default function SearchBox({ onJump }: { onJump: (pos: { x: number; y: nu
         });
     }
     for (const n of world.nodes) {
-      const item = gamedata.items[n.item]?.displayName ?? n.item;
+      const item = itemLabel(gamedata.items, n.item);
       if (item.toLowerCase().includes(q) || n.id.includes(q))
         out.push({
           key: `n-${n.id}`,

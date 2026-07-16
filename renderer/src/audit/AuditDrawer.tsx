@@ -13,6 +13,7 @@ import {
   routeBottleneck,
   circuitHeadroom,
   powerLevel,
+  itemLabel,
   type FlowBand,
 } from "../lib/format";
 import { beltCapacity } from "../state/types";
@@ -104,7 +105,7 @@ function OptimizerTab() {
   const gamedata = useStore((s) => s.gamedata);
   const planHash = useStore((s) => s.planHash);
   const [rows, setRows] = useState<AltOpportunity[] | null>(null);
-  const itemName = (cls: string) => gamedata.items[cls]?.displayName ?? cls;
+  const itemName = (cls: string) => itemLabel(gamedata.items, cls);
 
   // Re-fetch whenever the plan content changes (planHash) — the ranking is a
   // pure function of state + gamedata + unlocked, so it re-audits like the rest.
@@ -188,7 +189,7 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
     }
   }, [auditRequest, clearAuditRequest]);
 
-  const itemName = (cls: string) => gamedata.items[cls]?.displayName ?? cls;
+  const itemName = (cls: string) => itemLabel(gamedata.items, cls);
 
   const satRows: SatRow[] = useMemo(() => {
     const rows: SatRow[] = [];

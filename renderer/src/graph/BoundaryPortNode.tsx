@@ -4,7 +4,7 @@
 
 import { Handle, Position } from "@xyflow/react";
 import { useStore } from "../state/store";
-import { fmtRate } from "../lib/format";
+import { fmtRate, itemLabel } from "../lib/format";
 import type { Port } from "../state/types";
 import ItemIcon from "../lib/ItemIcon";
 
@@ -27,7 +27,7 @@ export default function BoundaryPortNode({ data, selected }: { data: PortNodeDat
   const capped =
     port.direction === "in" && port.rateCeiling != null && rate >= port.rateCeiling - 1e-9 && rate > 0;
   const numCls = `${isProjected ? "projected" : ""} ${settled.has(`/ports/${port.id}`) ? "settle" : ""}`;
-  const item = gamedata.items[port.item]?.displayName ?? port.item;
+  const item = itemLabel(gamedata.items, port.item);
   // Honest source line: a bound route, a node claim covering this item, or
   // nothing — an unrouted input is solved as supplied, so say so.
   const plan = useStore((s) => s.plan);

@@ -313,7 +313,19 @@ export class MapCanvasLayer extends L.Layer {
   /** Short label for a node: FE PURE, CU NORM, LIME IMP… */
   private nodeLabel(node: WorldNode): string {
     const code =
-      { Desc_OreIron_C: "FE", Desc_OreCopper_C: "CU", Desc_Stone_C: "LIME", Desc_Coal_C: "COAL" }[node.item] ??
+      {
+        Desc_OreIron_C: "FE",
+        Desc_OreCopper_C: "CU",
+        Desc_Stone_C: "LIME",
+        Desc_Coal_C: "COAL",
+        Desc_OreGold_C: "CATR",
+        Desc_RawQuartz_C: "QTZ",
+        Desc_Sulfur_C: "SULF",
+        Desc_LiquidOil_C: "OIL",
+        Desc_OreBauxite_C: "BAUX",
+        Desc_OreUranium_C: "URAN",
+        Desc_SAM_C: "SAM",
+      }[node.item] ??
       // save-only nodes carry item:"" — degrade to a readable NODE, not "".
       (node.item || "NODE").replace("Desc_", "").replace("_C", "").slice(0, 4).toUpperCase();
     const purity = node.purity === "normal" ? "NORM" : node.purity.toUpperCase();

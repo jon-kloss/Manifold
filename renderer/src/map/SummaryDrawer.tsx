@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useStore } from "../state/store";
-import { fmtPower, fmtRate } from "../lib/format";
+import { fmtPower, fmtRate, itemLabel } from "../lib/format";
 import type { Factory } from "../state/types";
 import BuildSheet from "../graph/BuildSheet";
 import ItemIcon from "../lib/ItemIcon";
@@ -175,7 +175,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
         {outputs.map((p) => (
           <div className="drawer-row" key={p.id}>
             <ItemIcon item={p.item} displayName={gamedata.items[p.item]?.displayName} size={20} />
-            <span className="drawer-row-name">{gamedata.items[p.item]?.displayName ?? p.item}</span>
+            <span className="drawer-row-name">{itemLabel(gamedata.items, p.item)}</span>
             <span className={`t-data-12 ${projected}`}>
               {fmtRate(df?.ports[p.id] ?? p.rate)}
               <span className="unit">/min</span>
@@ -194,7 +194,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
           return (
             <div className="drawer-row" key={p.id}>
               <ItemIcon item={p.item} displayName={gamedata.items[p.item]?.displayName} size={20} />
-              <span className="drawer-row-name">{gamedata.items[p.item]?.displayName ?? p.item}</span>
+              <span className="drawer-row-name">{itemLabel(gamedata.items, p.item)}</span>
               {ceiling != null && (
                 <span className="minibar" aria-hidden title={`${fmtRate(used)} of ${fmtRate(ceiling)}/min node ceiling`}>
                   {/* Node-extraction ceiling keeps CONGESTION thresholds

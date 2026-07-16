@@ -142,3 +142,30 @@ export function prettyClass(cls: string): string {
     .replace(/_C$/, "")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2");
 }
+
+/** Real game names for the raw extractable resources, so a node reads "Bauxite"
+ *  rather than a raw class even before the player uploads their Docs.json (the
+ *  bundled fixture catalog doesn't carry every resource item). */
+const RESOURCE_NAMES: Record<string, string> = {
+  Desc_OreIron_C: "Iron Ore",
+  Desc_OreCopper_C: "Copper Ore",
+  Desc_Stone_C: "Limestone",
+  Desc_Coal_C: "Coal",
+  Desc_OreGold_C: "Caterium Ore",
+  Desc_RawQuartz_C: "Raw Quartz",
+  Desc_Sulfur_C: "Sulfur",
+  Desc_LiquidOil_C: "Crude Oil",
+  Desc_OreBauxite_C: "Bauxite",
+  Desc_OreUranium_C: "Uranium",
+  Desc_SAM_C: "SAM",
+  Desc_NitrogenGas_C: "Nitrogen Gas",
+  Desc_Water_C: "Water",
+};
+
+/** Friendly name for an item class: the catalog's display name when present,
+ *  then a known raw-resource name, then a humanised class — never a raw
+ *  `Desc_..._C`. Pass `gamedata.items` (values only need `displayName`). */
+export function itemLabel(items: Record<string, { displayName?: string }>, cls: string): string {
+  if (!cls) return "";
+  return items[cls]?.displayName || RESOURCE_NAMES[cls] || prettyClass(cls);
+}

@@ -4,6 +4,7 @@
 
 import { Handle, Position } from "@xyflow/react";
 import { useStore } from "../state/store";
+import { itemLabel } from "../lib/format";
 import { JUNCTION_CAPS, type Junction } from "../state/types";
 
 export interface JunctionNodeData {
@@ -35,7 +36,7 @@ export default function JunctionNode({ data, selected }: { data: JunctionNodeDat
   );
   const inUsed = edges.filter((e) => e.to.kind === "junction" && e.to.id === junction.id).length;
   const outUsed = edges.filter((e) => e.from.kind === "junction" && e.from.id === junction.id).length;
-  const item = edges[0] ? gamedata.items[edges[0].item]?.displayName : null;
+  const item = edges[0] ? itemLabel(gamedata.items, edges[0].item) : null;
 
   return (
     <div

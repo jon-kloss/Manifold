@@ -3,7 +3,7 @@
 // The full rail/truck/drone math block arrives in Phase 4.
 
 import { useStore } from "../state/store";
-import { fmtClockS, fmtKm, fmtPercent, fmtPower, fmtRate, flowBand, routeBottleneck } from "../lib/format";
+import { fmtClockS, fmtKm, fmtPercent, fmtPower, fmtRate, flowBand, routeBottleneck, itemLabel } from "../lib/format";
 import { DEFAULT_DRONE_SPEC, DEFAULT_RAIL_SPEC, DEFAULT_TRUCK_SPEC } from "../state/types";
 import type { RailSpec, Route, RouteKind } from "../state/types";
 import TrainAnswerBlock from "./TrainAnswerBlock";
@@ -85,7 +85,7 @@ export default function RouteDrawer({ route }: { route: Route }) {
         {route.manifest.map(([item, rate]) => (
           <div className="drawer-row" key={item}>
             <ItemIcon item={item} displayName={gamedata.items[item]?.displayName} size={20} />
-            <span className="drawer-row-name">{gamedata.items[item]?.displayName ?? item}</span>
+            <span className="drawer-row-name">{itemLabel(gamedata.items, item)}</span>
             <span className="t-data-12 projected">
               {fmtRate(rate)}
               <span className="unit">/min</span>
@@ -376,7 +376,7 @@ function TransportDrawer({ route }: { route: Route }) {
         {route.manifest.map(([item, rate]) => (
           <div className="drawer-row" key={item}>
             <ItemIcon item={item} displayName={gamedata.items[item]?.displayName} size={20} />
-            <span className="drawer-row-name">{gamedata.items[item]?.displayName ?? item}</span>
+            <span className="drawer-row-name">{itemLabel(gamedata.items, item)}</span>
             <span className="t-data-12 projected">
               {fmtRate(rate)}
               <span className="unit">/min</span>
@@ -486,7 +486,7 @@ function TransportDrawer({ route }: { route: Route }) {
             {t.fuelItem && (
               <div className="math-row">
                 <span>FUEL</span>
-                <span className="math-note">{gamedata.items[t.fuelItem]?.displayName ?? t.fuelItem}</span>
+                <span className="math-note">{itemLabel(gamedata.items, t.fuelItem)}</span>
                 <span className="math-note">solver-sourced later</span>
               </div>
             )}

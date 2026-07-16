@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { backend } from "../state/backend";
-import { fmtDuration, fmtRate } from "../lib/format";
+import { fmtDuration, fmtRate, itemLabel } from "../lib/format";
 import ItemCombobox from "../lib/ItemCombobox";
 import type { WizardConstraints, WizardGoal, WizardInfeasible, WizardLogLine } from "../state/types";
 import "./wizard.css";
@@ -267,7 +267,7 @@ export default function WizardModal() {
                       setRate(Math.max(1, Math.ceil(d.needed - d.supplied)));
                     }}
                   >
-                    {(gamedata.items[d.item]?.displayName ?? d.item).toUpperCase()} −{fmtRate(d.needed - d.supplied)}
+                    {(itemLabel(gamedata.items, d.item)).toUpperCase()} −{fmtRate(d.needed - d.supplied)}
                   </button>
                 ))}
               </div>

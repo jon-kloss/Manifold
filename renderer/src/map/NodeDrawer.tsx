@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { useStore } from "../state/store";
 import { extractionRate, EXTRACTORS } from "./maputil";
-import { fmtRate } from "../lib/format";
+import { fmtRate, itemLabel } from "../lib/format";
 import type { WorldNode } from "../state/types";
 import ItemIcon from "../lib/ItemIcon";
 
@@ -21,7 +21,7 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
   const [extractor, setExtractor] = useState(EXTRACTORS[0]);
 
   // save-only nodes carry item:"" — degrade to a readable title, never blank.
-  const item = gamedata.items[node.item]?.displayName ?? (node.item || "RESOURCE NODE");
+  const item = itemLabel(gamedata.items, node.item) || "RESOURCE NODE";
   const region = world.regions.find((r) => r.id === node.region)?.name ?? node.region;
   const claims = Object.values(plan.nodeClaims).filter((c) => c.node === node.id);
   const conflict = derived.nodes[node.id]?.conflict ?? false;

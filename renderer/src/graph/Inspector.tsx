@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore, solveChip } from "../state/store";
 import { buildSnapshot, ensureT0, t0SetTarget } from "../solver/t0";
 import { footprintFor, footprintArea } from "./footprints";
-import { fmtClock, fmtPower, fmtRate, flowBand, bottleneckEdges } from "../lib/format";
+import { fmtClock, fmtPower, fmtRate, flowBand, bottleneckEdges, itemLabel } from "../lib/format";
 import { beltCapacity, effClock, POWER_ITEM, type DerivedFactory, type Id } from "../state/types";
 import ItemIcon from "../lib/ItemIcon";
 
@@ -83,7 +83,7 @@ export default function Inspector({
   const bindingText = useMemo(() => {
     if (!ceiling) return null;
     const b = ceiling.binding;
-    const itemName = gamedata.items[b.item]?.displayName ?? b.item;
+    const itemName = itemLabel(gamedata.items, b.item);
     if (b.kind === "belt_capacity") {
       return { text: `${itemName.toUpperCase()} BELT AT ${fmtRate(b.capacity)}/MIN`, fix: "UPGRADE BELT TIER" };
     }
@@ -110,7 +110,7 @@ export default function Inspector({
       {/* ---- OUTPUT TARGET (factory-level) ---- */}
       {outPort && (
         <section className="insp-section">
-          <h3 className="t-label">OUTPUT TARGET — {gamedata.items[outPort.item]?.displayName?.toUpperCase()}</h3>
+          <h3 className="t-label">OUTPUT TARGET — {itemLabel(gamedata.items, outPort.item).toUpperCase()}</h3>
           <div className="insp-target-row">
             <span
               className={`t-data-22 ${dragging || isProjected ? "projected" : ""}`}
@@ -253,7 +253,7 @@ export default function Inspector({
               return (
                 <div className="drawer-row" key={item}>
                   <ItemIcon item={item} displayName={gamedata.items[item]?.displayName} size={20} />
-                  <span className="drawer-row-name">{gamedata.items[item]?.displayName ?? item}</span>
+                  <span className="drawer-row-name">{itemLabel(gamedata.items, item)}</span>
                   <span className="minibar">
                     <span className={band === "good" ? "" : band} style={{ width: `${Math.min(100, sat * 100)}%` }} />
                   </span>
@@ -267,7 +267,7 @@ export default function Inspector({
             {gamedata.recipes[selectedGroup.recipe]?.products.map(([item]) => (
               <div className="drawer-row" key={item}>
                 <ItemIcon item={item} displayName={gamedata.items[item]?.displayName} size={20} />
-                <span className="drawer-row-name">→ {gamedata.items[item]?.displayName ?? item}</span>
+                <span className="drawer-row-name">→ {itemLabel(gamedata.items, item)}</span>
                 <span className={`t-data-12 ${isProjected || selectedGroup.status === "planned" ? "projected" : ""}`}>
                   {item === POWER_ITEM ? (
                     fmtPower(dgSel?.outRates[item] ?? 0)
@@ -287,7 +287,7 @@ export default function Inspector({
             {feedEdges.length === 0 && <div className="drawer-empty">No incoming belts.</div>}
             {feedEdges.map((e) => (
                 <div className="drawer-row" key={e.id}>
-                  <span className="drawer-row-name">{gamedata.items[e.item]?.displayName ?? e.item}</span>
+                  <span className="drawer-row-name">{itemLabel(gamedata.items, e.item)}</span>
                   {/* efficiency grammar: only a solver-named BOTTLENECK belt
                       earns the upgrade nudge — a full belt meeting demand is
                       optimal, not an upgrade prompt */}
@@ -354,7 +354,7 @@ export default function Inspector({
               return (
                 <div className="drawer-row" key={e.id}>
                   <span className="drawer-row-name">
-                    {inbound ? "←" : "→"} {gamedata.items[e.item]?.displayName ?? e.item}
+                    {inbound ? "←" : "→"} {itemLabel(gamedata.items, e.item)}
                   </span>
                   <span className={`t-data-12 ${isProjected ? "projected" : ""}`}>
                     {fmtRate(df?.edges[e.id]?.flow ?? 0)}
@@ -372,7 +372,7 @@ export default function Inspector({
       {/* ---- selected belt ---- */}
       {selectedEdge && (
         <section className="insp-section">
-          <h3 className="t-label">BELT — {gamedata.items[selectedEdge.item]?.displayName?.toUpperCase()}</h3>
+          <h3 className="t-label">BELT — {itemLabel(gamedata.items, selectedEdge.item).toUpperCase()}</h3>
           <div className="drawer-row">
             <span className="drawer-row-name">Tier</span>
             <select
@@ -402,7 +402,7 @@ export default function Inspector({
       {/* ---- selected boundary port ---- */}
       {selectedPort && selectedPort.direction === "in" && (
         <section className="insp-section">
-          <h3 className="t-label">INPUT — {gamedata.items[selectedPort.item]?.displayName?.toUpperCase()}</h3>
+          <h3 className="t-label">INPUT — {itemLabel(gamedata.items, selectedPort.item).toUpperCase()}</h3>
           <div className="drawer-row">
             <span className="drawer-row-name">Ceiling (from node claim)</span>
             <span className="t-data-12">
