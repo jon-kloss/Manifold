@@ -319,6 +319,20 @@
   color: var(--ink-faint);
   font-size: 10px;
 }
+/* "Model still stored (~0.9 GB) · REMOVE DOWNLOAD" row shown when the feature
+   is off but the weights remain cached. */
+.dash-ai-ondevice-stored {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* REMOVE DOWNLOAD — deletes ~0.9 GB, so it reads as a mild-danger action,
+   distinct from the neutral DISABLE beside it. */
+.dash-ai-remove {
+  color: var(--flow-crit);
+  border-color: var(--flow-crit);
+}
 /* Section separator with an inline caption ("OR HOSTED MODEL"). */
 .dash-ai-divider {
   display: flex;

@@ -5,6 +5,7 @@ import { backend } from "./backend";
 import { applyPatches } from "./patch";
 import {
   DEFAULT_WEBLLM_MODEL,
+  deleteModelFromCache,
   engineReady,
   loadEngine,
   runRank,
@@ -44,6 +45,12 @@ export const errText = (e: unknown): string => (e instanceof Error ? e.message :
 // window with storage blocked simply reads the default (off), never throws.
 const WEBLLM_ENABLED_KEY = "ficsit.webllm.enabled";
 const WEBLLM_MODEL_KEY = "ficsit.webllm.model";
+// Tracks whether the ~0.9 GB weights are present in browser cache, so the UI can
+// offer "remove download" (to reclaim space) independently of the on/off toggle.
+// Set once a load completes; cleared on removal. A flag, not a cache probe, so
+// boot never imports the (heavy) library just to know — worst case, a browser
+// eviction leaves it stale and the remove button does a harmless no-op delete.
+const WEBLLM_DOWNLOADED_KEY = "ficsit.webllm.downloaded";
 function readWebllmEnabled(): boolean {
   try {
     return localStorage.getItem(WEBLLM_ENABLED_KEY) === "1";
@@ -58,12 +65,26 @@ function readWebllmModel(): string {
     return DEFAULT_WEBLLM_MODEL;
   }
 }
+function readWebllmDownloaded(): boolean {
+  try {
+    return localStorage.getItem(WEBLLM_DOWNLOADED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 function persistWebllm(enabled: boolean, model: string): void {
   try {
     localStorage.setItem(WEBLLM_ENABLED_KEY, enabled ? "1" : "0");
     localStorage.setItem(WEBLLM_MODEL_KEY, model);
   } catch {
     /* storage blocked (private window) — the in-memory choice still works this session */
+  }
+}
+function persistWebllmDownloaded(downloaded: boolean): void {
+  try {
+    localStorage.setItem(WEBLLM_DOWNLOADED_KEY, downloaded ? "1" : "0");
+  } catch {
+    /* storage blocked — in-memory flag still works this session */
   }
 }
 
@@ -82,6 +103,9 @@ export interface WebllmState {
   progressText: string;
   /** selected on-device model id (persisted). */
   model: string;
+  /** weights are present in browser cache (persisted flag) — gates the
+      "remove download" affordance, which reclaims the ~0.9 GB. */
+  downloaded: boolean;
   error: string | null;
 }
 
@@ -318,8 +342,13 @@ export interface AppStore {
       into `webllm`. Rejects to an `error` phase (surfaced in the settings UI),
       never throws to the caller. */
   enableWebllm(model?: string): Promise<void>;
-  /** On-device AI: opt out — persist disabled, free the engine + GPU memory. */
+  /** On-device AI: opt out — persist disabled, free the engine + GPU memory.
+      The downloaded weights are KEPT in browser cache so a later re-enable is
+      instant (no re-download); use `removeWebllmDownload` to reclaim the space. */
   disableWebllm(): Promise<void>;
+  /** On-device AI: turn off AND delete the cached ~0.9 GB weights from browser
+      storage — a full removal. Re-enabling afterward re-downloads. */
+  removeWebllmDownload(): Promise<void>;
   /** PR 10: refresh the public model-config view. */
   fetchAiConfig(): Promise<void>;
   /** PR 10: save the model config (in-memory backend-side; key write-only).
@@ -419,8 +448,18 @@ async function loadWebllmEngine(model: string): Promise<void> {
         webllm: { ...useStore.getState().webllm, progress: fraction, progressText: text },
       });
     });
+    // A completed load means the weights are now in browser cache — record it
+    // (persisted) so the settings UI can offer to remove them later.
+    persistWebllmDownloaded(true);
     useStore.setState({
-      webllm: { ...useStore.getState().webllm, phase: "ready", progress: 1, progressText: "ready", error: null },
+      webllm: {
+        ...useStore.getState().webllm,
+        phase: "ready",
+        progress: 1,
+        progressText: "ready",
+        downloaded: true,
+        error: null,
+      },
     });
   } catch (e) {
     useStore.setState({
@@ -493,6 +532,7 @@ export const useStore = create<AppStore>((set, get) => ({
     progress: 0,
     progressText: "",
     model: readWebllmModel(),
+    downloaded: readWebllmDownloaded(),
     error: null,
   },
 
@@ -813,6 +853,33 @@ export const useStore = create<AppStore>((set, get) => ({
       webllm: { ...get().webllm, enabled: false, phase: "idle", progress: 0, progressText: "", error: null },
     });
     await unloadEngine();
+  },
+
+  async removeWebllmDownload() {
+    const model = get().webllm.model;
+    // Off + reclaim: clear the opt-in AND the downloaded flag up front so the UI
+    // reflects the removal immediately, then delete the cached weights.
+    persistWebllm(false, model);
+    persistWebllmDownloaded(false);
+    set({
+      webllm: {
+        ...get().webllm,
+        enabled: false,
+        phase: "idle",
+        progress: 0,
+        progressText: "",
+        downloaded: false,
+        error: null,
+      },
+    });
+    try {
+      await deleteModelFromCache(model);
+      get().pushToast("On-device AI removed and its download cleared.", "info");
+    } catch (e) {
+      // Best-effort: the feature is already off; the cache delete just couldn't
+      // finish (e.g. partial eviction). Say so rather than pretend it worked.
+      get().pushToast(`On-device AI turned off, but clearing the cache failed: ${errText(e)}`, "error");
+    }
   },
 
   async fetchAiConfig() {

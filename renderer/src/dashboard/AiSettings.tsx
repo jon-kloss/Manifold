@@ -66,6 +66,7 @@ export default function AiSettings({
   const webllm = useStore((s) => s.webllm);
   const enableWebllm = useStore((s) => s.enableWebllm);
   const disableWebllm = useStore((s) => s.disableWebllm);
+  const removeWebllmDownload = useStore((s) => s.removeWebllmDownload);
   // M7: store-held so App's Escape handler can close the popover first. M2:
   // the flag is context-scoped — this instance is open only when it owns the
   // flag, so the sibling header's <AiSettings/> can't cross-wire it.
@@ -203,13 +204,29 @@ export default function AiSettings({
                       Run a small model right in your browser — no API key, no server. One-time ~0.9
                       GB download, then cached for next time.
                     </div>
-                    <button
-                      className="btn btn-primary"
-                      data-testid="webllm-enable"
-                      onClick={() => void enableWebllm()}
-                    >
-                      ENABLE ON-DEVICE AI
-                    </button>
+                    <div className="dash-ai-actions">
+                      <button
+                        className="btn btn-primary"
+                        data-testid="webllm-enable"
+                        onClick={() => void enableWebllm()}
+                      >
+                        {webllm.downloaded ? "TURN BACK ON" : "ENABLE ON-DEVICE AI"}
+                      </button>
+                    </div>
+                    {/* Off, but the ~0.9 GB weights are still cached — offer to
+                        reclaim the space (re-enabling later re-downloads). */}
+                    {webllm.downloaded && (
+                      <div className="dash-ai-ondevice-stored">
+                        <span className="dash-ai-hint">Model still stored (~0.9 GB).</span>
+                        <button
+                          className="btn btn-ghost dash-ai-remove"
+                          data-testid="webllm-remove"
+                          onClick={() => void removeWebllmDownload()}
+                        >
+                          REMOVE DOWNLOAD
+                        </button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -241,6 +258,18 @@ export default function AiSettings({
                           onClick={() => void enableWebllm()}
                         >
                           RETRY
+                        </button>
+                      )}
+                      {/* Remove reclaims the ~0.9 GB (full uninstall); Disable
+                          just stops using it but keeps the download for a fast
+                          re-enable. Offered once the weights are actually cached. */}
+                      {webllm.downloaded && (
+                        <button
+                          className="btn btn-ghost dash-ai-remove"
+                          data-testid="webllm-remove"
+                          onClick={() => void removeWebllmDownload()}
+                        >
+                          REMOVE DOWNLOAD
                         </button>
                       )}
                       <button

@@ -78,3 +78,14 @@ export async function unloadEngine(): Promise<void> {
   worker = null;
   currentModel = null;
 }
+
+/** Delete `model`'s cached weights/wasm/config from browser storage, reclaiming
+ *  the ~0.9 GB the download occupies. Imports the library on demand — only ever
+ *  called after a model was downloaded, so the chunk is already cached. Unloads
+ *  first so nothing is mid-read. Best-effort; resolves even if parts were
+ *  already evicted. */
+export async function deleteModelFromCache(model: string): Promise<void> {
+  await unloadEngine();
+  const webllm = await import("@mlc-ai/web-llm");
+  await webllm.deleteModelAllInfoInCache(model);
+}
