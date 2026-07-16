@@ -10,6 +10,7 @@ import WizardModal from "./wizard/WizardModal";
 import ProposalReview from "./proposal/ProposalReview";
 import AdvisorPanel from "./advisor/AdvisorPanel";
 import Onboarding from "./shell/Onboarding";
+import ToastHost from "./shell/ToastHost";
 import Dashboard from "./dashboard/Dashboard";
 import { useStore, errText } from "./state/store";
 import { isEditableTarget } from "./lib/keys";
@@ -202,6 +203,7 @@ export default function App() {
         {/* Resume overlay: on top of the restored view, never over a review
             or the empty-plan Onboarding (Principle 1 — reveals the map on dismiss). */}
         {dashboardOpen && !reviewing && !emptyPlan && <Dashboard />}
+        <ToastHost />
       </main>
       <StatusBar overlayMode={mode === "overlay"} />
     </div>
