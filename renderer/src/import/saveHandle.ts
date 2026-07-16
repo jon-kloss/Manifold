@@ -43,7 +43,10 @@ function openDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("indexedDB open failed"));
+    req.onerror = () => {
+      dbPromise = null; // don't cache a rejection — a later call should retry
+      reject(req.error ?? new Error("indexedDB open failed"));
+    };
   });
   return dbPromise;
 }

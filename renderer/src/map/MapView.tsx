@@ -178,6 +178,7 @@ export default function MapView() {
   // otherwise. Chrome/Edge get the no-re-pick handle path; elsewhere it falls
   // back to the classic file input (re-pick each time, no retention).
   const syncImport = useStore((s) => s.syncImport);
+  const pushToast = useStore((s) => s.pushToast);
   const catalogLoaded = useStore((s) => {
     const bv = s.gamedata.buildVersion;
     return !!bv && bv !== "fixture";
@@ -185,7 +186,9 @@ export default function MapView() {
   const [syncMeta, setSyncMetaState] = useState<SyncMeta | undefined>();
   const [syncing, setSyncing] = useState(false);
   useEffect(() => {
-    if (__WASM_BACKEND__) void getSyncMeta().then(setSyncMetaState);
+    // A missing/blocked handle store just means no "last synced" affordance —
+    // never a dead end (matches the file's no-crash discipline).
+    if (__WASM_BACKEND__) void getSyncMeta().then(setSyncMetaState).catch(() => {});
   }, []);
   const onSync = useCallback(async () => {
     if (!catalogLoaded || syncing) return; // defensive; the button is disabled too
@@ -204,10 +207,14 @@ export default function MapView() {
         await setSyncMeta(meta);
         setSyncMetaState(meta);
       }
+    } catch (e) {
+      // IDB/permission-layer failure (syncImport itself never rejects) — toast
+      // instead of leaking an unhandled rejection.
+      pushToast(`Couldn't sync from save — ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
       setSyncing(false);
     }
-  }, [catalogLoaded, syncing, syncImport]);
+  }, [catalogLoaded, syncing, syncImport, pushToast]);
   const routeDraftRef = useRef<typeof routeDraft>(null);
   routeDraftRef.current = routeDraft;
   // one-shot: swallow the contextmenu that follows a route-drag release
