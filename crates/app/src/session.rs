@@ -1890,9 +1890,12 @@ impl Session {
             // solves it with edge vars, ceilings and elastic targets alone.
             // Only a factory with neither groups nor edges keeps the error.
             if snapshot.groups.is_empty() && snapshot.edges.is_empty() {
-                derived
-                    .factories
-                    .insert(fid.clone(), Self::error_factory("no machine groups yet"));
+                // A factory whose ONLY groups were skipped as unknown recipes
+                // lands here — exactly the case where the catalog pointer helps
+                // most — so surface the warning instead of a bare "no groups".
+                let mut ef = Self::error_factory("no machine groups yet");
+                ef.warnings = self.unknown_recipe_warnings(fid);
+                derived.factories.insert(fid.clone(), ef);
                 self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                 continue;
             }

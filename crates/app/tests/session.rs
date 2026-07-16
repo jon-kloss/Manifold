@@ -2855,3 +2855,43 @@ fn unknown_production_recipe_surfaces_a_warning_but_a_generator_does_not() {
         df.warnings[0]
     );
 }
+
+// Task #82 (review follow-up): a factory whose ONLY group is an unknown recipe
+// lands in the "no machine groups yet" error path — exactly where the catalog
+// pointer helps most — so the warning must survive there too, not be swallowed.
+#[test]
+fn all_unknown_recipe_factory_still_surfaces_the_catalog_warning() {
+    let mut s = Session::in_memory(None).unwrap();
+    let r = s
+        .edit(vec![Command::CreateFactory {
+            name: "MODDED".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: "GRASS FIELDS".into(),
+        }])
+        .unwrap();
+    let fid = r.created[0].clone();
+
+    let resp = s
+        .edit(vec![Command::AddGroup {
+            factory: fid.clone(),
+            machine: "Build_SmelterMk1_C".into(),
+            recipe: "Recipe_Totally_Unknown_C".into(),
+            count: 1,
+            clock: 1.0,
+            graph_pos: gp(200.0, 200.0),
+            floor: 0,
+        }])
+        .unwrap();
+    let df = &resp.derived.factories[&fid];
+    assert_eq!(
+        df.warnings.len(),
+        1,
+        "the catalog warning survives the no-groups error path: {:?}",
+        df.warnings
+    );
+    assert!(df.warnings[0].contains("catalog"));
+}
