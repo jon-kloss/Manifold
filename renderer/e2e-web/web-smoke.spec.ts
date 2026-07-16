@@ -326,6 +326,23 @@ test("Phase 4a: uploading a Docs.json swaps the catalog and persists across relo
   // The gate lifts now that a real catalog is loaded: Sync from save is live.
   await expect(syncBtn).toHaveAttribute("aria-disabled", "false");
 
+  // Auto-sync owns the manual sync: turning it ON disables the manual button
+  // (the timer handles re-reads) until it's turned back off. Drive the toggle
+  // through the store (the real toggle needs an OS file picker we can't script).
+  const setAuto = (on: boolean) =>
+    page.evaluate(
+      (v) =>
+        (
+          window as unknown as { __ficsitStore: { getState(): { setAutoSync(e: boolean): void } } }
+        ).__ficsitStore.getState().setAutoSync(v),
+      on,
+    );
+  await setAuto(true);
+  await expect(syncBtn).toHaveAttribute("aria-disabled", "true");
+  await expect(syncBtn).toContainText("Auto-syncing");
+  await setAuto(false);
+  await expect(syncBtn).toHaveAttribute("aria-disabled", "false");
+
   // RELOAD + PERSIST — the worker reads the docs bytes back out of IndexedDB and
   // reconstructs the session on the real catalog. If docs were not persisted,
   // this would fall back to "fixture" (the M-class bug this test guards).

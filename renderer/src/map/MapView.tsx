@@ -878,68 +878,68 @@ export default function MapView() {
                     <span className="data-menu-item-sub">.sav — your factories as a Built layer</span>
                   </button>
                   {__WASM_BACKEND__ && (
-                    // aria-disabled (not the native attribute) so the how-to-enable
-                    // tooltip still shows on hover — browsers suppress title on a
-                    // natively-disabled button. The click is guarded instead.
-                    <button
-                      className="data-menu-item"
-                      onClick={() => {
-                        if (!catalogLoaded || syncing) return;
-                        setDataMenu(false);
-                        void onSync();
-                      }}
-                      aria-disabled={!catalogLoaded || syncing}
-                      title={
-                        catalogLoaded
-                          ? undefined
-                          : "Upload your Docs.json first (DATA ▸ Upload Docs.json) to enable save sync"
-                      }
-                      data-testid="btn-sync-save"
-                    >
-                      <span className="data-menu-item-label">
-                        {syncing ? "Syncing…" : "Sync from save"}
-                      </span>
-                      <span className="data-menu-item-sub">
-                        {!catalogLoaded
-                          ? "needs your Docs.json — upload it below to enable"
-                          : syncMeta
-                            ? `re-read ${syncMeta.name} · synced ${relTime(syncMeta.lastSyncedAt)}`
-                            : fsAccessSupported()
-                              ? "re-read your save & reconcile — no re-pick next time"
-                              : "re-read your save & reconcile"}
-                      </span>
-                    </button>
-                  )}
-                  {__WASM_BACKEND__ && (
-                    <div className="data-menu-block">
-                      <button
-                        className="data-menu-item"
-                        onClick={() => void onToggleAutoSync()}
-                        aria-disabled={!autoSyncReady}
-                        title={
-                          !catalogLoaded
-                            ? "Upload your Docs.json first (DATA ▸ Upload Docs.json) to enable save sync"
-                            : !fsAccessSupported()
-                              ? "Auto-sync needs the File System Access API — use Chrome or Edge"
-                              : undefined
-                        }
-                        data-testid="btn-auto-sync"
-                        aria-pressed={autoSync.enabled}
-                      >
-                        <span className="data-menu-item-label">
-                          Auto-sync{autoSync.enabled ? " · ON" : ""}
-                          <span className={`autosync-dot ${autoSync.enabled ? "on" : ""}`} aria-hidden />
-                        </span>
-                        <span className="data-menu-item-sub">
-                          {!catalogLoaded
-                            ? "needs your Docs.json — upload it below to enable"
-                            : !fsAccessSupported()
-                              ? "needs Chrome or Edge (File System Access)"
+                    // One "Sync from save" control with an Auto toggle. aria-disabled
+                    // (not the native attribute) keeps the how-to-enable tooltip on
+                    // hover — browsers suppress title on a natively-disabled button.
+                    // Turning Auto on disables the manual click (the timer owns it).
+                    <div className="data-menu-block sync-block">
+                      <div className="sync-row">
+                        <button
+                          className="data-menu-item sync-main"
+                          onClick={() => {
+                            if (!catalogLoaded || syncing || autoSync.enabled) return;
+                            setDataMenu(false);
+                            void onSync();
+                          }}
+                          aria-disabled={!catalogLoaded || syncing || autoSync.enabled}
+                          title={
+                            !catalogLoaded
+                              ? "Upload your Docs.json first (DATA ▸ Upload Docs.json) to enable save sync"
                               : autoSync.enabled
-                                ? `re-reads every ${autoSync.intervalMin} min · applies safe changes, asks on conflicts`
-                                : "re-read on a timer · applies safe changes, asks on conflicts"}
-                        </span>
-                      </button>
+                                ? "Auto-sync is on — turn it off to sync manually"
+                                : undefined
+                          }
+                          data-testid="btn-sync-save"
+                        >
+                          <span className="data-menu-item-label">
+                            {autoSync.enabled ? "Auto-syncing" : syncing ? "Syncing…" : "Sync from save"}
+                          </span>
+                          <span className="data-menu-item-sub">
+                            {!catalogLoaded
+                              ? "needs your Docs.json — upload it below to enable"
+                              : autoSync.enabled
+                                ? `every ${autoSync.intervalMin} min · applies safe changes, asks on conflicts`
+                                : syncMeta
+                                  ? `re-read ${syncMeta.name} · synced ${relTime(syncMeta.lastSyncedAt)}`
+                                  : fsAccessSupported()
+                                    ? "re-read your save & reconcile — no re-pick next time"
+                                    : "re-read your save & reconcile"}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={autoSync.enabled}
+                          aria-disabled={!autoSyncReady}
+                          className={`sync-auto ${autoSync.enabled ? "on" : ""}`}
+                          onClick={() => void onToggleAutoSync()}
+                          title={
+                            autoSyncReady
+                              ? autoSync.enabled
+                                ? "Auto-sync on — click to turn off"
+                                : "Auto-sync: re-read on a timer (Chrome/Edge, this tab open)"
+                              : !catalogLoaded
+                                ? "Upload your Docs.json first (DATA ▸ Upload Docs.json) to enable save sync"
+                                : "Auto-sync needs the File System Access API — use Chrome or Edge"
+                          }
+                          data-testid="btn-auto-sync"
+                        >
+                          <span className="sync-auto-text mono">AUTO</span>
+                          <span className="sync-auto-track" aria-hidden>
+                            <span className="sync-auto-knob" />
+                          </span>
+                        </button>
+                      </div>
                       {autoSync.enabled && autoSyncReady && (
                         <div className="autosync-intervals" data-testid="autosync-intervals">
                           <span className="autosync-label mono">every</span>

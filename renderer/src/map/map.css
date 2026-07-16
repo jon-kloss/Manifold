@@ -655,26 +655,72 @@
   font-size: 11px;
   color: var(--ink-500);
 }
-/* Auto-sync toggle: a status dot + an interval chip row when enabled. The block
-   groups the toggle button and its chips so the bottom border reads as one row. */
+/* Sync-from-save + Auto toggle: one row (main action + a switch), plus an
+   interval chip row when Auto is on. The block owns the bottom border so the
+   whole control reads as a single menu row. */
 .data-menu-block {
   border-bottom: 1px solid var(--steel-700);
 }
 .data-menu-block .data-menu-item {
   border-bottom: none;
 }
-.autosync-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-left: 6px;
-  vertical-align: middle;
-  background: var(--steel-600);
+.sync-row {
+  display: flex;
+  align-items: stretch;
 }
-.autosync-dot.on {
+.sync-main {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+/* The Auto switch: an AUTO label + a pill track/knob, orange when on. */
+.sync-auto {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border: none;
+  border-left: 1px solid var(--steel-700);
+  background: none;
+  cursor: pointer;
+}
+.sync-auto[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+.sync-auto-text {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-500);
+}
+.sync-auto.on .sync-auto-text {
+  color: var(--signal-orange, #ff7a1a);
+}
+.sync-auto-track {
+  position: relative;
+  width: 28px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--steel-600);
+  transition: background 0.15s ease;
+}
+.sync-auto.on .sync-auto-track {
   background: var(--signal-orange, #ff7a1a);
-  box-shadow: 0 0 6px var(--signal-orange, #ff7a1a);
+}
+.sync-auto-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--ink-100);
+  transition: transform 0.15s ease;
+}
+.sync-auto.on .sync-auto-knob {
+  transform: translateX(13px);
 }
 .autosync-intervals {
   display: flex;
