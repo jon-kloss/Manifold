@@ -80,8 +80,8 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
         </button>
       </header>
 
-      {df?.warnings?.map((w) => (
-        <div className="drawer-warn mono" data-testid="factory-warning" key={w}>
+      {df?.warnings?.map((w, i) => (
+        <div className="drawer-warn mono" data-testid="factory-warning" key={i}>
           ⚠ {w}
         </div>
       ))}

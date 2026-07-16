@@ -195,6 +195,8 @@ export interface AppStore {
       otherwise swallows — uploads, clipboard copies, background successes. */
   pushToast(message: string, kind?: ToastKind): void;
   dismissToast(id: number): void;
+  /** Clear all toasts (e.g. a file drag starts, so they can't block the drop). */
+  clearToasts(): void;
   undo(): Promise<void>;
   redo(): Promise<void>;
   setSelection(sel: Selection): void;
@@ -497,12 +499,21 @@ export const useStore = create<AppStore>((set, get) => ({
 
   pushToast(message, kind = "info") {
     const id = nextToastId++;
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind }] }));
+    set((s) => {
+      // Coalesce an identical trailing toast (a burst of the same refusal
+      // shouldn't stack), and cap the visible column so it can't run away.
+      const last = s.toasts[s.toasts.length - 1];
+      if (last && last.message === message && last.kind === kind) return {};
+      return { toasts: [...s.toasts, { id, message, kind }].slice(-4) };
+    });
     // Errors linger a little longer than successes; both auto-dismiss.
     setTimeout(() => get().dismissToast(id), kind === "error" ? 6000 : 4200);
   },
   dismissToast(id) {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  },
+  clearToasts() {
+    set({ toasts: [] });
   },
 
   setSelection: (selection) => set({ selection }),
@@ -779,7 +790,9 @@ export const useStore = create<AppStore>((set, get) => ({
     await get().hydrate();
     const first = outcome.proposals[0] ?? null;
     set({ reviewing: first, selection: null });
-    if (outcome.note) get().reportCmdError(outcome.note);
+    // The adopt succeeded (proposals opened); its note is informational, not a
+    // refusal — surface it as a neutral toast, not the red error path.
+    if (outcome.note) get().pushToast(outcome.note, "info");
     return outcome;
   },
 
