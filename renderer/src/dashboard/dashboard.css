@@ -271,6 +271,71 @@
   justify-content: flex-end;
   gap: 8px;
 }
+/* On-device (WebLLM) opt-in block — sits atop the hosted-model form. */
+.dash-ai-ondevice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dash-ai-ondevice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dash-ai-ondevice-head .t-label {
+  color: var(--ink-500);
+  font-size: 9px;
+}
+.dash-ai-badge {
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--steel-600);
+}
+.dash-ai-badge-ready {
+  color: var(--flow-ok, #6fcf97);
+  border-color: var(--flow-ok, #6fcf97);
+}
+/* Download/compile progress — a slim determinate bar + a mono status line. */
+.dash-ai-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dash-ai-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--steel-700, #2a2f36);
+  overflow: hidden;
+}
+.dash-ai-progress-fill {
+  height: 100%;
+  background: var(--signal-orange, #ff7a1a);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.dash-ai-progress-text {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+/* Section separator with an inline caption ("OR HOSTED MODEL"). */
+.dash-ai-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+  color: var(--ink-500);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+}
+.dash-ai-divider::before,
+.dash-ai-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--steel-600);
+}
 .dash-badge.ai {
   border-color: var(--bp-600);
   color: var(--bp-400);

@@ -30,6 +30,7 @@ export default function App() {
   const auditRequest = useStore((s) => s.auditRequest);
   const planHash = useStore((s) => s.planHash);
   const hydrate = useStore((s) => s.hydrate);
+  const initWebllm = useStore((s) => s.initWebllm);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
 
@@ -42,7 +43,11 @@ export default function App() {
     if (hydrated.current) return;
     hydrated.current = true;
     void hydrate();
-  }, [hydrate]);
+    // On-device AI: reconcile the persisted opt-in with live WebGPU support and,
+    // if previously enabled, warm the cached weights so NEXT MOVES ranks
+    // on-device without a second click. Cheap no-op when never opted in.
+    initWebllm();
+  }, [hydrate, initWebllm]);
 
   // Auto-present the resume dashboard ONCE per plan when there's work to resume
   // (a non-empty build queue OR open re-import drift) — else fall straight

@@ -40,14 +40,12 @@ use crate::opportunities::Opportunity;
 use crate::session::Session;
 
 /// Cap on validated wildcard ideas (PR 3) — a brainstorm, not a backlog.
-#[cfg(feature = "native-http")]
 const WILDCARD_CAP: usize = 3;
 
 /// Sanity ceiling for a model-invented wildcard `rate` (PR #11 M3). The value
 /// flows verbatim into the wizard prefill; a negative, zero, non-finite, or
 /// absurd figure (1e12/min) is meaningless there, so it is dropped server-side
 /// (the item prefill still stands; the wizard falls back to its own default).
-#[cfg(feature = "native-http")]
 const WILDCARD_MAX_RATE: f64 = 100_000.0;
 
 /// Default provider-call timeout. Configurable per session (POST
@@ -381,7 +379,6 @@ pub fn preferences_prompt(prefs: &NextPreferences) -> String {
 }
 
 /// Case-insensitive keyword hit for the wildcard preference filter (PR 3).
-#[cfg(feature = "native-http")]
 fn mentions_any(text: &str, keywords: &[&str]) -> bool {
     keywords.iter().any(|k| text.contains(k))
 }
@@ -393,7 +390,6 @@ fn mentions_any(text: &str, keywords: &[&str]) -> bool {
 /// their heuristic siblings), and cap the list. `rate` is a starting hint the
 /// wizard lets the user edit (never a solver fact), so it is clamped to a sane
 /// positive band and dropped otherwise (PR #11 M3) — but never trusted.
-#[cfg(feature = "native-http")]
 fn validate_wildcards(
     raw: &[WildcardReply],
     catalog: &BTreeSet<String>,
@@ -465,7 +461,6 @@ fn validate_wildcards(
 /// Strip a courtesy markdown fence (```json … ```): some small models fence
 /// despite instructions, and unfencing is lossless — the inner text still has
 /// to parse as the strict schema or we fall back.
-#[cfg(feature = "native-http")]
 fn strip_fences(content: &str) -> &str {
     let t = content.trim();
     let Some(rest) = t.strip_prefix("```") else {
@@ -481,7 +476,6 @@ fn strip_fences(content: &str) -> &str {
 /// after it, so "Sure! {…} Let me know!" succeeds where a first-`{`/last-`}`
 /// window would not. Prose braces BEFORE the real JSON still fail the parse
 /// → heuristic fallback (never worse than the old strict parse).
-#[cfg(feature = "native-http")]
 fn extract_reply(content: &str) -> Option<ModelReply> {
     let t = strip_fences(content);
     let start = t.find('{')?;
@@ -600,6 +594,36 @@ pub struct RankJob {
     prefs: NextPreferences,
 }
 
+impl RankJob {
+    /// The system prompt the model must be given alongside [`Self::user_message`].
+    pub fn system_prompt(&self) -> &'static str {
+        RANK_SYSTEM_PROMPT
+    }
+    /// The user message (JSON: empire state + candidates + optional preferences).
+    pub fn user_message(&self) -> &str {
+        &self.user
+    }
+    /// The model id the caller declared (echoed back on the badge).
+    pub fn model_id(&self) -> &str {
+        &self.model
+    }
+}
+
+/// Apply a raw model reply — text produced by a model the HOST ran (a browser
+/// WebGPU/WASM model, say) — to the job through the exact same validation
+/// firewall the native provider path uses. Pure: no HTTP, safe in wasm. A reply
+/// that isn't parseable JSON, or that carries no usable content, degrades to the
+/// heuristic list with a surfaced error — identical to a failed provider call.
+pub fn apply_rank_reply(job: RankJob, content: &str) -> RankResponse {
+    match extract_reply(content) {
+        Some(reply) => ranked_response(job, &reply),
+        None => heuristic(
+            job.candidates,
+            Some("model reply was not valid JSON".to_string()),
+        ),
+    }
+}
+
 /// Outcome of the under-lock half of a rank: either the answer is already
 /// known (unconfigured / nothing to rank) or a [`RankJob`] remains to be
 /// executed OFF the session lock.
@@ -667,10 +691,30 @@ pub fn rank_state(s: &mut Session) -> serde_json::Value {
 /// /api/next ([`Session::next_moves`] — never a second source of truth);
 /// config + context are snapshotted so nothing later needs `&Session`.
 pub fn prepare_rank(s: &mut Session) -> RankPrep {
-    let candidates = s.next_moves();
     if !s.ai.configured() {
-        return RankPrep::Done(heuristic(candidates, None));
+        // No provider configured → the free heuristic list, no model call.
+        return RankPrep::Done(heuristic(s.next_moves(), None));
     }
+    build_rank_prep(s, None)
+}
+
+/// ON-DEVICE variant (Web/WebLLM): the model runs in the browser, so there is
+/// no `base_url`/key to configure — [`AiConfig`] is bypassed entirely. This
+/// keeps the on-device feature independent of the bring-your-own-model config
+/// surface: with the browser engine ready the host drives prepare → run →
+/// [`apply_rank_reply`]; with it absent, plain [`prepare_rank`] still returns a
+/// clean heuristic (no "provider unavailable" error). `model` is carried only
+/// for provenance — the browser engine already holds the weights.
+pub fn prepare_rank_on_device(s: &mut Session, model: &str) -> RankPrep {
+    build_rank_prep(s, Some(model))
+}
+
+/// Shared body of the two `prepare_rank*` entry points: snapshot candidates +
+/// context into a self-contained [`RankJob`] (nothing later needs `&Session`).
+/// `on_device` set → the browser runs the model (empty base_url/key); unset →
+/// the job carries the configured provider coordinates.
+fn build_rank_prep(s: &mut Session, on_device: Option<&str>) -> RankPrep {
+    let candidates = s.next_moves();
     if candidates.is_empty() {
         // Nothing to rank — honest silence needs no model call.
         return RankPrep::Done(heuristic(candidates, None));
@@ -700,10 +744,18 @@ pub fn prepare_rank(s: &mut Session) -> RankPrep {
         user_obj["preferences"] = serde_json::Value::String(prefs_line);
     }
     let user = user_obj.to_string();
+    let (base_url, model, api_key) = match on_device {
+        Some(m) => (String::new(), m.to_string(), None),
+        None => (
+            s.ai.base_url.trim_end_matches('/').to_string(),
+            s.ai.model.clone(),
+            s.ai.api_key.clone(),
+        ),
+    };
     RankPrep::Call(RankJob {
-        base_url: s.ai.base_url.trim_end_matches('/').to_string(),
-        model: s.ai.model.clone(),
-        api_key: s.ai.api_key.clone(),
+        base_url,
+        model,
+        api_key,
         timeout_secs: s.ai.timeout_secs,
         candidates,
         user,
@@ -742,7 +794,6 @@ fn request_body(job: &RankJob, lean: bool) -> serde_json::Value {
 /// `engine:"model"` with zero model content — a silent no-op wearing the AI
 /// badge. Partial replies still degrade per field (see [`ModelReply`]), and
 /// the pure firewall keeps its own empty-tolerance as defense in depth.
-#[cfg(feature = "native-http")]
 fn ranked_response(job: RankJob, reply: &ModelReply) -> RankResponse {
     // Validate wildcards FIRST (catalog + preferences): a reply that carries
     // ONLY valid wildcards is still model CONTENT, not a schema failure. But a

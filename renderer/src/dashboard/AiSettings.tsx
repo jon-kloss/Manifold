@@ -63,6 +63,9 @@ export default function AiSettings({
   const aiConfig = useStore((s) => s.aiConfig);
   const fetchAiConfig = useStore((s) => s.fetchAiConfig);
   const saveAiConfig = useStore((s) => s.saveAiConfig);
+  const webllm = useStore((s) => s.webllm);
+  const enableWebllm = useStore((s) => s.enableWebllm);
+  const disableWebllm = useStore((s) => s.disableWebllm);
   // M7: store-held so App's Escape handler can close the popover first. M2:
   // the flag is context-scoped — this instance is open only when it owns the
   // flag, so the sibling header's <AiSettings/> can't cross-wire it.
@@ -134,7 +137,14 @@ export default function AiSettings({
     }
   };
 
-  const chipLabel = aiConfig?.configured ? `AI: ${aiConfig.model}` : "AI: OFF";
+  // The chip reflects whichever engine is live: a configured hosted model wins
+  // (explicitly chosen), else a ready on-device model, else OFF.
+  const chipLabel = aiConfig?.configured
+    ? `AI: ${aiConfig.model}`
+    : webllm.phase === "ready"
+      ? "AI: on-device"
+      : "AI: OFF";
+  const pct = Math.round(webllm.progress * 100);
 
   return (
     <span className="dash-ai-wrap">
@@ -165,6 +175,87 @@ export default function AiSettings({
             }
           }}
         >
+          {/* ON-DEVICE (WebLLM) — the no-key, no-server path; the primary
+              option on the web deploy. Opt-in + lazy: nothing downloads until
+              ENABLE is pressed. Web build only — the prepare/apply transport it
+              rides on exists solely on the wasm backend; desktop keeps the
+              bring-your-own-model form below as its AI path. */}
+          {__WASM_BACKEND__ && (
+            <>
+              <div className="dash-ai-ondevice" data-testid="ai-ondevice">
+                <div className="dash-ai-ondevice-head">
+                  <span className="t-label">ON-DEVICE AI</span>
+                  {webllm.enabled && webllm.phase === "ready" && (
+                    <span className="dash-ai-badge dash-ai-badge-ready">READY</span>
+                  )}
+                </div>
+                {!webllm.supported ? (
+                  <div className="dash-ai-hint" data-testid="webllm-unsupported">
+                    This browser has no WebGPU — on-device AI needs a desktop Chrome or Edge. You can
+                    still connect a hosted model below.
+                  </div>
+                ) : !webllm.enabled ? (
+                  <>
+                    <div className="dash-ai-hint">
+                      Run a small model right in your browser — no API key, no server. One-time ~0.9
+                      GB download, then cached for next time.
+                    </div>
+                    <button
+                      className="btn btn-primary"
+                      data-testid="webllm-enable"
+                      onClick={() => void enableWebllm()}
+                    >
+                      ENABLE ON-DEVICE AI
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {webllm.phase === "loading" && (
+                      <div className="dash-ai-progress" data-testid="webllm-progress">
+                        <div className="dash-ai-progress-track">
+                          <div className="dash-ai-progress-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="dash-ai-progress-text mono">
+                          {pct}% · {webllm.progressText || "downloading…"}
+                        </span>
+                      </div>
+                    )}
+                    {webllm.phase === "ready" && (
+                      <div className="dash-ai-hint">
+                        On-device model ready — NEXT MOVES ranks and narrates locally.
+                      </div>
+                    )}
+                    {webllm.phase === "error" && (
+                      <div className="dash-ai-url-error mono" data-testid="webllm-error">
+                        {webllm.error ?? "on-device AI failed to load"}
+                      </div>
+                    )}
+                    <div className="dash-ai-actions">
+                      {webllm.phase === "error" && (
+                        <button
+                          className="btn btn-ghost"
+                          data-testid="webllm-retry"
+                          onClick={() => void enableWebllm()}
+                        >
+                          RETRY
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-ghost"
+                        data-testid="webllm-disable"
+                        onClick={() => void disableWebllm()}
+                      >
+                        DISABLE
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="dash-ai-divider" data-testid="ai-divider">
+                <span>OR HOSTED MODEL</span>
+              </div>
+            </>
+          )}
           <div className="dash-ai-row">
             <label className="t-label" htmlFor="ai-preset">
               PROVIDER

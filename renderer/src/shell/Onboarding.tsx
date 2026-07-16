@@ -11,6 +11,9 @@ export default function Onboarding() {
   const saveViewState = useStore((s) => s.saveViewState);
   const setWizard = useStore((s) => s.setWizard);
   const setPlacing = useStore((s) => s.setPlacingFactory);
+  const webllm = useStore((s) => s.webllm);
+  const enableWebllm = useStore((s) => s.enableWebllm);
+  const pushToast = useStore((s) => s.pushToast);
 
   const empty = Object.keys(plan.factories).length === 0;
   const dismissed = viewState.onboarded === true;
@@ -87,6 +90,23 @@ export default function Onboarding() {
           >
             <span className="mono onboard-key">↑</span>
             <span>Upload your Docs.json</span>
+          </button>
+        )}
+        {__WASM_BACKEND__ && webllm.supported && !webllm.enabled && (
+          <button
+            className="onboard-door"
+            onClick={() => {
+              done();
+              // Opt-in + lazy: the ~0.9 GB download starts now; progress is
+              // visible any time in the NEXT MOVES ⚙ AI settings. A toast tells
+              // the user it started, since onboarding dismisses on click.
+              void enableWebllm();
+              pushToast("Downloading on-device AI — this runs once, then it's cached.", "info");
+            }}
+            data-testid="door-webllm"
+          >
+            <span className="mono onboard-key">✦</span>
+            <span>Enable on-device AI (one-time download)</span>
           </button>
         )}
       </div>

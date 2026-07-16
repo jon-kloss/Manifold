@@ -599,6 +599,15 @@ export interface RankResponse {
   wildcards?: Wildcard[];
 }
 
+/** On-device (WebLLM) rank split — the result of the under-lock PHASE 1
+ *  (`next_rank_prepare`). `mode:"done"` means no model call is needed (no
+ *  candidates) and `response` is the finished heuristic list; `mode:"call"`
+ *  parks a job Rust-side and hands the host the exact messages to run in the
+ *  browser, whose reply goes back through `next_rank_apply` (the firewall). */
+export type RankPrepare =
+  | { mode: "done"; response: RankResponse }
+  | { mode: "call"; system: string; user: string; model: string };
+
 /** PR 3 — a validated wildcard idea BEYOND the derived candidate list: the one
  *  labeled, wizard-gated firewall exception. It carries no engine action and no
  *  trusted numbers. `item` is catalog-validated (absent when the model's hint

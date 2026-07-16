@@ -22,6 +22,7 @@
     "@fontsource/barlow": "^5.2.5",
     "@fontsource/jetbrains-mono": "^5.2.5",
     "@fontsource/rajdhani": "^5.2.5",
+    "@mlc-ai/web-llm": "^0.2.84",
     "@tauri-apps/api": "^2.9.0",
     "@xyflow/react": "^12.8.4",
     "leaflet": "^1.9.4",

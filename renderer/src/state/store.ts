@@ -3,6 +3,14 @@
 import { create } from "zustand";
 import { backend } from "./backend";
 import { applyPatches } from "./patch";
+import {
+  DEFAULT_WEBLLM_MODEL,
+  engineReady,
+  loadEngine,
+  runRank,
+  unloadEngine,
+  webgpuSupported,
+} from "../ai/webllm";
 import type {
   AdoptOutcome,
   AdvisorFeed,
@@ -29,6 +37,53 @@ import type {
 
 /** Human text for a rejected backend call (DomainError string or Error). */
 export const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+// On-device AI opt-in persists in localStorage — a device/browser capability
+// choice (WebGPU + origin-cached weights), NOT plan data, so it must survive a
+// plan switch and live outside the wasm ViewState. Reads are guarded: a private
+// window with storage blocked simply reads the default (off), never throws.
+const WEBLLM_ENABLED_KEY = "ficsit.webllm.enabled";
+const WEBLLM_MODEL_KEY = "ficsit.webllm.model";
+function readWebllmEnabled(): boolean {
+  try {
+    return localStorage.getItem(WEBLLM_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function readWebllmModel(): string {
+  try {
+    return localStorage.getItem(WEBLLM_MODEL_KEY) || DEFAULT_WEBLLM_MODEL;
+  } catch {
+    return DEFAULT_WEBLLM_MODEL;
+  }
+}
+function persistWebllm(enabled: boolean, model: string): void {
+  try {
+    localStorage.setItem(WEBLLM_ENABLED_KEY, enabled ? "1" : "0");
+    localStorage.setItem(WEBLLM_MODEL_KEY, model);
+  } catch {
+    /* storage blocked (private window) — the in-memory choice still works this session */
+  }
+}
+
+/** On-device AI (WebLLM) opt-in state. `enabled`/`model` persist in
+ *  localStorage (a device capability choice, not plan data); the rest is
+ *  live engine status the settings UI + status chip read. */
+export type WebllmPhase = "idle" | "loading" | "ready" | "error";
+export interface WebllmState {
+  /** user opted in (persisted). The weights only download once true. */
+  enabled: boolean;
+  /** WebGPU present — false hides the offer with an honest note. */
+  supported: boolean;
+  phase: WebllmPhase;
+  /** download/compile fraction 0..1 while `phase === "loading"`. */
+  progress: number;
+  progressText: string;
+  /** selected on-device model id (persisted). */
+  model: string;
+  error: string | null;
+}
 
 /** Transient action-feedback notice. */
 export type ToastKind = "success" | "error" | "info";
@@ -177,6 +232,8 @@ export interface AppStore {
   /** which advisor-panel tab is active; the status-bar NEXT chip deep-links
       here by setting it to "next". */
   advisorTab: AdvisorTab;
+  /** On-device AI (WebLLM) opt-in + engine status. See {@link WebllmState}. */
+  webllm: WebllmState;
 
   hydrate(): Promise<void>;
   /** Web Phase 4a: upload a real Docs.json (raw bytes) for the browser session,
@@ -252,6 +309,17 @@ export interface AppStore {
       answers a list; a failed model call surfaces via the status-bar chip and
       falls back to the heuristic order (never blocks the dashboard). */
   rankMoves(): Promise<RankResponse>;
+  /** On-device AI: read the persisted opt-in + WebGPU support on boot, and
+      (if the user previously enabled it) kick off the cached weight load so the
+      engine is ready without a second click. Safe to call on every backend. */
+  initWebllm(): void;
+  /** On-device AI: opt in for `model` (defaults to the persisted/last model) —
+      persists the choice and downloads+compiles the weights, streaming progress
+      into `webllm`. Rejects to an `error` phase (surfaced in the settings UI),
+      never throws to the caller. */
+  enableWebllm(model?: string): Promise<void>;
+  /** On-device AI: opt out — persist disabled, free the engine + GPU memory. */
+  disableWebllm(): Promise<void>;
   /** PR 10: refresh the public model-config view. */
   fetchAiConfig(): Promise<void>;
   /** PR 10: save the model config (in-memory backend-side; key write-only).
@@ -333,6 +401,55 @@ let lastMergedHash = "";
 let nextToastId = 1;
 const rankKey = (): string => `${useStore.getState().planHash}:${useStore.getState().rankEpoch}`;
 
+// ---- On-device AI (WebLLM) engine orchestration ----------------------------
+
+/** Download+compile the browser model, streaming progress into `webllm`. On
+ *  success `phase` lands "ready"; on failure "error" with a human reason (the
+ *  preference stays enabled so the settings UI offers a retry). Idempotent — a
+ *  second call while ready/loading is a no-op via the module engine singleton. */
+async function loadWebllmEngine(model: string): Promise<void> {
+  const cur = useStore.getState().webllm;
+  if (cur.phase === "loading") return;
+  useStore.setState({
+    webllm: { ...useStore.getState().webllm, phase: "loading", progress: 0, progressText: "starting…", error: null },
+  });
+  try {
+    await loadEngine(model, (fraction, text) => {
+      useStore.setState({
+        webllm: { ...useStore.getState().webllm, progress: fraction, progressText: text },
+      });
+    });
+    useStore.setState({
+      webllm: { ...useStore.getState().webllm, phase: "ready", progress: 1, progressText: "ready", error: null },
+    });
+  } catch (e) {
+    useStore.setState({
+      webllm: { ...useStore.getState().webllm, phase: "error", error: errText(e) },
+    });
+  }
+}
+
+/** Run the prepare → browser-model → apply round-trip. PHASE 1 snapshots the
+ *  candidates+context under the wasm lock; if there is nothing to rank it hands
+ *  back a finished heuristic list (no model call). Otherwise the model runs
+ *  in-browser and its raw reply goes back through the Rust firewall (PHASE 2).
+ *  A model/generation failure still resolves through `rankApply` — a blank reply
+ *  degrades to the heuristic order, never a thrown error. */
+async function rankOnDevice(model: string): Promise<RankResponse> {
+  const prep = await backend.rankPrepare!(model);
+  if (prep.mode === "done") return prep.response;
+  let content = "";
+  try {
+    content = await runRank(prep.system, prep.user);
+  } catch {
+    // generation failed — fall through with empty content so the firewall
+    // (apply_rank_reply) returns the heuristic list rather than surfacing raw
+    // WebGPU/engine errors to the user.
+    content = "";
+  }
+  return backend.rankApply!(content);
+}
+
 export const useStore = create<AppStore>((set, get) => ({
   ready: false,
   error: null,
@@ -367,6 +484,15 @@ export const useStore = create<AppStore>((set, get) => ({
   rank: null,
   rankEpoch: 0,
   advisorTab: "feed",
+  webllm: {
+    enabled: readWebllmEnabled(),
+    supported: webgpuSupported(),
+    phase: "idle",
+    progress: 0,
+    progressText: "",
+    model: readWebllmModel(),
+    error: null,
+  },
 
   async hydrate() {
     // DC-F3: a hydrate is a fresh plan surface (boot, or optimizeAdopt's
@@ -635,13 +761,56 @@ export const useStore = create<AppStore>((set, get) => ({
   async rankMoves() {
     let resp: RankResponse;
     try {
-      resp = await backend.nextRank();
+      // On-device path: only when the browser engine is actually LOADED (not
+      // merely opted-in — a still-downloading engine falls through to the free
+      // heuristic, no error). The prepare/apply split runs the model in-browser
+      // between two under-lock backend halves; the Rust firewall validates the
+      // reply, so a weak on-device answer degrades to the heuristic order.
+      const w = get().webllm;
+      const canModel =
+        w.enabled && w.phase === "ready" && engineReady() && backend.rankPrepare && backend.rankApply;
+      resp = canModel ? await rankOnDevice(w.model) : await backend.nextRank();
     } catch (e) {
       get().reportCmdError(errText(e));
       return { engine: "heuristic", opportunities: [] };
     }
     if (resp.error) get().reportCmdError(resp.error);
     return resp;
+  },
+
+  initWebllm() {
+    // Reconcile the boot-time defaults with live WebGPU support, then — if the
+    // user previously opted in and the browser can run it — warm the (cached)
+    // weights so NEXT MOVES ranks on-device without a second click.
+    const supported = webgpuSupported();
+    set({ webllm: { ...get().webllm, supported } });
+    const w = get().webllm;
+    if (w.enabled && supported && w.phase === "idle") {
+      void loadWebllmEngine(w.model);
+    } else if (w.enabled && !supported) {
+      // Opted in on a device that can no longer run it — keep the preference
+      // but present an honest, non-fatal note instead of a broken "ready".
+      set({ webllm: { ...get().webllm, phase: "error", error: "this browser has no WebGPU" } });
+    }
+  },
+
+  async enableWebllm(model) {
+    const chosen = model ?? get().webllm.model ?? DEFAULT_WEBLLM_MODEL;
+    persistWebllm(true, chosen);
+    set({ webllm: { ...get().webllm, enabled: true, model: chosen, error: null } });
+    if (!webgpuSupported()) {
+      set({ webllm: { ...get().webllm, phase: "error", error: "this browser has no WebGPU" } });
+      return;
+    }
+    await loadWebllmEngine(chosen);
+  },
+
+  async disableWebllm() {
+    persistWebllm(false, get().webllm.model);
+    set({
+      webllm: { ...get().webllm, enabled: false, phase: "idle", progress: 0, progressText: "", error: null },
+    });
+    await unloadEngine();
   },
 
   async fetchAiConfig() {

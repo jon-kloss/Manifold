@@ -32,6 +32,7 @@ import type {
   PreferencesView,
   Proposal,
   ProposalConsequence,
+  RankPrepare,
   RankResponse,
   RouteKind,
   TrainAnswer,
@@ -156,6 +157,12 @@ export class WasmBackend implements Backend {
   }
   nextRank() {
     return this.call<RankResponse>("next_rank");
+  }
+  rankPrepare(model: string) {
+    return this.call<RankPrepare>("next_rank_prepare", model);
+  }
+  rankApply(content: string) {
+    return this.call<RankResponse>("next_rank_apply", content);
   }
   setPreferences(prefs: NextPreferences) {
     return this.call<PreferencesView>("set_next_preferences", prefs);

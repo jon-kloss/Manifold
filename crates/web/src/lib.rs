@@ -68,6 +68,11 @@ pub struct WebSession {
     /// serve the same `{ log, done, outcome }` shape the async dev-bridge/Tauri
     /// path serves — only always already-done.
     jobs: BTreeMap<String, JobProgress>,
+    /// A rank job parked between `next_rank_prepare` (which handed its messages to
+    /// the host so a browser-run model — WebLLM — could produce a reply) and
+    /// `next_rank_apply` (which validates that reply through the firewall). Single
+    /// -flight: a fresh prepare replaces any stale pending job.
+    pending_rank: Option<ai::RankJob>,
 }
 
 #[wasm_bindgen]
@@ -101,6 +106,7 @@ impl WebSession {
         Ok(WebSession {
             inner,
             jobs: BTreeMap::new(),
+            pending_rank: None,
         })
     }
 
@@ -303,14 +309,57 @@ impl WebSession {
                 false,
                 to_js(&serde_json::json!({ "opportunities": self.inner.next_moves() }))?,
             )),
-            // native-http is OFF in wasm → this is the heuristic fallback plus an
-            // honest error (JS fetch is Phase 4). prepare_rank + execute_rank stay
-            // the exact two-phase split the host uses; here they run back to back.
-            // Read-only: it derives a ranking, it does not write the store.
+            // native-http is OFF in wasm, so there is no in-process HTTP client.
+            // `next_rank` is the no-model path: prepare returns the heuristic list
+            // directly (unconfigured) and execute_rank only echoes it back with an
+            // honest error if a config somehow slipped through. Read-only.
             "next_rank" => {
                 let resp = match ai::prepare_rank(&mut self.inner) {
                     RankPrep::Done(r) => r,
                     RankPrep::Call(job) => ai::execute_rank(job),
+                };
+                Ok((false, to_js(&resp)?))
+            }
+            // On-device model split. `next_rank_prepare` runs the under-lock half
+            // for a browser-run (WebLLM) model — the host calls it ONLY once its
+            // engine is ready, so it bypasses AiConfig entirely
+            // (`prepare_rank_on_device`). With no candidates it returns the finished
+            // heuristic response ({mode:"done"}); otherwise it parks the job and
+            // hands its system+user messages to the host to run in-browser
+            // ({mode:"call"}). The arg is the active model id (provenance only).
+            // Read-only — it derives, it never writes the store.
+            "next_rank_prepare" => {
+                let model: String = from_js(args).unwrap_or_default();
+                let msg = match ai::prepare_rank_on_device(&mut self.inner, &model) {
+                    RankPrep::Done(r) => {
+                        self.pending_rank = None;
+                        serde_json::json!({ "mode": "done", "response": r })
+                    }
+                    RankPrep::Call(job) => {
+                        let out = serde_json::json!({
+                            "mode": "call",
+                            "system": job.system_prompt(),
+                            "user": job.user_message(),
+                            "model": job.model_id(),
+                        });
+                        self.pending_rank = Some(job);
+                        out
+                    }
+                };
+                Ok((false, to_js(&msg)?))
+            }
+            // `next_rank_apply` takes the host-run model's raw reply text and
+            // validates it through the exact same firewall the native provider
+            // path uses (apply_rank_reply). No pending job (e.g. a stale double
+            // call) degrades to the heuristic list, never an error to the UI.
+            "next_rank_apply" => {
+                let content: String = from_js(args)?;
+                let resp = match self.pending_rank.take() {
+                    Some(job) => ai::apply_rank_reply(job, &content),
+                    None => match ai::prepare_rank(&mut self.inner) {
+                        RankPrep::Done(r) => r,
+                        RankPrep::Call(job) => ai::execute_rank(job),
+                    },
                 };
                 Ok((false, to_js(&resp)?))
             }

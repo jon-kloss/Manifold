@@ -24,6 +24,7 @@ import type {
   PreferencesView,
   Proposal,
   ProposalConsequence,
+  RankPrepare,
   RankResponse,
   RouteKind,
   TrainAnswer,
@@ -63,6 +64,15 @@ export interface Backend {
   /** PR 10: rank-and-narrate over the SAME candidates as nextMoves. Always
    *  answers — unconfigured or failed model calls return the heuristic list. */
   nextRank(): Promise<RankResponse>;
+  /** On-device split, PHASE 1 (web only). Snapshots candidates+context and
+   *  either finishes ({mode:"done"}) or hands back the messages to run the
+   *  browser model on ({mode:"call"}). Undefined on transports with no
+   *  in-browser model (desktop/dev-bridge). */
+  rankPrepare?(model: string): Promise<RankPrepare>;
+  /** On-device split, PHASE 2 (web only). Validates the browser model's raw
+   *  reply through the same firewall the native provider uses; a blank/invalid
+   *  reply degrades to the heuristic list, never an error. */
+  rankApply?(content: string): Promise<RankResponse>;
   /** PR 3: persist plan-scoped NEXT preferences (not undoable, outside
    *  plan_hash). Returns the updated view. */
   setPreferences(prefs: NextPreferences): Promise<PreferencesView>;
