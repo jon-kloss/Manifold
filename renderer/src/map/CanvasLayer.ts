@@ -167,6 +167,10 @@ export class MapCanvasLayer extends L.Layer {
     document.addEventListener("visibilitychange", this.syncAnimLoop);
     void this.loadTerrain();
     map.on("move zoom viewreset resize", this.redraw, this);
+    // Follow Leaflet's zoom animation instead of snapping at the end: the
+    // container-fixed canvas gets a matching scale-about-pivot transform so the
+    // nodes/routes glide with the pins and tiles, then redraw crisp at zoomend.
+    map.on("zoomanim", this.animateZoom, this);
     this.redraw();
     this.syncAnimLoop();
     return this;
@@ -174,6 +178,7 @@ export class MapCanvasLayer extends L.Layer {
 
   onRemove(map: L.Map): this {
     map.off("move zoom viewreset resize", this.redraw, this);
+    map.off("zoomanim", this.animateZoom, this);
     if (this.animRaf != null) cancelAnimationFrame(this.animRaf);
     this.animRaf = null;
     this.reduceMotion?.removeEventListener("change", this.syncAnimLoop);
@@ -315,10 +320,40 @@ export class MapCanvasLayer extends L.Layer {
     return node.zone === "cave" ? `${code} ${purity} ▾CAVE` : `${code} ${purity}`;
   }
 
+  /** Match Leaflet's zoom animation on the container-fixed overlays. Scaling
+   *  about `pivot` (chosen so the animation's target centre lands at the
+   *  container centre) reproduces Leaflet's end state exactly, so the crisp
+   *  redraw at zoomend replaces the transform with no visible snap. A CSS
+   *  transition matching Leaflet's (0.25s) makes the two glide in lockstep. */
+  private animateZoom = (e: L.ZoomAnimEvent) => {
+    const map = this.mapRef;
+    if (!map) return;
+    const scale = map.getZoomScale(e.zoom);
+    if (scale === 1) return;
+    const size = map.getSize();
+    const ce = map.latLngToContainerPoint(e.center);
+    const px = (size.x / 2 - scale * ce.x) / (1 - scale);
+    const py = (size.y / 2 - scale * ce.y) / (1 - scale);
+    for (const c of [this.canvas, this.animCanvas]) {
+      if (!c) continue;
+      c.style.transition = "transform 0.25s cubic-bezier(0,0,0.25,1)";
+      c.style.transformOrigin = `${px}px ${py}px`;
+      c.style.transform = `scale(${scale})`;
+    }
+  };
+
   redraw = () => {
     const map = this.mapRef;
     const canvas = this.canvas;
     if (!map || !canvas) return;
+    // Drop any zoom-follow transform instantly (no reverse-glide) now that we
+    // draw at the final zoom.
+    for (const c of [canvas, this.animCanvas]) {
+      if (c && c.style.transform) {
+        c.style.transition = "none";
+        c.style.transform = "";
+      }
+    }
     const size = map.getSize();
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== size.x * dpr || canvas.height !== size.y * dpr) {
@@ -915,7 +950,6 @@ export class MapCanvasLayer extends L.Layer {
     const canvasBg = css("--map-canvas");
     // hoisted out of the per-node loop — one lookup per redraw, not per node
     const fontMono = css("--font-mono");
-    const inkGhost = css("--ink-ghost");
     const ink100 = css("--ink-100");
     // Resource identity fill (map data, not a UI signal): read type at a glance.
     // Palette resolved once per redraw, indexed by extracted resource class.
@@ -964,22 +998,42 @@ export class MapCanvasLayer extends L.Layer {
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // purity ring: pure solid / normal dashed / impure dotted
+      // Claimed nodes (a factory is extracting here) get a soft signal halo so
+      // "in use" reads at a glance against the wall of free nodes.
+      if (state.claimed && !state.conflict && !selected) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = signal;
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      // purity ring: pure solid / normal dashed / impure dotted. Colour also
+      // carries claim status — a claimed node's ring is signal-orange, not the
+      // dim ink of a free node.
       ctx.beginPath();
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      const ringW = hovered || selected ? 2 : 1.5;
+      const ringW = hovered || selected || state.claimed ? 2 : 1.5;
       if (node.purity === "normal") ctx.setLineDash([4, 3]);
       else if (node.purity === "impure") ctx.setLineDash([1.5, 2.5]);
       else ctx.setLineDash([]);
-      if (state.conflict) {
+      if (state.conflict || state.claimed) {
         // canvas-bg under-stroke keyline (same dash pattern, drawn first) so
-        // the crit dashes keep an edge over any resource fill
+        // the coloured dashes keep an edge over any resource fill
         ctx.lineWidth = ringW + 2;
         ctx.strokeStyle = canvasBg;
         ctx.stroke();
       }
       ctx.lineWidth = ringW;
-      ctx.strokeStyle = state.conflict ? crit : hovered || selected ? ink100 : inkMuted;
+      ctx.strokeStyle = state.conflict
+        ? crit
+        : hovered || selected
+          ? ink100
+          : state.claimed
+            ? signal
+            : inkMuted;
       ctx.stroke();
       ctx.setLineDash([]);
 
@@ -1038,17 +1092,24 @@ export class MapCanvasLayer extends L.Layer {
         ctx.stroke();
       }
 
-      // mono ghost label under every node (mock 2a: FE PURE #08) — culled
-      // when it would overlap an earlier chip/label (hover/select always
-      // wins); at world zoom the dots speak for themselves
+      // mono label under every node (mock 2a: FE PURE #08), on a dark plate so
+      // it stays legible over the terrain/grid instead of washing out as bare
+      // text — culled when it would overlap an earlier chip/label (hover/select
+      // always wins); at world zoom the dots speak for themselves
       if (zoom > 2 || hovered || selected || state.conflict) {
         ctx.font = `500 9px ${fontMono}`;
         const label = this.nodeLabel(node);
         const lw = ctx.measureText(label).width;
         if (hovered || selected || this.placeChip(p.x - lw / 2, p.y + r + 3, lw, 12)) {
+          const ly = p.y + r + 12;
+          const padX = 4;
+          ctx.fillStyle = "rgba(9, 12, 16, 0.76)";
+          ctx.beginPath();
+          ctx.roundRect(p.x - lw / 2 - padX, ly - 10, lw + padX * 2, 13, 3);
+          ctx.fill();
           ctx.textAlign = "center";
-          ctx.fillStyle = state.conflict ? crit : hovered || selected ? inkMuted : inkGhost;
-          ctx.fillText(label, p.x, p.y + r + 12);
+          ctx.fillStyle = state.conflict ? crit : state.claimed ? signal : ink100;
+          ctx.fillText(label, p.x, ly);
           ctx.textAlign = "left";
         }
       }
