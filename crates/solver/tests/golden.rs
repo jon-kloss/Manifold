@@ -1039,9 +1039,27 @@ fn driven_generator_does_not_clobber_an_edited_targets_ceiling() {
     let snap = FactorySnapshot {
         groups: vec![coal_gen(Some(4.0)), coke],
         edges: vec![
-            edge("e-coal-gen", NodeRef::Input("in-coal".into()), g("gen"), "coal", 780.0),
-            edge("e-coal-coke", NodeRef::Input("in-coal".into()), g("coke"), "coal", 780.0),
-            edge("e-coke-out", g("coke"), NodeRef::Output("out-coke".into()), "coke", 780.0),
+            edge(
+                "e-coal-gen",
+                NodeRef::Input("in-coal".into()),
+                g("gen"),
+                "coal",
+                780.0,
+            ),
+            edge(
+                "e-coal-coke",
+                NodeRef::Input("in-coal".into()),
+                g("coke"),
+                "coal",
+                780.0,
+            ),
+            edge(
+                "e-coke-out",
+                g("coke"),
+                NodeRef::Output("out-coke".into()),
+                "coke",
+                780.0,
+            ),
         ],
         inputs: vec![InputPortSpec {
             id: "in-coal".into(),
@@ -1063,8 +1081,15 @@ fn driven_generator_does_not_clobber_an_edited_targets_ceiling() {
         },
     )
     .unwrap();
-    assert_close(r.ports["out-coke"], 60.0, "edited target reaches its true ceiling");
-    assert!(!r.clamped, "60/min is feasible — must not be clamped to the generator");
+    assert_close(
+        r.ports["out-coke"],
+        60.0,
+        "edited target reaches its true ceiling",
+    );
+    assert!(
+        !r.clamped,
+        "60/min is feasible — must not be clamped to the generator"
+    );
     if let Some(tc) = &r.target_ceiling {
         assert_close(tc.max_rate, 60.0, "ceiling is the full coal-limited rate");
     }
