@@ -14,6 +14,7 @@ import { isEditableTarget } from "../lib/keys";
 import type { WorldNode } from "../state/types";
 import SummaryDrawer from "./SummaryDrawer";
 import NodeDrawer from "./NodeDrawer";
+import ResourceOverview from "./ResourceOverview";
 import RouteDrawer from "./RouteDrawer";
 import SwitchDrawer from "./SwitchDrawer";
 import RoutePopover from "./RoutePopover";
@@ -1072,6 +1073,7 @@ export default function MapView() {
 
       {hoveredNode && !selectedNode && <NodeTooltip node={hoveredNode} />}
 
+      <ResourceOverview />
       <Legend />
 
       {selectedFactory && <SummaryDrawer factory={selectedFactory} />}
