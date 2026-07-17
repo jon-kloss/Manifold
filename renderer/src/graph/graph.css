@@ -834,3 +834,111 @@
   font-size: 11px;
   color: var(--ink-ghost);
 }
+
+/* ---- MAKE FROM RESOURCES modal: pick a makeable item, auto-build the chain ---- */
+.mfr-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 14, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+.mfr-modal {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px));
+}
+.mfr-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-bottom: 2px solid var(--signal-500);
+  flex: none;
+  flex-wrap: wrap;
+}
+.mfr-stamp {
+  padding: 2px 8px;
+  background: var(--signal-500);
+  color: var(--on-signal);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.mfr-sub {
+  font-size: 10px;
+  color: var(--ink-500);
+  flex: 1;
+  min-width: 0;
+}
+.mfr-empty {
+  padding: 28px 20px;
+  color: var(--ink-400);
+  font-size: 13px;
+  line-height: 1.5;
+  text-wrap: balance;
+  text-align: center;
+}
+.mfr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 14px;
+  overflow-y: auto;
+}
+.mfr-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--steel-800);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-200);
+}
+.mfr-item:hover {
+  border-color: var(--signal-500);
+}
+.mfr-item.selected {
+  border-color: var(--signal-500);
+  background: var(--steel-700);
+}
+.mfr-item-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mfr-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--steel-700);
+  flex: none;
+}
+.mfr-rate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mfr-rate input {
+  width: 74px;
+  padding: 5px 8px;
+  background: var(--steel-950);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  color: var(--ink-100);
+}
+.mfr-foot .btn-primary {
+  margin-left: auto;
+}
