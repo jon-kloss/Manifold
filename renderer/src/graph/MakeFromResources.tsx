@@ -9,7 +9,7 @@ import { useStore } from "../state/store";
 import { itemLabel } from "../lib/format";
 import ItemIcon from "../lib/ItemIcon";
 import type { Command, EdgeEnd, Id } from "../state/types";
-import { makeableItems, planChain, type ChainGroup } from "./makeFromResources";
+import { makeableItems, planChain, type ChainGroup } from "./makeChain";
 
 export default function MakeFromResources({
   factoryId,

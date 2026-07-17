@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { GameData } from "../state/types";
-import { makeableItems, planChain } from "./makeFromResources";
+import { makeableItems, planChain } from "./makeChain";
 
 // Minimal synthetic catalog: Iron Ore (raw) → Iron Ingot → {Iron Plate, Iron Rod},
 // plus Water (fluid) → Fake item to prove fluids are excluded.
