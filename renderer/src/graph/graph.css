@@ -293,8 +293,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 84px;
+  height: 84px;
   background: var(--steel-900);
   border: 1px solid var(--steel-500);
   border-radius: var(--radius);
@@ -307,15 +307,22 @@
 .junction-card.selected {
   border: 2px solid var(--signal-500);
 }
+.junction-sprite {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: auto;
+  pointer-events: none;
+}
 .junction-floor {
   position: absolute;
-  bottom: 2px;
-  right: 3px;
-  font-size: 8px;
+  bottom: 3px;
+  right: 4px;
+  font-size: 9px;
   color: var(--ink-500);
 }
 .junction-glyph {
-  font-size: 22px;
+  font-size: 40px;
   line-height: 1;
   color: var(--ink-200);
 }
