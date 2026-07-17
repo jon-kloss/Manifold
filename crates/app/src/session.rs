@@ -1664,6 +1664,11 @@ impl Session {
     pub fn snapshot(&self, fid: &Id) -> Option<FactorySnapshot> {
         let factory = self.state.factories.get(fid)?;
         let mut groups = Vec::new();
+        // Generators (recipe products the POWER pseudo-item) and their nameplate
+        // MW (count×clock×per-machine). Collected so we can auto-provide a power
+        // sink below for any that the user hasn't wired to a __PowerMW port —
+        // otherwise the demand-driven solver idles them at 0 MW.
+        let mut generators: Vec<(Id, f64)> = Vec::new();
         for gid in &factory.groups {
             let g = self.state.groups.get(gid)?;
             // A group whose recipe can't be resolved must NOT fail the whole
@@ -1679,6 +1684,16 @@ impl Session {
                 continue;
             };
             let power = gamedata::db::recipe_power(&self.gamedata, recipe, &g.machine);
+            // Nameplate generation = per-machine POWER out-rate × count × clock.
+            if let Some((_, amt)) = recipe
+                .products
+                .iter()
+                .find(|(item, _)| item == gamedata::docs::POWER_ITEM)
+            {
+                let per_machine = amt * 60.0 / recipe.duration_s;
+                let nameplate = per_machine * g.effective_count() as f64 * g.effective_clock();
+                generators.push((g.id.clone(), nameplate));
+            }
             groups.push(GroupSpec {
                 id: g.id.clone(),
                 recipe: RecipeSpec {
@@ -1712,7 +1727,7 @@ impl Session {
                 }),
             }
         }
-        let edges = self
+        let mut edges: Vec<EdgeSpec> = self
             .state
             .edges
             .values()
@@ -1725,6 +1740,43 @@ impl Session {
                 capacity: belt_capacity(e.tier),
             })
             .collect();
+        // Auto-power sink: a generator the user hasn't wired to a __PowerMW
+        // output still needs a demand to run against, or the solver idles it at
+        // 0 MW. Synthesize a power output port (target = nameplate) + edge for
+        // each un-wired generator, so it runs at nameplate — FUEL-LIMITED by the
+        // LP (it degrades to what its fuel supply actually feeds, and 0 when
+        // unfueled), never a false number. Generators already wired to a real
+        // power port are left alone (no double-count). These synthetic ids never
+        // touch the plan; the renderer iterates real entities, so they're
+        // invisible except through the generator's own out-rate.
+        let power_wired: std::collections::BTreeSet<String> = edges
+            .iter()
+            .filter(|e| e.item == gamedata::docs::POWER_ITEM)
+            .filter_map(|e| match &e.from {
+                NodeRef::Group(gid) => Some(gid.clone()),
+                _ => None,
+            })
+            .collect();
+        for (gid, nameplate) in &generators {
+            if power_wired.contains(gid) {
+                continue;
+            }
+            let port_id = format!("__genpower::{gid}");
+            outputs.push(OutputPortSpec {
+                id: port_id.clone(),
+                item: gamedata::docs::POWER_ITEM.to_string(),
+                rate: *nameplate,
+            });
+            edges.push(EdgeSpec {
+                id: format!("__genedge::{gid}"),
+                from: NodeRef::Group(gid.clone()),
+                to: NodeRef::Output(port_id),
+                item: gamedata::docs::POWER_ITEM.to_string(),
+                // Power isn't belted — a huge finite cap so it never binds (an
+                // infinite cap would poison the T0 slack ratios with NaN).
+                capacity: 1.0e12,
+            });
+        }
         let junctions = self
             .state
             .junctions

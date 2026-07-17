@@ -130,6 +130,17 @@
   margin-left: auto;
   color: var(--ink-300);
 }
+/* Generator card: power-forward. The bolt + amber MW read as generation, not
+   a produced belt item. */
+.gen-recipe .gen-bolt {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--flow-ok, #6cd08a);
+}
+.gen-recipe .gen-mw {
+  font-weight: 700;
+  color: var(--flow-ok, #6cd08a);
+}
 .fp-strip {
   display: flex;
   align-items: flex-end;

@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore } from "../state/store";
-import { fmtClock, fmtPower, fmtRate } from "../lib/format";
+import { fmtClock, fmtPower, fmtRate, itemLabel } from "../lib/format";
 import { footprintFor, FOOTPRINT_MAX_PX, FOOTPRINT_SCALE } from "./footprints";
 import { POWER_ITEM, type GameData, type MachineGroup } from "../state/types";
 import ItemIcon, { ICONS } from "../lib/ItemIcon";
@@ -86,6 +86,14 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
 
   const outRate = recipe?.products?.[0] ? dg?.outRates[recipe.products[0][0]] ?? 0 : 0;
 
+  // Generators produce the POWER pseudo-item and consume fuel — they don't read
+  // like a production machine. isGen re-skins the card to say what it does:
+  // GENERATES <MW> and burns <fuel>/min, dropping the always-0 "draw" footer.
+  const isGen = (recipe?.products ?? []).some((pr) => pr[0] === POWER_ITEM);
+  const fuelItem = recipe?.ingredients?.[0]?.[0] ?? null;
+  const fuelRate = fuelItem ? dg?.inRates[fuelItem] ?? 0 : 0;
+  const fuelName = fuelItem ? itemLabel(gamedata.items, fuelItem) : "";
+
   return (
     <div className={`group-card frame-${group.status} ${selected ? "selected" : ""}`} data-testid={`group-${group.recipe}`}>
       <Handle type="target" position={Position.Left} className="belt-handle" />
@@ -103,27 +111,50 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
           <span className={deltaClock !== null ? `projected ${numCls}` : numCls}>{fmtClock(clockPct)}</span>
         </span>
       </header>
-      <div className="group-card-recipe">
-        <ItemIcon item={recipe?.products?.[0]?.[0] ?? ""} size={20} />
-        <span>{recipe?.displayName ?? group.recipe}</span>
-        <span className={`t-data-12 ${numCls}`} style={{ marginLeft: "auto" }}>
-          {recipe?.products?.[0]?.[0] === POWER_ITEM ? (
-            fmtPower(outRate) // generators: 1 pseudo-item/min ≡ 1 MW
-          ) : (
-            <>
-              {fmtRate(outRate)}
-              <span className="unit">/min</span>
-            </>
-          )}
-        </span>
-      </div>
+      {isGen ? (
+        // Generator: "⚡ GENERATES <MW>" + the fuel it burns. MW is the solved,
+        // fuel-limited generation (0 when unfueled — never a false promise).
+        <div
+          className="group-card-recipe gen-recipe"
+          title="Generation assumes a steady fuel supply. In-game a biomass burner is often hand-fed, so real output can be bursty."
+        >
+          <span className="gen-bolt" aria-hidden>
+            ⚡
+          </span>
+          <span>GENERATES</span>
+          <span className={`t-data-12 gen-mw ${numCls}`} style={{ marginLeft: "auto" }}>
+            {fmtPower(outRate)}
+          </span>
+        </div>
+      ) : (
+        <div className="group-card-recipe">
+          <ItemIcon item={recipe?.products?.[0]?.[0] ?? ""} size={20} />
+          <span>{recipe?.displayName ?? group.recipe}</span>
+          <span className={`t-data-12 ${numCls}`} style={{ marginLeft: "auto" }}>
+            {fmtRate(outRate)}
+            <span className="unit">/min</span>
+          </span>
+        </div>
+      )}
       <FootprintStrip gamedata={gamedata} machine={group.machine} count={deltaCount ?? group.count} />
-      <footer className="group-card-foot mono">
-        <span>IN {recipe?.ingredients.length ?? 0}</span>
-        <span>OUT {recipe?.products.length ?? 0}</span>
-        {data.showFloorBadge && <span className="floor-badge-foot">F{group.floor}</span>}
-        <span className={numCls}>{fmtPower(dg?.powerMw ?? 0)}</span>
-      </footer>
+      {isGen ? (
+        <footer className="group-card-foot mono">
+          <span>GENERATOR</span>
+          {fuelItem && (
+            <span className={numCls} style={{ marginLeft: "auto" }}>
+              BURNS {fmtRate(fuelRate)}/min {fuelName.toUpperCase()}
+            </span>
+          )}
+          {data.showFloorBadge && <span className="floor-badge-foot">F{group.floor}</span>}
+        </footer>
+      ) : (
+        <footer className="group-card-foot mono">
+          <span>IN {recipe?.ingredients.length ?? 0}</span>
+          <span>OUT {recipe?.products.length ?? 0}</span>
+          {data.showFloorBadge && <span className="floor-badge-foot">F{group.floor}</span>}
+          <span className={numCls}>{fmtPower(dg?.powerMw ?? 0)}</span>
+        </footer>
+      )}
       <Handle type="source" position={Position.Right} className="belt-handle" />
     </div>
   );
