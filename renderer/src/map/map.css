@@ -241,6 +241,111 @@
   border-radius: var(--radius);
   z-index: 20;
 }
+
+/* ---- empire resource ledger (top-left, below the search box) ---- */
+.resource-overview {
+  position: absolute;
+  left: 10px;
+  top: 56px;
+  width: 264px;
+  background: var(--steel-900);
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 240px);
+}
+.ro-toggle {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  color: var(--ink-300);
+  flex: 0 0 auto;
+}
+.ro-body {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+}
+.ro-power,
+.ro-head,
+.ro-row {
+  display: grid;
+  grid-template-columns: 1fr 3.2em 3.2em 3.6em;
+  align-items: center;
+  gap: 4px;
+}
+.ro-power {
+  padding: 4px 2px 6px;
+  border-bottom: 1px solid var(--steel-600);
+  font-size: 11px;
+}
+.ro-power-label {
+  font: 600 11px var(--font-mono);
+  color: var(--flow-warn);
+}
+.ro-head {
+  font-size: 9px;
+  color: var(--ink-faint);
+  padding: 2px 2px 0;
+}
+.ro-rows {
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ro-row {
+  font-size: 11px;
+  padding: 2px;
+  border-radius: 3px;
+}
+.ro-row:hover {
+  background: var(--steel-800, rgba(255, 255, 255, 0.04));
+}
+.ro-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-200);
+}
+.ro-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ro-cell {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-300);
+}
+.ro-make {
+  color: var(--flow-ok);
+}
+.ro-use {
+  color: var(--ink-400, var(--ink-300));
+}
+.ro-net.surplus {
+  color: var(--flow-ok);
+}
+.ro-net.deficit {
+  color: var(--flow-crit);
+}
+.ro-net.balanced {
+  color: var(--ink-faint);
+}
+.ro-empty {
+  font-size: 11px;
+  color: var(--ink-400, var(--ink-300));
+  padding: 4px 2px;
+  line-height: 1.4;
+}
 .legend-toggle {
   display: block;
   width: 100%;

@@ -28,6 +28,18 @@ const EPS: f64 = 1e-6;
 /// shortfall is never taken to save machines).
 const SHORTFALL_PENALTY: f64 = 1e6;
 
+/// Penalty per machine-equivalent a generator runs below its nameplate. THREE
+/// orders UNDER [`SHORTFALL_PENALTY`] so a real output target wins the fuel even
+/// when its line burns far more fuel per unit of output than the generator burns
+/// per machine-equivalent (the penalties are per-output vs per-machine, so the
+/// margin must cover the fuel-intensity ratio; 1000× covers every real recipe),
+/// yet still THREE orders above the machines term (coefficient 1.0 per
+/// machine-equivalent) so a generator with free fuel runs fully. This slack is
+/// its own variable, never an output port — it never enters `shortfalls`,
+/// `ports`, and (see the objective) is excluded from the ceiling pass so it
+/// cannot cannibalize the edited target's achievable ceiling.
+const GEN_PENALTY: f64 = 1e3;
+
 struct Lp {
     group_vars: Vec<Variable>,
     edge_vars: Vec<Variable>,
@@ -99,6 +111,12 @@ fn run_lp(
             _ => Some(vars.add(variable().min(0.0))),
         })
         .collect();
+    // One slack per driven generator: how far below nameplate it runs.
+    let gen_slack_vars: Vec<Option<Variable>> = snapshot
+        .groups
+        .iter()
+        .map(|g| g.driven_cycles.map(|_| vars.add(variable().min(0.0))))
+        .collect();
 
     let lp = Lp {
         group_vars,
@@ -121,9 +139,19 @@ fn run_lp(
         .flatten()
         .map(|&v| v * SHORTFALL_PENALTY)
         .sum();
+    let gen_penalty: Expression = gen_slack_vars
+        .iter()
+        .flatten()
+        .map(|&v| v * GEN_PENALTY)
+        .sum();
     let objective: Expression = match target_var {
+        // Ceiling pass: maximize the edited port WITHOUT gen_penalty. Including it
+        // let a driven generator sharing capped fuel outbid the -1000·t maximize
+        // term (GEN_PENALTY ≫ 1000), starving the edited port so its ceiling read
+        // ~0. The driven constraint (m + s == n) still holds, but with s free the
+        // generator simply yields all contested fuel to the port being measured.
         Some(t) => shortfall_penalty - 1000.0 * t + machines.clone() + power_tiebreak,
-        None => shortfall_penalty + machines.clone() + power_tiebreak,
+        None => shortfall_penalty + gen_penalty + machines.clone() + power_tiebreak,
     };
 
     let mut model = vars.minimise(objective).using(microlp);
@@ -142,6 +170,15 @@ fn run_lp(
                 .map(|ei| lp.edge_vars[ei])
                 .sum();
             model = model.with(constraint!(outflow <= m * g.recipe.out_rate(item)));
+        }
+        // Driven generator: elastic pull toward nameplate cycles. The input
+        // constraints (fuel inflow == m·in_rate, capped by belts/ceilings) pull
+        // it DOWN — never up — so it's fuel-limited (0 when unfueled). The slack
+        // is standalone (not an output port), so it stays out of `shortfalls`,
+        // `ports`, and the ceiling precompute; and GEN_PENALTY < SHORTFALL means
+        // a real output target wins any fight for shared fuel.
+        if let (Some(n), Some(s)) = (g.driven_cycles, gen_slack_vars[gi]) {
+            model = model.with(constraint!(m + s == n));
         }
     }
     for p in &snapshot.inputs {

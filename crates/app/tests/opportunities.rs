@@ -2450,3 +2450,35 @@ fn milestone_gap_renders_positive_zero_production() {
         o.evidence
     );
 }
+
+/// Integration: a generator wired for FUEL but with NO __PowerMW output port
+/// (the common case — the user just placed burners) now generates at nameplate,
+/// fuel-limited. Before the driven_cycles fix this read 0 MW / "NO GEN".
+#[test]
+fn unwired_generator_still_generates_at_nameplate() {
+    let mut s = Session::in_memory(None).unwrap();
+    let fid = mk_factory(&mut s, "BURNER PLANT", 0.0, 0.0);
+    let coal_in = add_port(&mut s, &fid, PortDirection::In, "Desc_Coal_C", Some(480.0));
+    let gens = add_group(
+        &mut s,
+        &fid,
+        "Build_GeneratorCoal_C",
+        "Recipe_Power_Build_GeneratorCoal_Desc_Coal_C",
+        4,
+    );
+    // Fuel wired; deliberately NO power output port.
+    belt(
+        &mut s,
+        &fid,
+        EdgeEnd::Port(coal_in),
+        EdgeEnd::Group(gens),
+        "Desc_Coal_C",
+    );
+    let derived = s.solve_all_readonly();
+    // 4 coal generators × 75 MW = 300 MW nameplate; coal ceiling 480 ≥ 60 needed.
+    let gen = derived.total_generation_mw;
+    assert!(
+        (gen - 300.0).abs() < 1.0,
+        "un-wired generator generates fuel-limited nameplate, got {gen} MW"
+    );
+}

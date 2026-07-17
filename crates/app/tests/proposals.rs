@@ -460,6 +460,52 @@ fn solve(s: &mut Session, goal: WizardGoal) -> WizardOutcome {
 }
 
 #[test]
+fn wizard_site_lands_within_map_bounds() {
+    // Regression: the site used to be first-picked-node + a fixed (220, 220)
+    // offset, which could shove an edge-node factory past the map edge (users
+    // saw a factory appear out of bounds). It now sits on the picked nodes'
+    // centroid, clamped inside the world — assert the CREATE lands in bounds.
+    let mut s = Session::in_memory(None).unwrap();
+    build_base(&mut s);
+    let outcome = solve(
+        &mut s,
+        WizardGoal {
+            items: vec![("Desc_IronRod_C".into(), 30.0)],
+            constraints: Default::default(),
+            milestone: None,
+            pinned_recipes: Default::default(),
+        },
+    );
+    let WizardOutcome::Proposal { proposal } = outcome else {
+        panic!("expected a proposal, got {outcome:?}");
+    };
+    let create = proposal
+        .items
+        .iter()
+        .find(|i| matches!(i.kind, planner_core::proposals::ProposalItemKind::Create))
+        .expect("proposal carries a CREATE site item");
+    let pos = create
+        .commands
+        .iter()
+        .find_map(|c| match c {
+            Command::CreateFactory { position, .. } => Some(*position),
+            _ => None,
+        })
+        .expect("CREATE item carries a CreateFactory command");
+    let b = &s.world.bounds;
+    assert!(
+        pos.x >= b.min_x && pos.x <= b.max_x && pos.y >= b.min_y && pos.y <= b.max_y,
+        "site ({:.0}, {:.0}) must sit within map bounds x[{:.0}, {:.0}] y[{:.0}, {:.0}]",
+        pos.x,
+        pos.y,
+        b.min_x,
+        b.max_x,
+        b.min_y,
+        b.max_y,
+    );
+}
+
+#[test]
 fn wizard_produces_reviewable_partially_acceptable_proposal() {
     let mut s = Session::in_memory(None).unwrap();
     build_base(&mut s);

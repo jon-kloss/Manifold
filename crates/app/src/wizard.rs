@@ -435,6 +435,10 @@ pub fn global_solve(
     // pick nodes per raw item, best purity first, clustered near first pick
     let mut picked_nodes: Vec<(String, String, f64)> = Vec::new(); // (node id, item, rate at Mk.2)
     let mut anchor: Option<(f64, f64)> = None;
+    // Running sum of picked node coordinates → the site lands on their centroid
+    // (close to every resource it draws), not just the first pick + a fixed
+    // offset (which could shove it off an edge node into out-of-bounds space).
+    let mut node_sum = (0.0f64, 0.0f64);
     let mut budget = c.node_budget;
     let mut binding: Option<String> = None;
     for (item, need) in &raw {
@@ -488,6 +492,8 @@ pub fn global_solve(
             if anchor.is_none() {
                 anchor = Some((n.x, n.y));
             }
+            node_sum.0 += n.x;
+            node_sum.1 += n.y;
             picked_nodes.push((n.id.clone(), item.clone(), rate));
             log(
                 phase,
@@ -533,17 +539,22 @@ pub fn global_solve(
         }
     }
 
-    let site_pos = anchor
-        .map(|(x, y)| MapPos {
-            x: x + 220.0,
-            y: y + 220.0,
-            z: 0.0,
-        })
-        .unwrap_or(MapPos {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        });
+    // Place the site on the centroid of the nodes it claims — close to every
+    // resource it draws — nudged slightly off the cluster so the pin doesn't
+    // cover a node marker, then CLAMPED inside the map so it can never land
+    // out of bounds (an edge node + offset, or a stray save-only coordinate).
+    let raw_site = if picked_nodes.is_empty() {
+        // No metered raws (everything supply-assumed): fall back to the existing
+        // empire's centroid, else the map center — never a blind (0,0).
+        empire_centroid(state).unwrap_or((
+            (world.bounds.min_x + world.bounds.max_x) / 2.0,
+            (world.bounds.min_y + world.bounds.max_y) / 2.0,
+        ))
+    } else {
+        let n = picked_nodes.len() as f64;
+        (node_sum.0 / n + 120.0, node_sum.1 / n + 120.0)
+    };
+    let site_pos = clamp_to_bounds(raw_site, &world.bounds);
     let goal_name = goal
         .items
         .first()
@@ -1264,6 +1275,35 @@ pub fn pick_recipe<'a>(
     pinned: &BTreeMap<String, String>,
 ) -> Option<&'a gamedata::docs::Recipe> {
     RecipeResolver::new(gd, unlocked, include_alts, pinned).resolve(item)
+}
+
+/// Centroid of the existing factory pins, if any — the anchor for a site that
+/// draws only supply-assumed raws (no nodes to cluster on).
+fn empire_centroid(state: &PlanState) -> Option<(f64, f64)> {
+    let mut sum = (0.0f64, 0.0f64);
+    let mut n = 0.0f64;
+    for f in state.factories.values() {
+        sum.0 += f.position.x;
+        sum.1 += f.position.y;
+        n += 1.0;
+    }
+    (n > 0.0).then(|| (sum.0 / n, sum.1 / n))
+}
+
+/// Keep a site inside the map. A margin holds the pin (and its chip) off the
+/// very edge; the `.max(lo)` guards a degenerate bounds where the margins would
+/// cross, so `clamp`'s `min <= max` precondition always holds.
+fn clamp_to_bounds((x, y): (f64, f64), b: &gamedata::worldnodes::Bounds) -> MapPos {
+    const MARGIN: f64 = 200.0;
+    let lo_x = b.min_x + MARGIN;
+    let hi_x = (b.max_x - MARGIN).max(lo_x);
+    let lo_y = b.min_y + MARGIN;
+    let hi_y = (b.max_y - MARGIN).max(lo_y);
+    MapPos {
+        x: x.clamp(lo_x, hi_x),
+        y: y.clamp(lo_y, hi_y),
+        z: 0.0,
+    }
 }
 
 fn nearest_region(world: &WorldSnapshot, pos: MapPos) -> String {

@@ -28,6 +28,7 @@ fn group(id: &str, r: RecipeSpec) -> GroupSpec {
         recipe: r,
         count: 1,
         clock: 1.0,
+        driven_cycles: None,
     }
 }
 
@@ -850,4 +851,246 @@ fn clock_edit_rederives_count() {
         48.0,
         "rate unchanged by clock edit",
     );
+}
+
+// ---- generators (power) --------------------------------------------------
+// A driven generator (no power output port wired) runs toward nameplate but is
+// fuel-limited and YIELDS to real output targets — never a false or
+// target-clobbering number, and its slack never enters shortfalls/ports.
+
+fn coal_gen(driven: Option<f64>) -> GroupSpec {
+    // 15 coal/min → 75 MW per machine (nameplate 300 MW / 60 coal at 4×).
+    let mut gs = group(
+        "gen",
+        recipe(
+            "Recipe_Power_Coal",
+            "coalgen",
+            60.0,
+            &[("coal", 15.0)],
+            &[("power", 75.0)],
+            0.0,
+        ),
+    );
+    gs.count = 4;
+    gs.driven_cycles = driven;
+    gs
+}
+
+fn coal_only_snapshot(
+    driven: Option<f64>,
+    coal_ceiling: Option<f64>,
+    wired: bool,
+) -> FactorySnapshot {
+    let edges = if wired {
+        vec![edge(
+            "e-coal",
+            NodeRef::Input("in-coal".into()),
+            g("gen"),
+            "coal",
+            780.0,
+        )]
+    } else {
+        vec![]
+    };
+    FactorySnapshot {
+        groups: vec![coal_gen(driven)],
+        edges,
+        inputs: vec![InputPortSpec {
+            id: "in-coal".into(),
+            item: "coal".into(),
+            ceiling: coal_ceiling,
+        }],
+        junctions: vec![],
+        outputs: vec![],
+    }
+}
+
+#[test]
+fn driven_generator_runs_at_nameplate_when_fueled() {
+    let snap = coal_only_snapshot(Some(4.0), None, true);
+    let r = solver::t1::solve(&snap, &T0Edit::Recompute).unwrap();
+    assert_close(
+        r.groups["gen"].out_rates["power"],
+        300.0,
+        "fueled generation",
+    );
+    assert_close(r.groups["gen"].in_rates["coal"], 60.0, "fuel draw");
+    assert!(
+        r.shortfalls.is_empty(),
+        "generator slack must NOT leak into shortfalls"
+    );
+}
+
+#[test]
+fn driven_generator_scales_down_when_fuel_capped() {
+    let snap = coal_only_snapshot(Some(4.0), Some(30.0), true); // 30 coal, needs 60
+    let r = solver::t1::solve(&snap, &T0Edit::Recompute).unwrap();
+    assert_close(
+        r.groups["gen"].out_rates["power"],
+        150.0,
+        "fuel-limited generation",
+    );
+    assert!(
+        r.shortfalls.is_empty(),
+        "fuel-limited generator is not a shortfall"
+    );
+}
+
+#[test]
+fn driven_generator_zero_when_unfueled() {
+    let snap = coal_only_snapshot(Some(4.0), None, false);
+    let r = solver::t1::solve(&snap, &T0Edit::Recompute).unwrap();
+    assert_close(r.groups["gen"].out_rates["power"], 0.0, "no false power");
+    assert!(
+        r.shortfalls.is_empty(),
+        "unfueled generator is not a shortfall"
+    );
+}
+
+#[test]
+fn real_target_wins_the_fuel_fight_against_a_generator() {
+    // One capped coal input (60/min) feeds BOTH a coal generator (driven, wants
+    // 60 coal for 300 MW) and a "coke" line whose product exits a real OUT port
+    // targeted at 60/min (needs all 60 coal). The real target must win; the
+    // generator takes the leftover (0), never clobbering the user's target.
+    let coke = {
+        let mut gs = group(
+            "coke",
+            recipe(
+                "Recipe_Coke",
+                "refinery",
+                60.0,
+                &[("coal", 60.0)],
+                &[("coke", 60.0)],
+                0.0,
+            ),
+        );
+        gs.count = 1;
+        gs
+    };
+    let snap = FactorySnapshot {
+        groups: vec![coal_gen(Some(4.0)), coke],
+        edges: vec![
+            edge(
+                "e-coal-gen",
+                NodeRef::Input("in-coal".into()),
+                g("gen"),
+                "coal",
+                780.0,
+            ),
+            edge(
+                "e-coal-coke",
+                NodeRef::Input("in-coal".into()),
+                g("coke"),
+                "coal",
+                780.0,
+            ),
+            edge(
+                "e-coke-out",
+                g("coke"),
+                NodeRef::Output("out-coke".into()),
+                "coke",
+                780.0,
+            ),
+        ],
+        inputs: vec![InputPortSpec {
+            id: "in-coal".into(),
+            item: "coal".into(),
+            ceiling: Some(60.0),
+        }],
+        junctions: vec![],
+        outputs: vec![OutputPortSpec {
+            id: "out-coke".into(),
+            item: "coke".into(),
+            rate: 60.0,
+        }],
+    };
+    let r = solver::t1::solve(&snap, &T0Edit::Recompute).unwrap();
+    assert_close(r.ports["out-coke"], 60.0, "real coke target met in full");
+    assert!(r.shortfalls.is_empty(), "no shortfall on the real target");
+    assert_close(
+        r.groups["gen"].out_rates["power"],
+        0.0,
+        "generator took only leftover coal",
+    );
+}
+
+#[test]
+fn driven_generator_does_not_clobber_an_edited_targets_ceiling() {
+    // Same shared-fuel topology, but the user DRAGS the coke target (the ceiling
+    // pass). The generator must yield the contested coal so the edited port's
+    // achievable ceiling reads 60 — not ~0 from the generator winning the
+    // maximize pass (regression: gen_penalty used to leak into the ceiling pass).
+    let coke = {
+        let mut gs = group(
+            "coke",
+            recipe(
+                "Recipe_Coke",
+                "refinery",
+                60.0,
+                &[("coal", 60.0)],
+                &[("coke", 60.0)],
+                0.0,
+            ),
+        );
+        gs.count = 1;
+        gs
+    };
+    let snap = FactorySnapshot {
+        groups: vec![coal_gen(Some(4.0)), coke],
+        edges: vec![
+            edge(
+                "e-coal-gen",
+                NodeRef::Input("in-coal".into()),
+                g("gen"),
+                "coal",
+                780.0,
+            ),
+            edge(
+                "e-coal-coke",
+                NodeRef::Input("in-coal".into()),
+                g("coke"),
+                "coal",
+                780.0,
+            ),
+            edge(
+                "e-coke-out",
+                g("coke"),
+                NodeRef::Output("out-coke".into()),
+                "coke",
+                780.0,
+            ),
+        ],
+        inputs: vec![InputPortSpec {
+            id: "in-coal".into(),
+            item: "coal".into(),
+            ceiling: Some(60.0),
+        }],
+        junctions: vec![],
+        outputs: vec![OutputPortSpec {
+            id: "out-coke".into(),
+            item: "coke".into(),
+            rate: 0.0,
+        }],
+    };
+    let r = solver::t1::solve(
+        &snap,
+        &T0Edit::SetTarget {
+            port: "out-coke".into(),
+            rate: 60.0,
+        },
+    )
+    .unwrap();
+    assert_close(
+        r.ports["out-coke"],
+        60.0,
+        "edited target reaches its true ceiling",
+    );
+    assert!(
+        !r.clamped,
+        "60/min is feasible — must not be clamped to the generator"
+    );
+    if let Some(tc) = &r.target_ceiling {
+        assert_close(tc.max_rate, 60.0, "ceiling is the full coal-limited rate");
+    }
 }

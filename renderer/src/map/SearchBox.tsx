@@ -20,6 +20,7 @@ export default function SearchBox({ onJump }: { onJump: (pos: { x: number; y: nu
   const world = useStore((s) => s.world);
   const gamedata = useStore((s) => s.gamedata);
   const setSelection = useStore((s) => s.setSelection);
+  const setMapFilter = useStore((s) => s.setMapFilter);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -61,11 +62,19 @@ export default function SearchBox({ onJump }: { onJump: (pos: { x: number; y: nu
     return out.slice(0, 8);
   }, [query, plan.factories, world.nodes, gamedata.items, setSelection]);
 
+  // Clearing the box lifts the map filter — never leave the resource field
+  // narrowed after the search is gone (also on unmount, e.g. opening a factory).
+  const setBoth = (q: string) => {
+    setQuery(q);
+    setMapFilter(q);
+  };
+  useEffect(() => () => setMapFilter(""), [setMapFilter]);
+
   const jump = (h: Hit) => {
     onJump(h.pos);
     h.select();
     setOpen(false);
-    setQuery("");
+    setBoth("");
     inputRef.current?.blur();
   };
 
@@ -76,12 +85,13 @@ export default function SearchBox({ onJump }: { onJump: (pos: { x: number; y: nu
         placeholder="⌘K — find item, factory, node…"
         value={query}
         onChange={(e) => {
-          setQuery(e.target.value);
+          setBoth(e.target.value);
           setOpen(true);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && hits[0]) jump(hits[0]);
           if (e.key === "Escape") {
+            setBoth("");
             setOpen(false);
             e.currentTarget.blur();
           }

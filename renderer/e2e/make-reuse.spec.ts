@@ -1,0 +1,103 @@
+// MAKE smart reuse: asking for screws when the factory already makes rods
+// reuses & wires into the existing rod line instead of duplicating it. And the
+// "free up the node" action removes an existing consumer to unblock a build.
+
+import { test, expect, type APIRequestContext } from "@playwright/test";
+import { resetView } from "./helpers";
+
+test.describe.configure({ mode: "serial" });
+
+const API = "http://localhost:8791/api";
+async function edit(request: APIRequestContext, cmds: unknown[]): Promise<{ created: string[] }> {
+  const res = await request.post(`${API}/edit`, { data: JSON.stringify(cmds) });
+  if (!res.ok()) throw new Error(`edit ${res.status()}: ${await res.text()}`);
+  return res.json();
+}
+async function hydrate(request: APIRequestContext): Promise<any> {
+  const res = await request.get(`${API}/hydrate`);
+  if (!res.ok()) throw new Error(`hydrate ${res.status()}`);
+  return res.json();
+}
+const countRecipe = (h: any, factory: string, recipe: string) =>
+  Object.values<any>(h.plan.groups).filter((g) => g.factory === factory && g.recipe === recipe).length;
+
+async function openFactoryGraph(page: any, name: string) {
+  await page.locator(".searchbox input").fill(name);
+  await page.keyboard.press("Enter");
+  await page.getByTestId("btn-open-factory").click();
+}
+
+test("MAKE reuses an existing rod line for screws instead of duplicating it", async ({ page, request }) => {
+  await resetView(request);
+  const f = (await edit(request, [{ type: "create_factory", name: "REUSE WORKS", position: { x: -2000, y: 2000 }, region: "GRASS FIELDS" }])).created[0];
+  const ingot = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_IronIngot_C", rate: 0, rateCeiling: 200, graphPos: { x: 0, y: 100 } }])).created[0];
+  const rod = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 1, clock: 1.0, graphPos: { x: 300, y: 100 }, floor: 0 }])).created[0];
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "port", id: ingot }, to: { kind: "group", id: rod }, item: "Desc_IronIngot_C", tier: 3 }]);
+
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await openFactoryGraph(page, "REUSE WORKS");
+    await page.getByTestId("btn-make-from-resources").click();
+    const modal = page.getByTestId("make-from-resources");
+    await expect(modal).toBeVisible();
+
+    await modal.getByTestId("mfr-item-Desc_IronScrew_C").click();
+    // reuse offer appears and names the rod line
+    await expect(modal.getByTestId("mfr-reuse")).toBeVisible();
+    await expect(modal.getByTestId("mfr-reuse")).toContainText(/Iron Rod/i);
+
+    await modal.getByTestId("mfr-rate").fill("20");
+    await modal.getByTestId("mfr-build").click();
+    await expect(modal).toBeHidden();
+
+    const h = await hydrate(request);
+    // still exactly ONE rod group (reused, not duplicated) + one new screw group
+    expect(countRecipe(h, f, "Recipe_IronRod_C")).toBe(1);
+    expect(countRecipe(h, f, "Recipe_Screw_C")).toBe(1);
+    await expect(page.getByTestId("port-out-Desc_IronScrew_C")).toContainText("20");
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});
+
+test("MAKE free-up removes an existing consumer to unblock a build", async ({ page, request }) => {
+  await resetView(request);
+  // ingot capped at 30; an existing rod line already draws all of it (headroom 0)
+  const f = (await edit(request, [{ type: "create_factory", name: "FREEUP WORKS", position: { x: -1500, y: 1500 }, region: "GRASS FIELDS" }])).created[0];
+  const ingot = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_IronIngot_C", rate: 0, rateCeiling: 30, graphPos: { x: 0, y: 100 } }])).created[0];
+  const rod = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 2, clock: 1.0, graphPos: { x: 300, y: 100 }, floor: 0 }])).created[0];
+  const rodOut = (await edit(request, [{ type: "add_port", factory: f, direction: "out", item: "Desc_IronRod_C", rate: 0, rateCeiling: null, graphPos: { x: 600, y: 100 } }])).created[0];
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "port", id: ingot }, to: { kind: "group", id: rod }, item: "Desc_IronIngot_C", tier: 3 }]);
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "group", id: rod }, to: { kind: "port", id: rodOut }, item: "Desc_IronRod_C", tier: 3 }]);
+  await edit(request, [{ type: "set_port_rate", id: rodOut, rate: 30 }]); // 30 rod → 30 ingot, all of it
+
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await openFactoryGraph(page, "FREEUP WORKS");
+    await page.getByTestId("btn-make-from-resources").click();
+    const modal = page.getByTestId("make-from-resources");
+
+    // Make plates (consumes ingot) — no ingot headroom left → blocked, free-up offered
+    await modal.getByTestId("mfr-item-Desc_IronPlate_C").click();
+    await modal.getByTestId("mfr-rate").fill("20");
+    await expect(modal.getByTestId("mfr-warn")).toBeVisible();
+    const freeup = modal.getByTestId("mfr-freeup");
+    await expect(freeup).toBeVisible();
+
+    // two-click confirm removes the rod line, freeing the ingot
+    await freeup.click();
+    await expect(freeup).toContainText(/CONFIRM/i);
+    await freeup.click();
+
+    const h = await hydrate(request);
+    expect(countRecipe(h, f, "Recipe_IronRod_C")).toBe(0); // freed
+    await expect(modal.getByTestId("mfr-warn")).toHaveCount(0); // unblocked
+    await expect(modal.getByTestId("mfr-build")).toBeEnabled();
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});

@@ -1664,6 +1664,13 @@ impl Session {
     pub fn snapshot(&self, fid: &Id) -> Option<FactorySnapshot> {
         let factory = self.state.factories.get(fid)?;
         let mut groups = Vec::new();
+        // Generator group ids and their nameplate cycles (count×clock). A
+        // generator produces the POWER pseudo-item that nothing belts/targets,
+        // so the demand-driven solve idles it at 0 MW. We drive each one toward
+        // nameplate (via GroupSpec.driven_cycles) UNLESS it's already wired to a
+        // real __PowerMW output port — but only after the edges are built, since
+        // that's how we detect the wiring.
+        let mut generators: Vec<(Id, f64)> = Vec::new();
         for gid in &factory.groups {
             let g = self.state.groups.get(gid)?;
             // A group whose recipe can't be resolved must NOT fail the whole
@@ -1679,6 +1686,15 @@ impl Session {
                 continue;
             };
             let power = gamedata::db::recipe_power(&self.gamedata, recipe, &g.machine);
+            // Nameplate cycles = machine-equivalents at 100% clock = count×clock.
+            let is_generator = recipe
+                .products
+                .iter()
+                .any(|(item, _)| item == gamedata::docs::POWER_ITEM);
+            if is_generator {
+                let cycles = g.effective_count() as f64 * g.effective_clock();
+                generators.push((g.id.clone(), cycles));
+            }
             groups.push(GroupSpec {
                 id: g.id.clone(),
                 recipe: RecipeSpec {
@@ -1693,6 +1709,7 @@ impl Session {
                 // overlaid by any planned delta) but never writes deltas back.
                 count: g.effective_count(),
                 clock: g.effective_clock(),
+                driven_cycles: None, // set below for un-wired generators
             });
         }
         let mut inputs = Vec::new();
@@ -1712,7 +1729,7 @@ impl Session {
                 }),
             }
         }
-        let edges = self
+        let edges: Vec<EdgeSpec> = self
             .state
             .edges
             .values()
@@ -1725,6 +1742,28 @@ impl Session {
                 capacity: belt_capacity(e.tier),
             })
             .collect();
+        // Drive un-wired generators toward nameplate so they don't idle at 0 MW.
+        // A generator already wired to a real __PowerMW output port is left to
+        // that port's target (no double-drive); everything else gets a
+        // driven_cycles slack that is fuel-limited and yields to real targets
+        // (see GroupSpec.driven_cycles / T1's GEN_PENALTY). No synthetic ports or
+        // edges — nothing leaks into shortfalls, ports, or the ceiling logic.
+        let power_wired: std::collections::BTreeSet<String> = edges
+            .iter()
+            .filter(|e| e.item == gamedata::docs::POWER_ITEM)
+            .filter_map(|e| match &e.from {
+                NodeRef::Group(gid) => Some(gid.clone()),
+                _ => None,
+            })
+            .collect();
+        for (gid, cycles) in &generators {
+            if power_wired.contains(gid) {
+                continue;
+            }
+            if let Some(gs) = groups.iter_mut().find(|g| &g.id == gid) {
+                gs.driven_cycles = Some(*cycles);
+            }
+        }
         let junctions = self
             .state
             .junctions
@@ -1953,6 +1992,21 @@ impl Session {
                             // read them but never resize them — only import sync
                             // (the documented exception) writes the built layer.
                             if g.status == Status::Built {
+                                continue;
+                            }
+                            // A DRIVEN generator (un-wired to a power port, run
+                            // fuel-limited via driven_cycles) is user-placed
+                            // infrastructure — the material solve would resize it
+                            // to its fuel-limited value (clock 0 when momentarily
+                            // unfueled) and clobber the placement, poisoning the
+                            // driven_cycles that reads count×clock. Skip it. A
+                            // generator WIRED to a power port has driven_cycles=
+                            // None and IS sized to meet that target, like production.
+                            if snapshot
+                                .groups
+                                .iter()
+                                .any(|gs| &gs.id == gid && gs.driven_cycles.is_some())
+                            {
                                 continue;
                             }
                             if g.count != gr.count || (g.clock - gr.clock).abs() > 1e-9 {

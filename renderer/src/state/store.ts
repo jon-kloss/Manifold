@@ -229,6 +229,8 @@ export interface AppStore {
   view: ViewMode;
   selection: Selection;
   overlays: { flows: boolean; nodes: boolean; power: boolean; terrain: boolean };
+  /** Live map node filter (search box). Empty = no filter (all nodes shown). */
+  mapFilter: string;
   /** T0 projection during slider drag — rendered italic, replaced on settle. */
   projected: { factoryId: Id; result: DerivedFactory; targetRate: number } | null;
   /** ids whose numbers changed in the last authoritative patch (settle flash). */
@@ -331,6 +333,7 @@ export interface AppStore {
   setSelection(sel: Selection): void;
   setView(view: ViewMode): void;
   setOverlay(key: "flows" | "nodes" | "power" | "terrain", on: boolean): void;
+  setMapFilter(query: string): void;
   setProjected(p: AppStore["projected"]): void;
   setPlacingFactory(on: boolean): void;
   saveViewState(patch: Partial<ViewState>): void;
@@ -557,6 +560,7 @@ export const useStore = create<AppStore>((set, get) => ({
   view: { mode: "map" },
   selection: null,
   overlays: { flows: true, nodes: true, power: true, terrain: true },
+  mapFilter: "",
   projected: null,
   settled: new Set(),
   placingFactory: false,
@@ -741,6 +745,7 @@ export const useStore = create<AppStore>((set, get) => ({
     get().saveViewState({ openFactory: view.mode === "factory" ? view.factoryId : null });
   },
   setOverlay: (key, on) => set((s) => ({ overlays: { ...s.overlays, [key]: on } })),
+  setMapFilter: (mapFilter) => set({ mapFilter }),
   setProjected: (projected) => set({ projected }),
   setPlacingFactory: (placingFactory) => set({ placingFactory }),
   saveViewState(patch) {

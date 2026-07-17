@@ -49,6 +49,52 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
     ]);
   };
 
+  // Reassign a claim to another factory. Claiming afresh for a second factory
+  // would STACK claims and trip the (intentional) double-book conflict; a move
+  // instead releases the old claim + its unbound input port and re-creates both
+  // on the target — one undo step, ending exactly as a fresh claim there would.
+  const moveClaim = (c: (typeof claims)[number], toFactory: string) => {
+    if (!toFactory || toFactory === c.factory) return;
+    const claimRate = extractionRate(gamedata.machines[c.extractor], node.purity, c.clock);
+    const cmds: Parameters<typeof dispatch>[0] = [{ type: "release_node", id: c.id }];
+    // Best-effort: retire the boundary input port this claim fed on the old
+    // factory. The port isn't linked to the claim, so match conservatively —
+    // same item + extraction ceiling, not route-bound, AND not wired into the
+    // graph. The unwired guard matters when two indistinguishable claims share
+    // this factory: without it we could delete the sibling port that IS belted
+    // to a machine and cascade-remove its belts. When only wired/ambiguous
+    // matches remain, delete nothing — the claim still moves; the port just
+    // becomes an unfed input (honest, non-destructive) the user can prune.
+    const portWired = (pid: string) =>
+      Object.values(plan.edges).some(
+        (e) => (e.from.kind === "port" && e.from.id === pid) || (e.to.kind === "port" && e.to.id === pid),
+      );
+    const oldPort = Object.values(plan.ports).find(
+      (p) =>
+        p.factory === c.factory &&
+        p.direction === "in" &&
+        p.item === node.item &&
+        p.boundRoute === null &&
+        Math.abs((p.rateCeiling ?? -1) - claimRate) < 0.5 &&
+        !portWired(p.id),
+    );
+    if (oldPort) cmds.push({ type: "delete_port", id: oldPort.id });
+    const portCount = Object.values(plan.ports).filter((p) => p.factory === toFactory && p.direction === "in").length;
+    cmds.push(
+      { type: "claim_node", factory: toFactory, node: node.id, extractor: c.extractor, clock: c.clock },
+      {
+        type: "add_port",
+        factory: toFactory,
+        direction: "in",
+        item: node.item,
+        rate: 0,
+        rateCeiling: claimRate,
+        graphPos: { x: 0, y: 80 + portCount * 120 },
+      },
+    );
+    void dispatch(cmds);
+  };
+
   return (
     <aside className="drawer summary-drawer" data-testid="node-drawer">
       <header className="drawer-header">
@@ -95,24 +141,46 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
       <section className="drawer-section">
         <h3 className="t-label">CLAIMS</h3>
         {claims.length === 0 && <div className="drawer-empty">Unclaimed.</div>}
-        {claims.map((c) => (
-          <div className="drawer-row" key={c.id}>
-            <span className="drawer-row-name">
-              {plan.factories[c.factory]?.name ?? "?"} · {gamedata.machines[c.extractor]?.displayName ?? c.extractor}
-            </span>
-            <span className="t-data-12 projected">
-              {fmtRate(extractionRate(gamedata.machines[c.extractor], node.purity, c.clock))}
-              <span className="unit">/min</span>
-            </span>
-            <button
-              className="btn btn-ghost"
-              style={{ height: 22, padding: "0 8px" }}
-              onClick={() => void dispatch([{ type: "release_node", id: c.id }])}
-            >
-              RELEASE
-            </button>
-          </div>
-        ))}
+        {claims.map((c) => {
+          const others = factories.filter((f) => f.id !== c.factory);
+          return (
+            <div className="drawer-row" key={c.id}>
+              <span className="drawer-row-name">
+                {plan.factories[c.factory]?.name ?? "?"} · {gamedata.machines[c.extractor]?.displayName ?? c.extractor}
+              </span>
+              <span className="t-data-12 projected">
+                {fmtRate(extractionRate(gamedata.machines[c.extractor], node.purity, c.clock))}
+                <span className="unit">/min</span>
+              </span>
+              {others.length > 0 && (
+                <select
+                  aria-label="Move claim to another factory"
+                  data-testid="claim-move"
+                  value=""
+                  onChange={(e) => moveClaim(c, e.target.value)}
+                  style={{ height: 22 }}
+                  title="Move this claim to another factory"
+                >
+                  <option value="" disabled>
+                    MOVE TO…
+                  </option>
+                  {others.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                className="btn btn-ghost"
+                style={{ height: 22, padding: "0 8px" }}
+                onClick={() => void dispatch([{ type: "release_node", id: c.id }])}
+              >
+                RELEASE
+              </button>
+            </div>
+          );
+        })}
         {conflict && (
           <div className="drawer-warn mono">
             ⚠ ×{claims.length} — combined claims exceed this node. Intentional double-booking renders CRIT until

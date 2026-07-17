@@ -170,6 +170,15 @@ button {
   color: var(--ink-300);
   background: transparent;
 }
+.btn-danger {
+  border: 1px solid var(--flow-crit);
+  background: var(--flow-crit);
+  color: var(--steel-950);
+  font-weight: 600;
+}
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--flow-crit) 85%, white);
+}
 .btn-ghost:hover {
   background: var(--steel-700);
   color: var(--ink-100);

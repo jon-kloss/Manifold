@@ -49,6 +49,16 @@ pub struct GroupSpec {
     pub recipe: RecipeSpec,
     pub count: u32,
     pub clock: f64,
+    /// Generators produce the POWER pseudo-item, which nothing belts or targets,
+    /// so the demand-driven solve idles them at 0. When `Some(n)` the group is
+    /// driven toward `n` machine-equivalents (its placed count×clock) via a
+    /// low-priority slack — it runs at nameplate on free fuel but YIELDS to real
+    /// output targets when they compete for the same fuel, and is fuel-limited
+    /// (0 when unfueled), so generation is never a false or target-clobbering
+    /// number. Set only for generators NOT already wired to a power output port.
+    /// `None` = ordinary demand-driven production.
+    #[serde(default)]
+    pub driven_cycles: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

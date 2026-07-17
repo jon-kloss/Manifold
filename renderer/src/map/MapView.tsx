@@ -14,6 +14,7 @@ import { isEditableTarget } from "../lib/keys";
 import type { WorldNode } from "../state/types";
 import SummaryDrawer from "./SummaryDrawer";
 import NodeDrawer from "./NodeDrawer";
+import ResourceOverview from "./ResourceOverview";
 import RouteDrawer from "./RouteDrawer";
 import SwitchDrawer from "./SwitchDrawer";
 import RoutePopover from "./RoutePopover";
@@ -122,6 +123,7 @@ export default function MapView() {
   const derived = useStore((s) => s.derived);
   const gamedata = useStore((s) => s.gamedata);
   const overlays = useStore((s) => s.overlays);
+  const mapFilter = useStore((s) => s.mapFilter);
   const selection = useStore((s) => s.selection);
   const placing = useStore((s) => s.placingFactory);
   const setSelection = useStore((s) => s.setSelection);
@@ -319,6 +321,22 @@ export default function MapView() {
     [world, resolvedNodes],
   );
 
+  // Live search filter over the map: typing narrows the visible nodes by
+  // resource type / purity. Matching is by the extracted item's display name
+  // (so "iron", "coal", "quartz" work) plus purity ("pure"/"normal"/"impure").
+  // If the query matches NO node (e.g. a factory name), the filter goes inert
+  // so searching a factory never blanks the resource field.
+  const nodeFilter = useMemo(() => {
+    const q = mapFilter.trim().toLowerCase();
+    if (!q) return null;
+    const visible = new Set<string>();
+    for (const n of resolvedNodes) {
+      const label = itemLabel(gamedata.items, n.item).toLowerCase();
+      if (label.includes(q) || (n.purity ?? "").toLowerCase().includes(q)) visible.add(n.id);
+    }
+    return { active: visible.size > 0, visible };
+  }, [mapFilter, resolvedNodes, gamedata.items]);
+
   const claimLinks = useMemo(() => {
     const nodeById: Record<string, { x: number; y: number }> = {};
     for (const n of resolvedNodes) nodeById[n.id] = { x: n.x, y: n.y };
@@ -405,6 +423,7 @@ export default function MapView() {
       hoveredNode: null,
       selectedNode: null,
       showNodes: true,
+      nodeFilter: null,
       showTerrain: useStore.getState().overlays.terrain,
       routes: [],
       showRoutes: true,
@@ -561,6 +580,7 @@ export default function MapView() {
       hoveredNode: hoveredNode?.id ?? null,
       selectedNode: selection?.kind === "node" ? selection.id : null,
       showNodes: overlays.nodes,
+      nodeFilter,
       showTerrain: overlays.terrain,
       routes,
       showRoutes: overlays.flows,
@@ -571,7 +591,7 @@ export default function MapView() {
       ghost: src && routeDraft ? { from: src.position, to: routeDraft.cursor } : null,
       review,
     });
-  }, [resolvedWorld, nodeStates, claimLinks, replacesLinks, hoveredNode, selection, overlays, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
+  }, [resolvedWorld, nodeStates, claimLinks, replacesLinks, hoveredNode, selection, overlays, nodeFilter, plan, derived.routes, derived.circuits, gamedata.items, routeDraft, reviewingProposal]);
 
   // ---- pointer interactions (hover + click on canvas nodes, placement) ----
   useEffect(() => {
@@ -779,6 +799,10 @@ export default function MapView() {
     <div
       className={`map-root ${reviewing ? "reviewing" : ""}`}
       data-testid="map-root"
+      // How many resource nodes the canvas is currently drawing — all of them,
+      // or just the search-filtered subset. A testable stamp for the live filter
+      // (nodes render to canvas, not the DOM).
+      data-nodes-shown={nodeFilter?.active ? nodeFilter.visible.size : resolvedNodes.length}
       onDragEnter={(e) => {
         if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
         e.preventDefault();
@@ -1072,6 +1096,7 @@ export default function MapView() {
 
       {hoveredNode && !selectedNode && <NodeTooltip node={hoveredNode} />}
 
+      <ResourceOverview />
       <Legend />
 
       {selectedFactory && <SummaryDrawer factory={selectedFactory} />}
