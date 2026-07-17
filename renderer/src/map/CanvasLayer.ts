@@ -315,26 +315,27 @@ export class MapCanvasLayer extends L.Layer {
     return this.hitTestNode(point)?.node ?? null;
   }
 
-  /** Short label for a node: FE PURE, CU NORM, LIME IMP… */
+  /** Node label: the RESOURCE NAME players know (IRON PURE, COPPER NORM…), not
+   *  the element symbol — FE/CU read as chemistry, not Satisfactory resources. */
   private nodeLabel(node: WorldNode): string {
-    const code =
+    const name =
       {
-        Desc_OreIron_C: "FE",
-        Desc_OreCopper_C: "CU",
-        Desc_Stone_C: "LIME",
+        Desc_OreIron_C: "IRON",
+        Desc_OreCopper_C: "COPPER",
+        Desc_Stone_C: "LIMESTONE",
         Desc_Coal_C: "COAL",
-        Desc_OreGold_C: "CATR",
-        Desc_RawQuartz_C: "QTZ",
-        Desc_Sulfur_C: "SULF",
+        Desc_OreGold_C: "CATERIUM",
+        Desc_RawQuartz_C: "QUARTZ",
+        Desc_Sulfur_C: "SULFUR",
         Desc_LiquidOil_C: "OIL",
-        Desc_OreBauxite_C: "BAUX",
-        Desc_OreUranium_C: "URAN",
+        Desc_OreBauxite_C: "BAUXITE",
+        Desc_OreUranium_C: "URANIUM",
         Desc_SAM_C: "SAM",
       }[node.item] ??
       // save-only nodes carry item:"" — degrade to a readable NODE, not "".
-      (node.item || "NODE").replace("Desc_", "").replace("_C", "").slice(0, 4).toUpperCase();
+      (node.item || "NODE").replace("Desc_", "").replace("_C", "").replace(/_/g, " ").toUpperCase();
     const purity = node.purity === "normal" ? "NORM" : node.purity.toUpperCase();
-    return node.zone === "cave" ? `${code} ${purity} ▾CAVE` : `${code} ${purity}`;
+    return node.zone === "cave" ? `${name} ${purity} ▾CAVE` : `${name} ${purity}`;
   }
 
   /** Match Leaflet's zoom animation on the container-fixed overlays. Scaling
