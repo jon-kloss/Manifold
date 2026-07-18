@@ -4,6 +4,7 @@
 // DECISIONS.md on tile licensing).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapCanvasLayer } from "./CanvasLayer";
@@ -171,6 +172,19 @@ export default function MapView() {
   }, [dataMenu]);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+  // #117 toolbar rework: the save/load DATA menu renders into the titlebar's
+  // top-right corner (where users expect save features) and the node/factory
+  // search renders into its CENTERED slot — context-aware: the factory graph
+  // portals its own machine/item search into the same slot. State and
+  // handlers stay HERE (map-coupled: import modal, drag-drop, new-empire
+  // confirm, Leaflet panTo); only the DOM moves. Slots resolve after first
+  // mount — Titlebar renders earlier in the same tree.
+  const [searchSlot, setSearchSlot] = useState<HTMLElement | null>(null);
+  const [dataSlot, setDataSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSearchSlot(document.getElementById("titlebar-search-slot"));
+    setDataSlot(document.getElementById("titlebar-data-slot"));
+  }, []);
   const loadDocsFile = useCallback(
     async (f: File) => {
       setUploadingDocs(true);
@@ -905,8 +919,11 @@ export default function MapView() {
       if (e.key === "n" || e.key === "N") setPlacing(!placing);
       else if (e.key === "p" || e.key === "P") setWizard({ open: true });
       else if (e.key === "Escape") {
-        // an in-flight route draft cancels first (via the ref: no new deps)
-        if (routeDraftRef.current) setRouteDraft(null);
+        // top layer first: the DATA dropdown (its fixed backdrop otherwise
+        // swallows every click while the menu quietly stays open)
+        if (dataMenu) closeDataMenu();
+        // an in-flight route draft cancels next (via the ref: no new deps)
+        else if (routeDraftRef.current) setRouteDraft(null);
         else if (placing) setPlacing(false);
         else setSelection(null);
       } else if (e.key === "1") setOverlay("flows", !overlays.flows);
@@ -922,7 +939,7 @@ export default function MapView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [placing, overlays, plan.factories, selection, setOverlay, setPlacing, setSelection, setView, setWizard]);
+  }, [placing, overlays, plan.factories, selection, dataMenu, closeDataMenu, setOverlay, setPlacing, setSelection, setView, setWizard]);
 
   const panTo = useCallback((pos: { x: number; y: number }) => {
     mapRef.current?.panTo(toLatLng(pos));
@@ -985,9 +1002,10 @@ export default function MapView() {
         </div>
       )}
 
-      {/* top chrome */}
+      {/* top chrome — search docks centered in the titlebar (portal); the DATA
+          menu docks in its corner; chips + actions stay over the map */}
+      {searchSlot ? createPortal(<SearchBox onJump={panTo} />, searchSlot) : <SearchBox onJump={panTo} />}
       <div className="map-chrome-top">
-        <SearchBox onJump={panTo} />
         <div className="map-overlay-chips">
           <button
             className={`btn btn-ghost overlay-chip ${overlays.flows ? "active" : ""}`}
@@ -1026,6 +1044,8 @@ export default function MapView() {
           >
             + FACTORY <span className="key-hint">N</span>
           </button>
+          {(() => {
+            const dataMenuEl = (
           <div className="data-menu-wrap">
             <button
               className={`btn btn-ghost ${dataMenu ? "active" : ""}`}
@@ -1225,6 +1245,11 @@ export default function MapView() {
               </>
             )}
           </div>
+            );
+            // #117: the save/load menu docks in the titlebar's top-right
+            // corner (portal); inline fallback if the slot isn't mounted.
+            return dataSlot ? createPortal(dataMenuEl, dataSlot) : dataMenuEl;
+          })()}
           <input
             ref={fileRef}
             type="file"

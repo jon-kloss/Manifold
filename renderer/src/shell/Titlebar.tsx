@@ -28,7 +28,12 @@ export default function Titlebar({ overlayMode }: { overlayMode: boolean }) {
       <div className="titlebar-logo" aria-hidden>
         ◆
       </div>
-      <span className="titlebar-app t-label">FICSIT PLANNER</span>
+      {/* #117: no wordmark — the user knows what the tool is. The crumb stays
+          (WORLD MAP is the way home from a factory), search sits CENTERED in
+          the bar and is context-aware (map view portals the node/factory
+          search here; the factory graph portals its machine/item search), and
+          the save/load DATA menu docks in the right corner. */}
+      <div className="titlebar-slot titlebar-slot-search" id="titlebar-search-slot" />
       <nav className={`titlebar-crumb mono ${overlayMode ? "truncate" : ""}`}>
         <button className="crumb-link" onClick={() => setView({ mode: "map" })}>
           WORLD MAP
@@ -41,6 +46,8 @@ export default function Titlebar({ overlayMode }: { overlayMode: boolean }) {
         )}
       </nav>
       <div className="titlebar-right">
+        {/* save/load corner slot — filled by MapView's DATA menu portal */}
+        <div className="titlebar-slot" id="titlebar-data-slot" />
         <span className="chip" title="Every commit writes the plan file — there is no unsaved state.">
           SAVED ✓
         </span>

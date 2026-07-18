@@ -15,6 +15,7 @@
 
 /* ---- titlebar ---- */
 .titlebar {
+  position: relative; /* anchors the absolutely-centered search slot */
   display: flex;
   align-items: center;
   gap: 10px;
@@ -35,8 +36,34 @@
   border-radius: 2px;
   font-size: 11px;
 }
-.titlebar-app {
-  color: var(--ink-300);
+/* #117 portal slots: context-aware search (CENTERED — the map view fills it
+   with the node/factory search, the graph with its machine/item filter) and
+   the save/load corner (right). Empty divs when nothing is portaled in. */
+.titlebar-slot {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.titlebar-slot-search {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1; /* over the crumb if a narrow window makes them meet */
+}
+.titlebar .searchbox {
+  /* fits the 36px bar; shrinks before the bar overflows on narrow windows */
+  width: min(320px, 28vw);
+}
+.titlebar .searchbox input {
+  height: 26px;
+}
+.titlebar .search-results {
+  top: 30px;
+  z-index: 41; /* above the data-menu backdrop (39) — never both open, but safe */
+}
+/* The DATA dropdown hangs from the button in the bar's right corner. */
+.titlebar .data-menu {
+  top: calc(var(--titlebar-h) - 6px);
 }
 .titlebar-crumb {
   display: flex;

@@ -4,6 +4,7 @@
 // doesn't; infeasible hard-stops, never errors.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -37,7 +38,8 @@ import ItemIcon from "../lib/ItemIcon";
 import { isEditableTarget } from "../lib/keys";
 import { computeEdgeLayout, type JunctionShape, type LabelSize, type NodeGeom } from "./edgeLayout";
 import FloorPlates from "./FloorPlates";
-import { fmtRate, fmtPercent, bottleneckEdges } from "../lib/format";
+import { fmtRate, fmtPercent, bottleneckEdges, itemLabel } from "../lib/format";
+import GraphSearch from "./GraphSearch";
 import { beltCapacity } from "../state/types";
 import "./graph.css";
 
@@ -56,6 +58,14 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const setView = useStore((s) => s.setView);
   const dispatch = useStore((s) => s.dispatch);
   const setReviewing = useStore((s) => s.setReviewing);
+  const gamedata = useStore((s) => s.gamedata);
+  const graphFilter = useStore((s) => s.graphFilter);
+  // #117 context-aware header search: the graph's machine/item filter renders
+  // into the titlebar's centered slot (portal); typing dims non-matching nodes.
+  const [searchSlot, setSearchSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSearchSlot(document.getElementById("titlebar-search-slot"));
+  }, []);
   const [t2Busy, setT2Busy] = useState(false);
   const [t2Note, setT2Note] = useState<string | null>(null);
 
@@ -336,11 +346,25 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const buildNodes = useCallback((): Node[] => {
     if (!factory) return [];
     const out: Node[] = [];
+    // #117 header search: matching machines/items stay lit, the rest dims —
+    // same live-filter grammar as the map's node search. Matching is by
+    // machine name, recipe name, or any ingredient/product item name.
+    const q = graphFilter.trim().toLowerCase();
+    const matchText = (s?: string) => !!s && s.toLowerCase().includes(q);
+    const groupMatches = (g: (typeof plan.groups)[string]) => {
+      const r = gamedata.recipes[g.recipe];
+      return (
+        matchText(gamedata.machines[g.machine]?.displayName) ||
+        matchText(r?.displayName) ||
+        (!!r && [...r.products, ...r.ingredients].some(([it]) => matchText(itemLabel(gamedata.items, it))))
+      );
+    };
     for (const gid of factory.groups) {
       const g = plan.groups[gid];
       if (!g) continue;
       const dimmed = floorFilter !== "all" && g.floor !== floorFilter;
       const traceDim = !!traceSet && !traceSet.has(gid);
+      const filterDim = q !== "" && !groupMatches(g);
       out.push({
         id: gid,
         type: "group",
@@ -349,18 +373,22 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         selected: selection?.kind === "group" && selection.id === gid,
         // ghosts of other floors: visible context, but never interactive. Trace
         // dimming (off-chain when something is selected) stays clickable so you
-        // can hop along the chain.
+        // can hop along the chain; search dimming likewise.
         style: dimmed
           ? { opacity: 0.22, pointerEvents: "none" as const }
-          : traceDim
-            ? { opacity: 0.3 }
-            : undefined,
+          : filterDim
+            ? { opacity: 0.15 }
+            : traceDim
+              ? { opacity: 0.3 }
+              : undefined,
       });
     }
     for (const j of Object.values(plan.junctions)) {
       if (j.factory !== factoryId) continue;
       const dimmed = floorFilter !== "all" && j.floor !== floorFilter;
       const traceDim = !!traceSet && !traceSet.has(j.id);
+      const filterDim =
+        q !== "" && !matchText(gamedata.buildables?.[j.buildable]?.displayName) && !matchText(j.kind);
       out.push({
         id: j.id,
         type: "junction",
@@ -369,26 +397,29 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         selected: selection?.kind === "junction" && selection.id === j.id,
         style: dimmed
           ? { opacity: 0.22, pointerEvents: "none" as const }
-          : traceDim
-            ? { opacity: 0.3 }
-            : undefined,
+          : filterDim
+            ? { opacity: 0.15 }
+            : traceDim
+              ? { opacity: 0.3 }
+              : undefined,
       });
     }
     for (const pid of factory.ports) {
       const p = plan.ports[pid];
       if (!p) continue;
       const traceDim = !!traceSet && !traceSet.has(pid);
+      const filterDim = q !== "" && !matchText(itemLabel(gamedata.items, p.item));
       out.push({
         id: pid,
         type: "boundaryPort",
         position: { x: p.graphPos.x, y: p.graphPos.y },
         data: { port: p, factoryId } satisfies PortNodeData as unknown as Record<string, unknown>,
         selected: selection?.kind === "port" && selection.id === pid,
-        style: traceDim ? { opacity: 0.3 } : undefined,
+        style: filterDim ? { opacity: 0.15 } : traceDim ? { opacity: 0.3 } : undefined,
       });
     }
     return out;
-  }, [factory, plan.groups, plan.ports, plan.junctions, selection, factoryId, floorFilter, floors.length, traceSet]);
+  }, [factory, plan.groups, plan.ports, plan.junctions, selection, factoryId, floorFilter, floors.length, traceSet, graphFilter, gamedata]);
 
   const [nodes, setNodes] = useState<Node[]>(buildNodes);
   // Plan/selection changes rebuild the node array — but xyflow adopts user
@@ -789,6 +820,8 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
 
   return (
     <div className="graph-root" data-testid="graph-root">
+      {/* context-aware header search (titlebar center slot) */}
+      {searchSlot && createPortal(<GraphSearch />, searchSlot)}
       {/* context bar (36px) */}
       <div className="graph-contextbar">
         <button className="chip ctx-back" onClick={() => setView({ mode: "map" })} data-testid="btn-world">
