@@ -757,6 +757,21 @@
   font-size: 11px;
   color: var(--ink-500);
 }
+/* Destructive "Start new empire": a red left accent, and once armed the whole
+   row goes red so the second (confirming) click reads as dangerous. */
+.data-menu-danger {
+  border-left: 2px solid var(--flow-crit);
+}
+.data-menu-danger:hover:not(:disabled) {
+  background: rgba(255, 93, 85, 0.08);
+}
+.data-menu-danger.armed {
+  background: rgba(255, 93, 85, 0.12);
+}
+.data-menu-danger.armed .data-menu-item-label,
+.data-menu-danger.armed .data-menu-item-sub {
+  color: var(--flow-crit);
+}
 /* Sync-from-save + Auto toggle: one row (main action + a switch), plus an
    interval chip row when Auto is on. The block owns the bottom border so the
    whole control reads as a single menu row. */

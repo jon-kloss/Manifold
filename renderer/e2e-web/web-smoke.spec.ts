@@ -411,3 +411,41 @@ test("Phase 4a: a corrupt plan with uploaded docs keeps the catalog, drops only 
   expect(await hasKey(page, CORRUPT_KEY), "the corrupt plan blob was backed up").toBe(true);
   expect(await hasKey(page, DOCS_KEY), "the uploaded docs were NOT discarded").toBe(true);
 });
+
+// "Start new empire" (DATA ▾): the web reset. It must WIPE the plan, KEEP the
+// uploaded Docs.json, and have both survive a reload (the IndexedDB snapshot is
+// overwritten with the fresh empty session — the old empire never comes back).
+test("start a new empire wipes the plan but keeps the uploaded catalog", async ({ page }) => {
+  await page.goto("/");
+  await waitReady(page);
+
+  // Upload a real catalog first — the reset must NOT discard it.
+  await page.getByTestId("docs-file-input").setInputFiles(DOCS_FIXTURE);
+  await expect.poll(() => buildVersion(page), { timeout: 30_000 }).toBe("uploaded");
+
+  // Seed an "old empire" through the real store path.
+  await page.evaluate(async () => {
+    await (window as unknown as StoreWin).__ficsitStore.getState().dispatch([
+      { type: "create_factory", name: "OLD EMPIRE", position: { x: 10, y: 20, z: 0 }, region: "GRASS FIELDS" },
+    ]);
+  });
+  expect(await factoryCount(page)).toBe(1);
+
+  // DATA ▾ → Start new empire — a two-click destructive confirm.
+  await page.getByTestId("btn-data-menu").click();
+  const reset = page.getByTestId("btn-new-empire");
+  await expect(reset).toBeVisible();
+  await reset.click(); // arms the confirm
+  await expect(reset).toContainText(/Click again/i);
+  await reset.click(); // confirms → wipes
+
+  await expect.poll(() => factoryCount(page), { timeout: 10_000 }).toBe(0);
+  expect(await buildVersion(page), "the uploaded catalog is KEPT").toBe("uploaded");
+
+  // The wipe persisted: a reload reconstructs the fresh empty session, not the
+  // old empire, and still on the uploaded catalog.
+  await page.reload();
+  await waitReady(page);
+  expect(await factoryCount(page), "the wipe persisted across reload").toBe(0);
+  expect(await buildVersion(page), "catalog still uploaded after reload").toBe("uploaded");
+});

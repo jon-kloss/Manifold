@@ -152,6 +152,15 @@ export default function MapView() {
   // dropped straight onto the map. `.sav` opens the import review, `.json` (web
   // only) swaps in the player's real recipe catalog.
   const [dataMenu, setDataMenu] = useState(false);
+  // "Start new empire" (web only): a two-click destructive latch — the first
+  // click arms the confirm, the second wipes the plan (keeping the Docs.json).
+  const newEmpire = useStore((s) => s.newEmpire);
+  const factoryCount = useStore((s) => Object.keys(s.plan.factories).length);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const closeDataMenu = useCallback(() => {
+    setDataMenu(false);
+    setConfirmReset(false);
+  }, []);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const loadDocsFile = useCallback(
@@ -880,7 +889,7 @@ export default function MapView() {
           <div className="data-menu-wrap">
             <button
               className={`btn btn-ghost ${dataMenu ? "active" : ""}`}
-              onClick={() => setDataMenu((o) => !o)}
+              onClick={() => (dataMenu ? closeDataMenu() : setDataMenu(true))}
               data-testid="btn-data-menu"
               title="Import a save or load your game's Docs.json"
             >
@@ -888,7 +897,7 @@ export default function MapView() {
             </button>
             {dataMenu && (
               <>
-                <div className="data-menu-backdrop" onClick={() => setDataMenu(false)} />
+                <div className="data-menu-backdrop" onClick={closeDataMenu} />
                 <div className="data-menu" data-testid="data-menu">
                   {/* Web + still-on-fixture: the catalog must load BEFORE a save
                       so classes resolve, so state the order loudly and float the
@@ -1024,6 +1033,32 @@ export default function MapView() {
                     >
                       <span className="data-menu-item-label">Update Docs.json</span>
                       <span className="data-menu-item-sub">swap in a different game version's catalog</span>
+                    </button>
+                  )}
+                  {/* Start over: web-only (clears the IndexedDB plan snapshot),
+                      and only when there's something to clear. Two-click confirm
+                      guards the destructive wipe; the Docs.json catalog is kept. */}
+                  {__WASM_BACKEND__ && factoryCount > 0 && (
+                    <button
+                      className={`data-menu-item data-menu-danger ${confirmReset ? "armed" : ""}`}
+                      onClick={() => {
+                        if (!confirmReset) {
+                          setConfirmReset(true);
+                          return;
+                        }
+                        closeDataMenu();
+                        void newEmpire();
+                      }}
+                      data-testid="btn-new-empire"
+                    >
+                      <span className="data-menu-item-label">
+                        {confirmReset ? "Click again to delete everything" : "Start new empire"}
+                      </span>
+                      <span className="data-menu-item-sub">
+                        {confirmReset
+                          ? `deletes all ${factoryCount} ${factoryCount === 1 ? "factory" : "factories"} & routes — keeps your Docs.json`
+                          : "wipe the current plan to import a fresh save"}
+                      </span>
                     </button>
                   )}
                   <div className="data-menu-hint">

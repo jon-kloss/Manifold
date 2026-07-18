@@ -244,11 +244,28 @@ async function uploadDocs(bytes: Uint8Array): Promise<void> {
   session = next;
 }
 
+/** Start a new empire: KEEP the uploaded Docs.json catalog, DROP the plan.
+ *  Rebuild a fresh empty session on the same catalog and overwrite the plan
+ *  snapshot with it, so a reload boots empty too. The docs key is left
+ *  untouched — a new save should not cost re-uploading the game catalog. */
+async function newEmpire(): Promise<void> {
+  await ensureReady();
+  const docs = await loadDocs(); // preserve the uploaded catalog (undefined → bundled fixture)
+  const fresh = new WebSession(docs, undefined);
+  // A pending debounced view-state write belongs to the OLD session — drop it
+  // so it can't land on top of (or race) the fresh empty plan.
+  cancelViewTimer();
+  viewSnapshotPending = false;
+  await saveBlob(fresh.export_blob());
+  session = fresh;
+}
+
 interface Req {
   id: number;
   /** Control message kind. Absent → the normal `dispatch(cmd, args)` path.
-   *  "upload_docs" → rebuild the session over an uploaded Docs.json (Phase 4a). */
-  kind?: "upload_docs";
+   *  "upload_docs" → rebuild the session over an uploaded Docs.json (Phase 4a).
+   *  "new_empire" → clear the plan (keep the catalog) and boot a fresh session. */
+  kind?: "upload_docs" | "new_empire";
   cmd?: string;
   args?: unknown;
   /** upload_docs payload: the raw uploaded Docs.json bytes. */
@@ -310,6 +327,14 @@ self.onmessage = (e: MessageEvent<Req>) => {
       // on the same serialization chain so no request interleaves the swap.
       if (kind === "upload_docs") {
         await uploadDocs(bytes ?? new Uint8Array());
+        self.postMessage({ id, ok: true, result: undefined });
+        return;
+      }
+      // Control path: clear the plan and boot a fresh empty session (keeps the
+      // uploaded catalog). On the same serialization chain so no request
+      // interleaves the swap.
+      if (kind === "new_empire") {
+        await newEmpire();
         self.postMessage({ id, ok: true, result: undefined });
         return;
       }

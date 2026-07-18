@@ -104,6 +104,17 @@ export class WasmBackend implements Backend {
     });
   }
 
+  /** Clear the plan (keep the uploaded Docs.json) and rebuild a fresh empty
+   *  session. A worker CONTROL message, like `uploadDocs` — not a `dispatch`. */
+  newEmpire(): Promise<void> {
+    if (this.deadError) return Promise.reject(this.deadError);
+    const id = ++this.seq;
+    return new Promise<void>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      this.worker.postMessage({ id, kind: "new_empire" });
+    });
+  }
+
   hydrate() {
     return this.call<InitPayload>("hydrate");
   }
