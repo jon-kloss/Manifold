@@ -520,3 +520,58 @@ fn snapshot_rejects_unknown_version() {
     let tampered = serde_json::to_vec(&v).unwrap();
     assert!(MemoryPlanStore::from_snapshot_bytes(&tampered).is_err());
 }
+
+/// `MemoryPlanStore::reset` (the web build's store) must empty EVERY map, and
+/// the emptiness must survive the export_snapshot → from_snapshot_bytes
+/// round-trip the web worker writes to IndexedDB — otherwise a "new empire"
+/// would resurrect stale rows (cards/mutes/meta) on reload.
+#[test]
+fn reset_empties_every_map_and_the_snapshot_round_trip() {
+    let (steps, _fid) = truncation_script();
+    let mut memory = MemoryPlanStore::new();
+    replay(&mut memory, &steps);
+    memory.set_view_state(r#"{"z":3}"#).unwrap();
+    memory.set_unlocked(r#"["Recipe_Alt_C"]"#).unwrap();
+    memory
+        .save_advisor_card("card-1", r#"{"id":"card-1"}"#)
+        .unwrap();
+    memory
+        .add_mute("power_swing", "2026-07-15T00:00:00Z")
+        .unwrap();
+
+    memory.reset().unwrap();
+
+    // In-memory: everything empty.
+    let (state, entries, cursor) = memory.load().unwrap();
+    assert!(state.factories.is_empty(), "entities cleared");
+    assert!(
+        entries.is_empty() && cursor == 0,
+        "journal + cursor cleared"
+    );
+    assert!(
+        memory.view_state().is_none() && memory.unlocked().is_none(),
+        "meta cleared"
+    );
+    assert!(
+        memory.load_advisor_cards().unwrap().is_empty(),
+        "cards cleared"
+    );
+    assert!(memory.load_mutes().unwrap().is_empty(), "mutes cleared");
+
+    // Durable: the exported blob (what the web worker writes to IndexedDB) is
+    // empty too — a reload does not resurrect any stale row.
+    let bytes = memory.export_snapshot().expect("exports a blob");
+    let restored = MemoryPlanStore::from_snapshot_bytes(&bytes).unwrap();
+    let (rstate, rentries, _) = restored.load().unwrap();
+    assert!(rstate.factories.is_empty(), "restored entities empty");
+    assert!(rentries.is_empty(), "restored journal empty");
+    assert!(
+        restored.load_advisor_cards().unwrap().is_empty(),
+        "restored cards empty"
+    );
+    assert!(
+        restored.load_mutes().unwrap().is_empty(),
+        "restored mutes empty"
+    );
+    assert!(restored.view_state().is_none(), "restored meta empty");
+}

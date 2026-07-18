@@ -162,6 +162,13 @@ export default function MapView() {
     setDataMenu(false);
     setConfirmReset(false);
   }, []);
+  // Disarm the destructive "Start new empire" confirm whenever the menu closes
+  // by ANY path (a sibling item's bare setDataMenu(false), the backdrop, Esc) —
+  // otherwise an armed confirm survives the close and a single click on the next
+  // open would wipe the plan with no second-click guard.
+  useEffect(() => {
+    if (!dataMenu) setConfirmReset(false);
+  }, [dataMenu]);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const loadDocsFile = useCallback(
@@ -454,12 +461,12 @@ export default function MapView() {
     mapRef.current = map;
     setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
 
-    map.on("zoomend", () => setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100)));
     // Live zoom stamp: a direct DOM write on every zoom frame (NOT React state —
-    // the eased wheel zoom fires `zoom` per rAF frame, and a setState per frame
-    // would re-render this heavy component and undo the smoothness). The zoom %
-    // readout still lands on `zoomend`; this attribute just lets the smooth-zoom
-    // e2e observe the glide.
+    // the eased wheel zoom fires `zoom`/`moveend` per rAF frame, so a setState or
+    // a persistence write per frame would re-render this heavy component / spam
+    // the backend and undo the smoothness). This attribute lets the smooth-zoom
+    // e2e observe the glide; the % readout + persistence land on the debounced
+    // settle below.
     const stampZoom = () => {
       const rootEl = map.getContainer().closest<HTMLElement>('[data-testid="map-root"]');
       (rootEl ?? map.getContainer()).dataset.zoom = map.getZoom().toFixed(3);
@@ -476,11 +483,24 @@ export default function MapView() {
       const rootEl = map.getContainer().closest<HTMLElement>('[data-testid="map-root"]');
       (rootEl ?? map.getContainer()).dataset.center = `${w.x.toFixed(0)},${w.y.toFixed(0)}`;
     };
+    // The eased zoom fires `moveend` once per frame; debounce the EXPENSIVE work
+    // (a backend persistence write + the React % readout) to the true settle so a
+    // ~1s gesture is one write + one re-render, not ~60. The cheap DOM stamps
+    // above run inline so the smoothness/testability signal stays per-frame.
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    const persistSettle = () => {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        const c = map.getCenter();
+        // Principle 1: position is never lost — persisted on every settle.
+        useStore.getState().saveViewState({ map: { center: [c.lat, c.lng], zoom: map.getZoom() } });
+        setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
+      }, 200);
+    };
     map.on("moveend", () => {
-      const c = map.getCenter();
-      // Principle 1: position is never lost — persisted on every settle.
-      useStore.getState().saveViewState({ map: { center: [c.lat, c.lng], zoom: map.getZoom() } });
       stampCenter();
+      persistSettle();
     });
     stampCenter();
 
@@ -489,6 +509,7 @@ export default function MapView() {
 
     return () => {
       detachZoom();
+      if (settleTimer) clearTimeout(settleTimer);
       map.remove();
       mapRef.current = null;
       layerRef.current = null;

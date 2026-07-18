@@ -1295,3 +1295,47 @@ fn on_device_empty_schema_reply_is_quiet() {
         .collect();
     assert_eq!(got, ids);
 }
+
+#[cfg(feature = "native-http")]
+#[test]
+fn all_unknown_order_ids_are_a_schema_failure_not_a_model_badge() {
+    // Post-lenient-coercion regression guard: a reply whose order is a bare/numeric
+    // list of ids that are NOT candidates (candidate ids are structured strings,
+    // never bare numbers) survives coerce_reply as a non-empty order, but
+    // apply_model_ranking drops all of them → the untouched heuristic order. It
+    // must NOT wear engine:"model"; the native path surfaces the schema error.
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    let (base, _) = stub_provider(Box::new(|_| (200, completion("{\"order\":[1,2,3]}"))));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "heuristic");
+    assert!(resp.model.is_none() && resp.headline.is_none());
+    assert_eq!(
+        resp.error.as_deref(),
+        Some("model reply did not match the rank schema")
+    );
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids, "the safe heuristic order still ships");
+}
+
+#[test]
+fn on_device_all_unknown_order_ids_degrade_quietly() {
+    // Same all-unknown reply on the on-device path: quiet heuristic (no error),
+    // never a model badge on the untouched order.
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    let resp = apply_rank_reply(on_device_job(&mut s), "[\"nope-1\",\"nope-2\"]");
+    assert_eq!(resp.engine, "heuristic");
+    assert!(resp.error.is_none());
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids);
+}

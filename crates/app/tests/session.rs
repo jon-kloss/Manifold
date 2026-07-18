@@ -3041,7 +3041,18 @@ fn new_empire_wipes_the_plan_and_journal_but_keeps_the_catalog() {
     assert!(!s.state.factories.is_empty(), "plan has factories");
     assert!(s.undo.can_undo(), "edits left an undo history");
 
+    // Save-derived facts that new_empire must also clear (a discarded save's
+    // milestones/alt-recipe gating must not leak into the fresh empire).
+    s.unlocked.insert("Recipe_Alternate_Wire_1_C".into());
+    s.purchased_schematics.insert("Schematic_3-1_C".into());
+
     let resp = s.new_empire().unwrap();
+    assert!(s.unlocked.is_empty(), "unlocked recipes cleared");
+    assert!(
+        s.purchased_schematics.is_empty(),
+        "purchased schematics cleared"
+    );
+    assert!(s.advisor.cards.is_empty(), "advisor state reset");
 
     // Plan + journal wiped...
     assert!(s.state.factories.is_empty(), "factories wiped");

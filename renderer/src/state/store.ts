@@ -301,10 +301,11 @@ export interface AppStore {
       false when the backend refused (recorded in `cmdError`, never a rejection).
       Web-only — non-wasm backends reject and this surfaces the refusal. */
   uploadDocs(bytes: Uint8Array): Promise<boolean>;
-  /** Web only: wipe the current plan (KEEPING the uploaded Docs.json) and
-      re-hydrate to an empty empire — the "start over" before importing a fresh,
-      unrelated save. Resolves true on success; false when the backend refused
-      (recorded in `cmdError`, never a rejection). */
+  /** Wipe the current plan (KEEPING the gamedata catalog) and re-hydrate to an
+      empty empire — the "start over" before importing a fresh, unrelated save.
+      A cross-platform Session::new_empire over every transport. Resolves true on
+      success; false on a backend error (recorded in `cmdError`, never a
+      rejection). */
   newEmpire(): Promise<boolean>;
   /** Sync Phase 2: parse a re-read `.sav` and run it through import — headless
       (no preview modal), the one-click counterpart to the ImportModal flow.
@@ -809,10 +810,10 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   async newEmpire() {
-    // Clear the persisted plan (the wasm worker keeps the uploaded Docs.json),
-    // then re-hydrate onto the fresh empty session. Selection/view could point
-    // at now-deleted entities, so reset them before the re-projection. A refusal
-    // (non-wasm backend) surfaces on the chip — never a rejection to the UI.
+    // Wipe the plan via Session::new_empire (keeps the catalog), then re-hydrate
+    // onto the empty session. Selection/view could point at now-deleted entities,
+    // so reset them before the re-projection. A backend error surfaces on the
+    // chip — never a rejection to the UI.
     try {
       await backend.newEmpire();
     } catch (e) {

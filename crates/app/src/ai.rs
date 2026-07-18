@@ -176,13 +176,14 @@ pub fn set_config(s: &mut Session, update: AiConfigUpdate) -> AiConfigPublic {
     config_public(s)
 }
 
-/// The model's expected reply shape. MISSING fields degrade individually (no
-/// order → heuristic order; no notes → no notes), but a field of the WRONG
-/// TYPE fails the whole parse — and that is the safe direction: the reply is
-/// rejected wholesale and the untouched heuristic list ships with a surfaced
-/// error. A reply that parses but carries NONE of the fields is treated as a
-/// schema failure by [`execute_rank`] (a `{}` buried in prose must not wear
-/// the `engine:"model"` badge).
+/// The model's expected reply shape. Built by [`coerce_reply`], which is
+/// lenient: MISSING fields degrade individually (no order → heuristic order; no
+/// notes → no notes), and a WRONG-TYPED field is salvaged where sensible
+/// (numeric `order` ids / numeric notes are stringified) or dropped, rather than
+/// failing the whole parse. A reply that carries no model CONTENT — no headline,
+/// no surviving wildcard, and an order/notes referencing no real candidate — is
+/// treated as a schema failure by [`ranked_response`] (it must not wear the
+/// `engine:"model"` badge on the untouched heuristic order).
 #[derive(Debug, Default, Deserialize)]
 pub struct ModelReply {
     #[serde(default)]
@@ -910,23 +911,27 @@ fn request_body(job: &RankJob, lean: bool) -> serde_json::Value {
     body
 }
 
-/// Ok-arm finish. A FULLY-EMPTY parse (no order, no notes, headline absent
-/// or blank) is treated as a schema failure: `{}` buried in prose or a
-/// structurally unrelated JSON object would otherwise ship as
-/// `engine:"model"` with zero model content — a silent no-op wearing the AI
-/// badge. Partial replies still degrade per field (see [`ModelReply`]), and
-/// the pure firewall keeps its own empty-tolerance as defense in depth.
+/// Ok-arm finish. A reply that carries no MODEL CONTENT is a schema failure:
+/// `{}` buried in prose, a structurally unrelated JSON object, or an `order`/
+/// `notes` made up ENTIRELY of ids that aren't candidates (which the firewall
+/// drops, leaving the untouched heuristic order). Any of those would otherwise
+/// ship as `engine:"model"` — a silent no-op wearing the AI badge — so they fall
+/// back instead (native surfaces the actionable error; on-device stays quiet).
+/// Partial replies still degrade per field (see [`ModelReply`]).
 fn ranked_response(job: RankJob, reply: &ModelReply, on_device: bool) -> RankResponse {
     // Validate wildcards FIRST (catalog + preferences): a reply that carries
-    // ONLY valid wildcards is still model CONTENT, not a schema failure. But a
-    // bare `{}` (or wildcards that all wash out — empty titles, filtered by
-    // preference) leaves nothing, so it still falls back and never earns the
-    // `engine:"model"` badge.
+    // ONLY valid wildcards is still model CONTENT, not a schema failure.
     let wildcards = validate_wildcards(&reply.wildcards, &job.catalog_items, &job.prefs);
     let headline_blank = reply.headline.as_deref().unwrap_or("").trim().is_empty();
-    if reply.order.is_empty() && reply.notes.is_empty() && headline_blank && wildcards.is_empty() {
-        // A content-free reply: the native provider path surfaces the actionable
-        // schema error; the on-device path stays quiet (see `apply_rank_reply`).
+    // "Carries content" = references at least one REAL candidate (post-firewall),
+    // a headline, or a surviving wildcard. Gating on raw order/notes non-emptiness
+    // would let an all-unknown-id reply (e.g. `{"order":[1,2,3]}` — candidate ids
+    // are structured strings, never bare numbers) wear the model badge and swallow
+    // the native schema error, since apply_model_ranking drops every unknown id.
+    let known: BTreeSet<&str> = job.candidates.iter().map(|c| c.id.as_str()).collect();
+    let refs_candidate = reply.order.iter().any(|id| known.contains(id.as_str()))
+        || reply.notes.keys().any(|id| known.contains(id.as_str()));
+    if !refs_candidate && headline_blank && wildcards.is_empty() {
         return heuristic(
             job.candidates,
             (!on_device).then(|| "model reply did not match the rank schema".to_string()),

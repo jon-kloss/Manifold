@@ -1644,6 +1644,12 @@ impl Session {
         self.advisor = AdvisorState::default();
         self.unlocked.clear();
         self.purchased_schematics.clear();
+        // Reload the world snapshot: gamedata is an immutable catalog, but `world`
+        // is mutated in place by `apply_purity_overrides` on every solve and only
+        // ever OVERWRITES purities (never reverts to catalog default). With
+        // node_overrides now empty a re-solve can't undo a discarded save's purity
+        // corrections, so reload the pristine ambient world (matches the ctor).
+        self.world = gamedata::worldnodes::load();
         Ok(self.nav_response(PatchBatch::default()))
     }
 
