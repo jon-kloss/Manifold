@@ -42,6 +42,12 @@ const LEVEL_WORD = { ok: "OK", warn: "TIGHT", crit: "BROWNOUT RISK" } as const;
 
 const sign = (v: number): string => (v >= 0 ? "+" : "−");
 
+/** Draw-vs-generation bar fill %. Zero generation with real draw is a blackout /
+ *  over-capacity — the most critical state — so it fills to 100 (red), never 0
+ *  (which would read as "nothing happening"). */
+const barFill = (gen: number, draw: number): number =>
+  gen > 0 ? Math.min(100, (draw / gen) * 100) : draw > 0 ? 100 : 0;
+
 export default function ResourceOverview() {
   const derived = useStore((s) => s.derived);
   const plan = useStore((s) => s.plan);
@@ -168,7 +174,11 @@ export default function ResourceOverview() {
     (r) =>
       (!q || r.label.toLowerCase().includes(q)) &&
       (kind === "all" || (kind === "raw" ? r.raw : !r.raw)) &&
-      (bal === "all" || (bal === "surplus" ? r.net > 0.01 : r.net < -0.01)),
+      // "deficit" = short SOMEWHERE: empire net-negative OR a per-port shortfall
+      // (derived.deficits), so it matches the items the problem strip counts —
+      // an item made in surplus empire-wide but starved at one routed factory
+      // still shows here.
+      (bal === "all" ? true : bal === "surplus" ? r.net > 0.01 : r.net < -0.01 || deficitsByItem.has(r.item)),
   );
 
   const stepUp = () => setUi(ui === "collapsed" ? "brief" : "detailed");
@@ -178,8 +188,13 @@ export default function ResourceOverview() {
   };
   const goProblems = () => {
     setUi("detailed");
+    // Force both accordions open so the problem the strip names is actually
+    // visible; only apply the deficit filter when there ARE supply deficits
+    // (a power-only warning must not filter the table down to "no matches").
+    setSecPower(true);
+    setSecRes(true);
     setKind("all");
-    setBal("deficit");
+    setBal(deficitCount > 0 ? "deficit" : "all");
     setQuery("");
   };
   // Drill-down navigation: select the factory AND fly the map camera to it, so
@@ -276,7 +291,7 @@ export default function ResourceOverview() {
             GEN {fmtPower(genMw)}&nbsp;&nbsp;·&nbsp;&nbsp;DRAW {fmtPower(drawMw)}
           </div>
           <div className="ro-bar">
-            <span className={worst} style={{ width: `${Math.min(100, genMw > 0 ? (drawMw / genMw) * 100 : 0)}%` }} />
+            <span className={worst} style={{ width: `${barFill(genMw, drawMw)}%` }} />
           </div>
         </>
       ) : (
@@ -372,10 +387,7 @@ export default function ResourceOverview() {
                           </span>
                         </div>
                         <div className="ro-bar">
-                          <span
-                            className={lvl}
-                            style={{ width: `${Math.min(100, c.generationMw > 0 ? (c.demandMw / c.generationMw) * 100 : 0)}%` }}
-                          />
+                          <span className={lvl} style={{ width: `${barFill(c.generationMw, c.demandMw)}%` }} />
                         </div>
                         <div className="ro-grid-sub">
                           <span>

@@ -256,33 +256,12 @@
   flex-direction: column;
   max-height: calc(100vh - 240px);
 }
-.ro-toggle {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  text-align: left;
-  color: var(--ink-300);
-  flex: 0 0 auto;
-}
-.ro-body {
-  padding: 0 8px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 0;
-}
-.ro-power,
 .ro-head,
 .ro-row {
   display: grid;
   grid-template-columns: 1fr 3.2em 3.2em 3.6em;
   align-items: center;
   gap: 4px;
-}
-.ro-power {
-  padding: 4px 2px 6px;
-  border-bottom: 1px solid var(--steel-600);
-  font-size: 11px;
 }
 .ro-power-label {
   font: 600 11px var(--font-mono);
@@ -1070,7 +1049,6 @@
 
 /* ledger grid — brief keeps the shipped column widths; detailed gets wider cells */
 .ro-head { padding: 6px 12px 0; }
-.ro-detailed .ro-power,
 .ro-detailed .ro-head,
 .ro-detailed .ro-row {
   grid-template-columns: 1fr 3.6em 3.6em 3.9em;
