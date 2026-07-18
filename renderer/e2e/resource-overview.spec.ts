@@ -41,3 +41,40 @@ test("resource overview aggregates empire production/consumption", async ({ page
 
   await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
 });
+
+test("detailed view: per-grid power, filter, and per-item factory drill-down", async ({ page, request }) => {
+  await resetView(request);
+  const f = (await edit(request, [{ type: "create_factory", name: "DRILL WORKS", position: { x: -3200, y: 3200 }, region: "GRASS FIELDS" }])).created[0];
+  const oreIn = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_OreIron_C", rate: 0, rateCeiling: 120, graphPos: { x: 0, y: 100 } }])).created[0];
+  const ingotOut = (await edit(request, [{ type: "add_port", factory: f, direction: "out", item: "Desc_IronIngot_C", rate: 0, rateCeiling: null, graphPos: { x: 600, y: 100 } }])).created[0];
+  const smelters = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_SmelterMk1_C", recipe: "Recipe_IngotIron_C", count: 1, clock: 1.0, graphPos: { x: 300, y: 100 }, floor: 0 }])).created[0];
+  const G = (id: string) => ({ kind: "group", id });
+  const P = (id: string) => ({ kind: "port", id });
+  await edit(request, [{ type: "add_edge", factory: f, from: P(oreIn), to: G(smelters), item: "Desc_OreIron_C", tier: 3 }]);
+  await edit(request, [{ type: "add_edge", factory: f, from: G(smelters), to: P(ingotOut), item: "Desc_IronIngot_C", tier: 3 }]);
+  await edit(request, [{ type: "set_port_rate", id: ingotOut, rate: 30 }]);
+
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    const panel = page.getByTestId("resource-overview");
+    await expect(panel).toBeVisible();
+
+    // Brief → detailed via the ⤢ stepper.
+    await panel.getByTitle(/Full table \+ grids/i).click();
+    await expect(panel.locator(".ro-search")).toBeVisible();
+    await expect(panel.locator(".ro-chip", { hasText: "RAW" })).toBeVisible();
+
+    // Filter narrows the table live as you type.
+    await panel.locator(".ro-search").fill("ingot");
+    await expect(panel).toContainText(/Iron Ingot/i);
+    await expect(panel).not.toContainText(/Iron Ore/i);
+
+    // Drill down a row → the producing factory is named.
+    await panel.locator(".ro-rowbtn").first().click();
+    await expect(panel.locator(".ro-drill")).toContainText(/DRILL WORKS/i);
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});

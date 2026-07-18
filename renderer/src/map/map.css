@@ -934,3 +934,301 @@
   font-size: 12px;
   color: var(--ink-300);
 }
+
+/* ---- resource overview v2: collapsed rail / brief / detailed ----
+   Appended after the original .resource-overview block; the width + state
+   overrides below supersede it. (The old .ro-toggle/.ro-body/.ro-power rules
+   are now unused and can be deleted in a follow-up.) */
+.resource-overview {
+  width: 264px;
+  transition: width var(--dur-drawer) var(--ease);
+  overflow: hidden;
+}
+.resource-overview.ro-collapsed { width: 40px; }
+.resource-overview.ro-brief { width: 268px; }
+.resource-overview.ro-detailed { width: 400px; }
+
+/* collapsed rail: ignorable until a signal turns amber/red */
+.ro-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 0 10px;
+}
+.ro-rail:hover { background: var(--steel-800); }
+.ro-rail-caret { color: var(--ink-500); font-size: 11px; line-height: 1; }
+.ro-rail-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-300);
+}
+.ro-rail-label.sub { font-size: 9px; color: var(--ink-faint); }
+.ro-rail-deficits {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  background: var(--flow-crit);
+  color: var(--steel-950);
+  border-radius: 2px;
+  padding: 0 4px;
+  line-height: 14px;
+}
+.ro-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.ro-dot.ok { background: var(--flow-ok); }
+.ro-dot.warn { background: var(--flow-warn); }
+.ro-dot.crit { background: var(--flow-crit); animation: ro-pulse 1.2s var(--ease) infinite; }
+@keyframes ro-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* header row: title + count + the one stepper affordance */
+.ro-headrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 5px 5px 10px;
+  border-bottom: 1px solid var(--steel-700);
+  flex: 0 0 auto;
+}
+.ro-title { color: var(--ink-300); }
+.ro-count { font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint); }
+.ro-flex { flex: 1; }
+.ro-step {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  color: var(--ink-500);
+  font-size: 11px;
+}
+.ro-step:hover { background: var(--steel-700); color: var(--ink-100); }
+
+/* power headline: shared by brief + detailed */
+.ro-powerblock {
+  padding: 8px 10px 9px;
+  border-bottom: 1px solid var(--steel-700);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+.ro-powerblock-top { display: flex; align-items: center; gap: 6px; }
+.ro-powerblock-top .ro-power-label { flex: 1; }
+.ro-level { font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.08em; }
+.ro-level.ok { color: var(--flow-ok); }
+.ro-level.warn { color: var(--flow-warn); }
+.ro-level.crit { color: var(--flow-crit); }
+.ro-net-line { display: flex; align-items: baseline; gap: 8px; }
+.ro-net-big {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.ro-net-big.surplus { color: var(--flow-ok); }
+.ro-net-big.deficit { color: var(--flow-crit); }
+.ro-headroom { font-family: var(--font-mono); font-size: 10px; color: var(--ink-500); }
+.ro-genline {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-500);
+}
+.ro-genline.ghost { color: var(--ink-faint); }
+.ro-bar { height: 4px; background: var(--steel-700); border-radius: 2px; overflow: hidden; }
+.ro-bar > span { display: block; height: 100%; transition: width var(--dur-drawer) var(--ease); }
+.ro-bar > span.ok { background: var(--flow-ok); }
+.ro-bar > span.warn { background: var(--flow-warn); }
+.ro-bar > span.crit { background: var(--flow-crit); }
+
+/* problem strip: deficits + brownout risk, impossible to miss, one click to evidence */
+.ro-alert-wrap { padding: 6px 10px 0; flex: 0 0 auto; }
+.ro-alert {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 93, 85, 0.06);
+  border: 1px solid var(--flow-crit-dark);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  color: var(--flow-crit);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.ro-alert:hover { background: rgba(255, 93, 85, 0.12); }
+
+/* ledger grid — brief keeps the shipped column widths; detailed gets wider cells */
+.ro-head { padding: 6px 12px 0; }
+.ro-detailed .ro-power,
+.ro-detailed .ro-head,
+.ro-detailed .ro-row {
+  grid-template-columns: 1fr 3.6em 3.6em 3.9em;
+}
+.ro-rows { padding: 2px 8px 4px; }
+.ro-rowbtn {
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-body);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.ro-rowbtn.open { background: var(--steel-800); }
+.ro-tag-raw {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  flex: none;
+}
+.ro-more-wrap { padding: 2px 8px 8px; flex: 0 0 auto; }
+.ro-more {
+  display: block;
+  width: 100%;
+  padding: 5px 0;
+  border: 1px solid var(--steel-600);
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-300);
+}
+.ro-more:hover { background: var(--steel-700); color: var(--ink-100); }
+
+/* detailed: one scroll surface, two collapsible accordion sections */
+.ro-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.ro-detailed .ro-rows { overflow: visible; flex: none; }
+.ro-sec {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--steel-700);
+  flex: 0 0 auto;
+}
+.ro-sec:hover { background: var(--steel-800); }
+.ro-sec-caret { color: var(--ink-500); font-size: 9px; }
+.ro-sec-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--steel-700);
+}
+
+/* per-grid power breakdown (detailed) */
+.ro-grids {
+  padding: 7px 10px 8px;
+  border-bottom: 1px solid var(--steel-700);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+.ro-grid { display: flex; flex-direction: column; gap: 3px; }
+.ro-grid-top { display: flex; align-items: baseline; gap: 8px; }
+.ro-grid-name {
+  flex: 1;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-100);
+}
+.ro-grid-head { font-family: var(--font-mono); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.ro-grid-head.ok { color: var(--flow-ok); }
+.ro-grid-head.warn { color: var(--flow-warn); }
+.ro-grid-head.crit { color: var(--flow-crit); }
+.ro-grid-sub {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-500);
+}
+.ro-grid-shed.warn { color: var(--flow-warn); }
+.ro-grid-shed.crit { color: var(--flow-crit); }
+
+/* search + category chips (detailed) */
+.ro-controls {
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--steel-700);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.ro-search { width: 100%; height: 26px; padding: 0 8px; font-size: 12px; background: var(--steel-800); }
+.ro-chips { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.ro-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--steel-600);
+  color: var(--ink-300);
+  background: transparent;
+}
+.ro-chip:hover { border-color: var(--ink-300); }
+.ro-chip.active {
+  border-color: var(--signal-selected-border);
+  color: var(--signal-500);
+  background: var(--signal-selected-bg);
+}
+.ro-chip-sep { width: 1px; height: 14px; background: var(--steel-600); margin: 0 3px; }
+
+/* per-item drill-down: producing / consuming factories with rates */
+.ro-drill {
+  background: var(--steel-800);
+  border: 1px solid var(--steel-700);
+  border-radius: var(--radius);
+  margin: 2px 0 6px 12px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  animation: drawer-in var(--dur-drawer) var(--ease);
+}
+.ro-drill-block { display: flex; flex-direction: column; gap: 2px; }
+.ro-drill-h { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; color: var(--ink-faint); }
+.ro-drill-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.ro-fac {
+  padding: 0;
+  text-align: left;
+  font-size: 11.5px;
+  color: var(--ink-100);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ro-fac:hover { color: var(--signal-400); }
+.ro-drill-note { font-family: var(--font-mono); font-size: 10px; color: var(--flow-crit); line-height: 1.5; }
+.ro-drill-belt { font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-500); }
