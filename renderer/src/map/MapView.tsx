@@ -739,6 +739,20 @@ export default function MapView() {
   }, [placing, world.regions, dispatch, setPlacing, setSelection]);
 
   // ---- factory pin markers ----
+  // Firefox (notably on Linux) eagerly starts a NATIVE HTML drag from the
+  // pin's inline svg / label text. Once a native drag begins, the mouseup is
+  // swallowed, Leaflet's marker Draggable never gets its dragend, and the pin
+  // LATCHES to the pointer — every later map pan also "drags the factory",
+  // committing bogus positions. Kill native dragstart at the source (paired
+  // with user-select:none on .pin-icon in map.css).
+  const armPinElement = (marker: L.Marker) => {
+    marker.getElement()?.addEventListener("dragstart", (e) => e.preventDefault());
+  };
+  // Marker drags whose release the safety net had to force are discarded —
+  // suppress the dragend commit and snap back to the stored position.
+  const discardDragRef = useRef(new Set<string>());
+  const pinHtmlRef = useRef(new Map<string, string>());
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -770,15 +784,27 @@ export default function MapView() {
           }
         });
         marker.on("dragend", () => {
+          // a force-released (stuck) drag is not a user drop — discard it
+          if (discardDragRef.current.delete(f.id)) return;
           // keep the planner-entered elevation — dragging only moves x/y
           const z = useStore.getState().plan.factories[f.id]?.position.z ?? 0;
           const pos = { ...fromLatLng(marker!.getLatLng()), z };
           void useStore.getState().dispatch([{ type: "move_factory_pin", id: f.id, position: pos }]);
         });
         marker.addTo(map);
+        armPinElement(marker);
+        pinHtmlRef.current.set(f.id, html);
         markers.set(f.id, marker);
-      } else {
-        marker.setIcon(icon);
+      } else if (!(marker.dragging as unknown as { _draggable?: { _moving?: boolean } })?._draggable?._moving) {
+        // Never mutate a pin MID-DRAG: setIcon() replaces the exact DOM element
+        // Leaflet's Draggable is bound to and the enable/disable toggle resets
+        // its state — either strands the drag so dragend (and the map-drag
+        // re-enable) never lands. The post-drag effect re-syncs everything.
+        if (pinHtmlRef.current.get(f.id) !== html) {
+          marker.setIcon(icon); // replaces the element — re-arm the native-drag guard
+          armPinElement(marker);
+          pinHtmlRef.current.set(f.id, html);
+        }
         // re-sync draggability: a pin that flips ◇→◈→◆ (or back on undo) must
         // gain/lose its drag handle, not keep the value it was created with.
         const draggable = f.status === "planned";
@@ -793,10 +819,44 @@ export default function MapView() {
       if (!seen.has(id)) {
         marker.remove();
         markers.delete(id);
+        pinHtmlRef.current.delete(id);
       }
     }
     declutterPinChips(map, markers);
   }, [plan.factories, selection]);
+
+  // Stuck-drag safety net: if a pin's Draggable still thinks it is moving when
+  // the window sees the interaction end, its release was lost (native-drag
+  // interference, focus loss). Force-finish it and restore the stored position
+  // — a drag that needed rescuing was never an intentional drop. Listens on
+  // window "mouseup" (bubbles AFTER Leaflet's own document handler, so normal
+  // drags have already finished and this no-ops), plus dragend/blur where no
+  // mouseup will ever arrive.
+  useEffect(() => {
+    const release = () => {
+      for (const [id, m] of markersRef.current) {
+        const d = (m.dragging as unknown as { _draggable?: { _moving?: boolean; finishDrag?: () => void } })?._draggable;
+        if (d?._moving && typeof d.finishDrag === "function") {
+          discardDragRef.current.add(id);
+          try {
+            d.finishDrag();
+          } catch {
+            discardDragRef.current.delete(id);
+          }
+          const f = useStore.getState().plan.factories[id];
+          if (f) m.setLatLng(toLatLng(f.position));
+        }
+      }
+    };
+    window.addEventListener("mouseup", release);
+    window.addEventListener("dragend", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("mouseup", release);
+      window.removeEventListener("dragend", release);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
 
   // ---- keys: N place, F frame, ESC deselect, 1/4 overlays, ⏎ dive ----
   useEffect(() => {

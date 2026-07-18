@@ -161,6 +161,16 @@
   background: none;
   border: none;
 }
+/* Firefox starts a NATIVE drag from selected/selectable text (and does so
+   eagerly on Linux). A native drag swallows the mouseup, so Leaflet's marker
+   drag never ends and the pin latches to the pointer — pans then "drag the
+   factory". Unselectable pin content can never seed that drag (paired with a
+   dragstart preventDefault on the marker element in MapView). */
+.pin-icon,
+.pin-icon * {
+  user-select: none;
+  -webkit-user-select: none;
+}
 .pin-wrap {
   position: relative;
   display: flex;
