@@ -323,7 +323,9 @@ function TransportDrawer({ route }: { route: Route }) {
   // routed through a full link.
   const bn = short || routeBottleneck(route.id, dr?.saturation ?? 0, derived.deficits);
   const band = flowBand(dr?.saturation ?? 0, demand, bn);
-  const level = band === "bottleneck" ? "crit" : band === "under" ? "warn" : "ok";
+  // idle (zero demand) stays neutral — never the healthy ✓, matching the dim
+  // idle polyline on the map behind this drawer.
+  const level = band === "bottleneck" ? "crit" : band === "under" ? "warn" : band === "idle" ? "idle" : "ok";
 
   const respec = (patch: Record<string, unknown>) => {
     if (route.kind.kind === "rail") {
@@ -486,7 +488,7 @@ function TransportDrawer({ route }: { route: Route }) {
               <span>DEMAND</span>
               <span className="math-note" />
               <span className="projected">
-                {fmtRate(demand)}/min {level === "crit" ? "⚠ SHORT" : level === "warn" ? "UNDER" : "✓"}
+                {fmtRate(demand)}/min {level === "crit" ? "⚠ SHORT" : level === "warn" ? "UNDER" : level === "idle" ? "IDLE" : "✓"}
               </span>
             </div>
             {t.batteriesPerMin != null && (

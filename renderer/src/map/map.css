@@ -571,11 +571,17 @@
 .minibar > span.bottleneck {
   background: var(--flow-crit);
 }
+.minibar > span.idle {
+  background: var(--steel-500);
+}
 .drawer-row .t-data-12.under {
   color: var(--flow-warn);
 }
 .drawer-row .t-data-12.bottleneck {
   color: var(--flow-crit);
+}
+.drawer-row .t-data-12.idle {
+  color: var(--ink-500);
 }
 .drawer-footer {
   margin-top: auto;
@@ -641,6 +647,7 @@
 }
 .math-row.warn { color: var(--flow-warn); }
 .math-row.crit { color: var(--flow-crit); }
+.math-row.idle { color: var(--ink-500); }
 .math-edit {
   width: 44px;
   height: 18px;

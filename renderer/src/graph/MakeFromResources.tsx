@@ -249,8 +249,22 @@ export default function MakeFromResources({
         // demand — otherwise the export keeps eating the whole output and the
         // new consumer starves (idle belts). Non-destructive: the port stays,
         // just retargeted; raise it back to export surplus again.
+        // Only ports THIS group actually feeds (a belt group→port exists) are
+        // eligible — a same-item export fed by a different producer is not ours
+        // to trim, and freeing it would both cut that export wrongly and skip
+        // the scale-up the reused group still needs.
+        const fedByGroup = (pid: Id) =>
+          Object.values(plan.edges).some(
+            (e) => e.from.kind === "group" && e.from.id === gid && e.to.kind === "port" && e.to.id === pid,
+          );
         const worldPorts = Object.values(plan.ports).filter(
-          (p) => p.factory === factoryId && p.direction === "out" && p.item === item && p.boundRoute === null && p.rate > 0,
+          (p) =>
+            p.factory === factoryId &&
+            p.direction === "out" &&
+            p.item === item &&
+            p.boundRoute === null &&
+            p.rate > 0 &&
+            fedByGroup(p.id),
         );
         let toFree = newDemand;
         let freed = 0;
@@ -267,8 +281,11 @@ export default function MakeFromResources({
         const committed = derived.factories[factoryId]?.groups[gid]?.outRates[item] ?? 0;
         const capacityNow = prod.per * prod.count * prod.clock;
         // Output needed after the redirect: current output, minus the export we
-        // just freed, plus the new internal demand.
-        const needed = committed - freed + newDemand;
+        // just freed, plus the new internal demand. `committed` is the solver's
+        // actual (capacity-clamped) output while the trim works on port TARGETS,
+        // so credit no more freed output than was really flowing — an
+        // under-provisioned line must still scale up to cover the new draw.
+        const needed = committed - Math.min(freed, committed) + newDemand;
         if (needed > capacityNow + 1e-6) {
           const needCount = Math.ceil(needed / (prod.per * (prod.clock || 1)));
           needCountByGid.set(gid, Math.max(needCountByGid.get(gid) ?? 0, needCount));
