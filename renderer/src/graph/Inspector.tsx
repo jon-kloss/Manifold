@@ -147,6 +147,17 @@ export default function Inspector({
   const selectedJunction = selection?.kind === "junction" ? plan.junctions[selection.id] : null;
   const selectedEdge = selection?.kind === "edge" ? plan.edges[selection.id] : null;
   const selectedPort = selection?.kind === "port" ? plan.ports[selection.id] : null;
+  // The factory-level OUTPUT TARGET (+ its binding-constraint warning) is the
+  // overview control. When a specific belt / group / junction — or a non-output
+  // port — is selected, that entity's own sections own the panel; showing the
+  // factory target too reads as if it belongs to the selection (e.g. a CABLE
+  // target and a BIOMASS-belt binding rendered over a selected IRON ROD belt).
+  // The inspector only mounts for a group / port / edge selection, so the factory
+  // OUTPUT TARGET renders exactly when the out port itself is selected — never
+  // over a machine, belt, or a different port, which each own the panel. (The
+  // group/edge/junction guards are belt-and-suspenders against future mounts.)
+  const showFactoryTarget =
+    !!outPort && !selectedGroup && !selectedEdge && !selectedJunction && (!selectedPort || selectedPort.id === outPort.id);
   const chip = solveChip(authoritative);
   const atCeiling = !!ceiling && rate >= ceiling.maxRate - 1e-6;
 
@@ -217,7 +228,7 @@ export default function Inspector({
   return (
     <aside className="inspector" data-testid="inspector">
       {/* ---- OUTPUT TARGET (factory-level) ---- */}
-      {outPort && (
+      {showFactoryTarget && (
         <section className="insp-section">
           <h3 className="t-label">OUTPUT TARGET — {itemLabel(gamedata.items, outPort.item).toUpperCase()}</h3>
           <div className="insp-target-row">
@@ -506,19 +517,25 @@ export default function Inspector({
                   {/* efficiency grammar: only a solver-named BOTTLENECK belt
                       earns the upgrade nudge — a full belt meeting demand is
                       optimal, not an upgrade prompt */}
-                  {bottlenecks.has(e.id) && <span className="chip crit">UPGRADE?</span>}
-                  <select
-                    className="mono"
-                    style={{ height: 24 }}
-                    value={e.tier}
-                    onChange={(ev) => void dispatch([{ type: "set_edge_tier", id: e.id, tier: Number(ev.target.value) }])}
-                  >
-                    {[1, 2, 3, 4, 5, 6].map((t) => (
-                      <option key={t} value={t}>
-                        MK.{t} — {beltCapacity(t)}/min
-                      </option>
-                    ))}
-                  </select>
+                  {bottlenecks.has(e.id) && e.status !== "built" && <span className="chip crit">UPGRADE?</span>}
+                  {e.status === "built" ? (
+                    <span className="mono t-data-12" title="Imported as built — rebuild in-game to change its tier.">
+                      MK.{e.tier} · BUILT
+                    </span>
+                  ) : (
+                    <select
+                      className="mono"
+                      style={{ height: 24 }}
+                      value={e.tier}
+                      onChange={(ev) => void dispatch([{ type: "set_edge_tier", id: e.id, tier: Number(ev.target.value) }])}
+                    >
+                      {[1, 2, 3, 4, 5, 6].map((t) => (
+                        <option key={t} value={t}>
+                          MK.{t} — {beltCapacity(t)}/min
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
             ))}
           </section>
@@ -590,20 +607,31 @@ export default function Inspector({
           <h3 className="t-label">BELT — {itemLabel(gamedata.items, selectedEdge.item).toUpperCase()}</h3>
           <div className="drawer-row">
             <span className="drawer-row-name">Tier</span>
-            <select
-              className="mono"
-              style={{ height: 24 }}
-              value={selectedEdge.tier}
-              onChange={(ev) => void dispatch([{ type: "set_edge_tier", id: selectedEdge.id, tier: Number(ev.target.value) }])}
-              data-testid="edge-tier-select"
-            >
-              {[1, 2, 3, 4, 5, 6].map((t) => (
-                <option key={t} value={t}>
-                  MK.{t} — {beltCapacity(t)}/min
-                </option>
-              ))}
-            </select>
+            {selectedEdge.status === "built" ? (
+              <span className="mono t-data-12" data-testid="edge-tier-built">
+                MK.{selectedEdge.tier} — {beltCapacity(selectedEdge.tier)}/min · BUILT
+              </span>
+            ) : (
+              <select
+                className="mono"
+                style={{ height: 24 }}
+                value={selectedEdge.tier}
+                onChange={(ev) => void dispatch([{ type: "set_edge_tier", id: selectedEdge.id, tier: Number(ev.target.value) }])}
+                data-testid="edge-tier-select"
+              >
+                {[1, 2, 3, 4, 5, 6].map((t) => (
+                  <option key={t} value={t}>
+                    MK.{t} — {beltCapacity(t)}/min
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
+          {selectedEdge.status === "built" && (
+            <div className="insp-note" data-testid="edge-tier-built-note">
+              Imported as built — this belt's tier is fixed to your save. Rebuild it at a higher tier in-game, then re-import to raise its capacity here.
+            </div>
+          )}
           <div className="drawer-row">
             <span className="drawer-row-name">Load</span>
             <span className={`t-data-12 ${isProjected ? "projected" : ""}`}>

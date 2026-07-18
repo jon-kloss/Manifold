@@ -5,6 +5,7 @@ import { backend } from "./backend";
 import { parseSaveFile } from "../import/parseSave";
 import { driftConflictCount } from "../import/saveHandle";
 import { applyPatches } from "./patch";
+import { friendlyError } from "./errors";
 import {
   DEFAULT_WEBLLM_MODEL,
   deleteModelFromCache,
@@ -161,10 +162,15 @@ const nameIds = (msg: string): string =>
       p.factories[id]?.name ??
       (group ? `${p.factories[group.factory]?.name ?? "?"} machine bank` : undefined) ??
       (p.ports[id] ? `${p.ports[id].item.replace(/^Desc_|_C$/g, "")} port` : undefined) ??
+      // Belts (edges) and junctions were missing here, so belt errors leaked a
+      // raw ULID (e.g. "set tier" on a built belt).
+      (p.edges[id] ? `${p.edges[id].item.replace(/^Desc_|_C$/g, "")} belt` : undefined) ??
+      (p.junctions[id] ? "junction" : undefined) ??
       (p.routes[id] ? "route" : undefined) ??
       p.proposals[id]?.title;
     return name ? `"${name}"` : id;
   });
+
 
 export type Selection =
   | { kind: "factory"; id: Id }
@@ -715,7 +721,7 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   reportCmdError(message) {
-    const msg = nameIds(message);
+    const msg = nameIds(friendlyError(message));
     // The status-bar chip is easy to miss; a toast makes every refused action
     // visibly acknowledged (the app was too quiet about what did/didn't happen).
     set({ cmdError: { message: msg, at: Date.now() } });

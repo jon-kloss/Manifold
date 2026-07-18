@@ -130,6 +130,10 @@ body,
   border-style: dashed;
   font-style: italic;
 }
+.chip.built {
+  color: var(--ink-100);
+  border-color: var(--steel-500);
+}
 
 /* ---- buttons: orange is a verb ---- */
 button {

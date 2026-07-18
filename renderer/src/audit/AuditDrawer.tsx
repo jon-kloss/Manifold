@@ -37,6 +37,8 @@ interface SatRow {
   band: FlowBand;
   trace: () => void;
   upgrade: (() => void) | null;
+  /** imported-as-built belt/route — tier is fixed to the save (no upgrade). */
+  built: boolean;
 }
 
 // PLAN DRIFT (mock 2d + SDD §8): ◇ planned entities awaiting build, plus the
@@ -215,9 +217,13 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
           setSelection({ kind: "route", id: r.id });
         },
         // UPGRADE TIER is belt-specific; consist/fleet stepping for transports
-        // lives in the TransportDrawer.
+        // lives in the TransportDrawer. Built routes are game ground-truth (the
+        // core rejects a tier change), so don't offer it — the row explains why.
+        // Only belt routes (tier != null) get the belt/tier "BUILT · FIXED" note;
+        // a built rail/truck/drone route has no belt tier, so no chip.
+        built: tier != null && r.status === "built",
         upgrade:
-          tier != null && tier < 6
+          tier != null && tier < 6 && r.status !== "built"
             ? () => void dispatch([{ type: "set_route_tier", id: r.id, tier: tier + 1 }])
             : null,
       });
@@ -253,8 +259,11 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
           setView({ mode: "factory", factoryId: e.factory });
           setSelection({ kind: "edge", id: e.id });
         },
+        built: e.status === "built",
         upgrade:
-          e.tier < 6 ? () => void dispatch([{ type: "set_edge_tier", id: e.id, tier: e.tier + 1 }]) : null,
+          e.tier < 6 && e.status !== "built"
+            ? () => void dispatch([{ type: "set_edge_tier", id: e.id, tier: e.tier + 1 }])
+            : null,
       });
     }
     // Efficiency ranking: bottlenecks first (the real problems), then the
@@ -368,11 +377,20 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
                   <button className="chip" onClick={r.trace}>
                     TRACE
                   </button>
-                  {r.upgrade && r.band === "bottleneck" && (
-                    <button className="chip warn" onClick={r.upgrade}>
-                      UPGRADE TIER
-                    </button>
-                  )}
+                  {r.band === "bottleneck" &&
+                    (r.upgrade ? (
+                      <button className="chip warn" onClick={r.upgrade}>
+                        UPGRADE TIER
+                      </button>
+                    ) : r.built ? (
+                      <button
+                        className="chip"
+                        disabled
+                        title="This belt is imported as built — its tier is fixed to your save. Rebuild it at a higher tier in-game, then re-import."
+                      >
+                        BUILT · FIXED
+                      </button>
+                    ) : null)}
                 </span>
               </div>
             ))}

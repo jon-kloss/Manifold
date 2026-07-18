@@ -53,7 +53,11 @@ export default function RouteDrawer({ route }: { route: Route }) {
             {dr ? fmtKm(dr.lengthM) : "—"} · MK.{tier} · {fmtRate(dr?.capacity ?? 0)}/min CAP
           </div>
         </div>
-        <span className="chip planned">◇ PLANNED</span>
+        {route.status === "built" ? (
+          <span className="chip built">◆ BUILT</span>
+        ) : (
+          <span className="chip planned">◇ PLANNED</span>
+        )}
         <button className="drawer-close" onClick={() => setSelection(null)} aria-label="Close">
           ×
         </button>
@@ -99,20 +103,29 @@ export default function RouteDrawer({ route }: { route: Route }) {
         <KindSwitcher route={route} />
         <div className="drawer-row">
           <span className="drawer-row-name">Belt tier</span>
-          <select
-            className="mono"
-            style={{ height: 24 }}
-            value={tier}
-            onChange={(e) => void dispatch([{ type: "set_route_tier", id: route.id, tier: Number(e.target.value) }])}
-            data-testid="route-tier-select"
-          >
-            {[1, 2, 3, 4, 5, 6].map((t) => (
-              <option key={t} value={t}>
-                MK.{t}
-              </option>
-            ))}
-          </select>
+          {route.status === "built" ? (
+            <span className="mono t-data-12" data-testid="route-tier-built" title="Imported as built — rebuild in-game to change its tier.">
+              MK.{tier} · BUILT
+            </span>
+          ) : (
+            <select
+              className="mono"
+              style={{ height: 24 }}
+              value={tier}
+              onChange={(e) => void dispatch([{ type: "set_route_tier", id: route.id, tier: Number(e.target.value) }])}
+              data-testid="route-tier-select"
+            >
+              {[1, 2, 3, 4, 5, 6].map((t) => (
+                <option key={t} value={t}>
+                  MK.{t}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
+        {route.status === "built" && (
+          <div className="insp-note">Imported as built — this route's tier is fixed to your save until you rebuild it in-game and re-import.</div>
+        )}
         {dr && dr.climbUpM + dr.climbDownM > 0.5 && (
           <div className="drawer-row">
             <span className="drawer-row-name">Climb</span>
