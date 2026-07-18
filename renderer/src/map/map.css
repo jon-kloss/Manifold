@@ -40,7 +40,11 @@
 .map-overlay-chips {
   display: flex;
   gap: 6px;
-  margin: 0 auto;
+  /* True center of the MAP, not of the leftover flex space (auto margins
+     would skew left of center by half the right-docked actions' width). */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .overlay-chip {
   height: 30px;
@@ -72,6 +76,9 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  /* right-docked: the centered chips are out of flow (absolute), so the
+     auto margin — not a flex sibling — pushes this cluster to the edge */
+  margin-left: auto;
 }
 .zoom-ctl {
   display: flex;

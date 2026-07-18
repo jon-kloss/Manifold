@@ -48,7 +48,11 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1; /* over the crumb if a narrow window makes them meet */
+  /* The slot is a stacking context (transform), so the results dropdown can
+     never out-stack siblings on its own — the slot itself must sit above the
+     map's chrome chips (z23) and drawers (z22), or they paint straight over
+     the open results list. Below the DATA dropdown (z40): never both open. */
+  z-index: 30;
 }
 .titlebar .searchbox {
   /* fits the 36px bar; shrinks before the bar overflows on narrow windows */
@@ -60,9 +64,10 @@
 /* NOTE: no z-index here — the slot's transform creates a stacking context, so
    one would be inert against the data-menu backdrop anyway. Instead the menu
    closes itself when ⌘K invokes the search (shell/DataMenu.tsx), so the two
-   are never open at once. */
+   are never open at once. The shadow lifts the list off the busy map. */
 .titlebar .search-results {
   top: 30px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 /* The DATA dropdown hangs from the button in the bar's right corner. */
 .titlebar .data-menu {
