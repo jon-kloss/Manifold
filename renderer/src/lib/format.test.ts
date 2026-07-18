@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { itemLabel, prettyClass } from "./format";
+import { itemLabel, prettyClass, flowBand } from "./format";
+
+describe("flowBand", () => {
+  it("classifies a zero-flow belt as idle (not healthy green)", () => {
+    expect(flowBand(0, 0)).toBe("idle");
+    expect(flowBand(0.9, 0)).toBe("idle"); // saturation is moot when nothing flows
+  });
+  it("keeps the flowing bands", () => {
+    expect(flowBand(0.3, 30)).toBe("under"); // ≤50% and flowing
+    expect(flowBand(0.8, 48)).toBe("good"); // >50% and flowing
+    expect(flowBand(1, 0, true)).toBe("bottleneck"); // solver evidence wins over idle
+  });
+});
 
 describe("itemLabel", () => {
   it("prefers the catalog display name when present", () => {

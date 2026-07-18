@@ -62,6 +62,46 @@ test("MAKE reuses an existing rod line for screws instead of duplicating it", as
   }
 });
 
+test("MAKE extend redirects a fully-exported intermediate to feed the new consumer", async ({ page, request }) => {
+  await resetView(request);
+  // A rod line whose entire output is exported to the world (rodOut = 15/min).
+  const f = (await edit(request, [{ type: "create_factory", name: "REDIRECT WORKS", position: { x: -2200, y: 2200 }, region: "GRASS FIELDS" }])).created[0];
+  const ingot = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_IronIngot_C", rate: 0, rateCeiling: 200, graphPos: { x: 0, y: 100 } }])).created[0];
+  const rod = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 1, clock: 1.0, graphPos: { x: 300, y: 100 }, floor: 0 }])).created[0];
+  const rodOut = (await edit(request, [{ type: "add_port", factory: f, direction: "out", item: "Desc_IronRod_C", rate: 0, rateCeiling: null, graphPos: { x: 600, y: 100 } }])).created[0];
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "port", id: ingot }, to: { kind: "group", id: rod }, item: "Desc_IronIngot_C", tier: 3 }]);
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "group", id: rod }, to: { kind: "port", id: rodOut }, item: "Desc_IronRod_C", tier: 3 }]);
+  await edit(request, [{ type: "set_port_rate", id: rodOut, rate: 15 }]); // all rod exported
+
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await openFactoryGraph(page, "REDIRECT WORKS");
+
+    expect((await hydrate(request)).plan.ports[rodOut].rate).toBe(15);
+
+    await page.getByTestId("btn-make-from-resources").click();
+    const modal = page.getByTestId("make-from-resources");
+    await expect(modal).toBeVisible();
+    // Extend: make screws (which consume rod) reusing the rod line.
+    await modal.getByTestId("mfr-item-Desc_IronScrew_C").click();
+    await expect(modal.getByTestId("mfr-reuse")).toContainText(/Iron Rod/i);
+    await modal.getByTestId("mfr-rate").fill("20");
+    await modal.getByTestId("mfr-build").click();
+    await expect(modal).toBeHidden();
+
+    const h = await hydrate(request);
+    expect(countRecipe(h, f, "Recipe_IronRod_C")).toBe(1); // reused, not duplicated
+    expect(countRecipe(h, f, "Recipe_Screw_C")).toBe(1);
+    // The rod's world export was trimmed to feed the new screw line instead of
+    // starving it — the whole point of the extend redirect.
+    expect(h.plan.ports[rodOut].rate).toBeLessThan(15);
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});
+
 test("MAKE free-up removes an existing consumer to unblock a build", async ({ page, request }) => {
   await resetView(request);
   // ingot capped at 30; an existing rod line already draws all of it (headroom 0)

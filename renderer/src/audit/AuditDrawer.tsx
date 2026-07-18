@@ -267,8 +267,9 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
       });
     }
     // Efficiency ranking: bottlenecks first (the real problems), then the
-    // under-used (waste / starved upstream), then good; utilization desc within.
-    const rank: Record<FlowBand, number> = { bottleneck: 2, under: 1, good: 0 };
+    // under-used (waste / starved upstream), then good, then idle (0-flow,
+    // wired but carrying nothing); utilization desc within.
+    const rank: Record<FlowBand, number> = { bottleneck: 3, under: 2, good: 1, idle: 0 };
     return rows.sort((a, b) => rank[b.band] - rank[a.band] || b.saturation - a.saturation);
   }, [plan, derived, dispatch, setSelection, setView, gamedata.items]);
 
@@ -364,7 +365,7 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
                   }
                 >
                   {fmtPercent(r.saturation)}
-                  {r.band === "under" ? " UNDER" : r.band === "bottleneck" ? " ⚠" : ""}
+                  {r.band === "under" ? " UNDER" : r.band === "bottleneck" ? " ⚠" : r.band === "idle" ? " IDLE" : ""}
                 </span>
                 <span className="audit-bar">
                   <span className={r.band} style={{ width: `${Math.min(100, r.saturation * 100)}%` }} />

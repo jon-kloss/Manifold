@@ -42,12 +42,16 @@ export interface BeltEdgeData {
 // belt meeting demand — optimal), amber dashed = under-used (flowing ≤50%),
 // red heavy = bottleneck (solver-named: this belt caps demanded throughput).
 const STROKE: Record<FlowBand, { width: number; dash?: string; color: string }> = {
+  // Idle = wired but carrying nothing: a dim, sparsely-dotted neutral line so
+  // it never reads as a healthy (green) belt. Distinct from under-used (amber).
+  idle: { width: 1.5, dash: "2 6", color: "var(--steel-500)" },
   good: { width: 2, dash: undefined, color: "var(--flow-ok)" },
   under: { width: 2, dash: "10 5", color: "var(--flow-warn)" },
   bottleneck: { width: 6, dash: "6 4", color: "var(--flow-crit)" },
 };
 
 const BAND_NOTE: Record<FlowBand, string> = {
+  idle: " · IDLE — connected but carrying nothing (its feed may be fully exported)",
   good: "",
   under: " · UNDER-USED — over-built or starved upstream",
   bottleneck: " · BOTTLENECK — this belt caps demanded throughput",

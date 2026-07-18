@@ -15,8 +15,9 @@ test("flowBand: under/good boundary sits AT 50% — 30 on a 60-belt is under-use
   expect(flowBand(0.501, 30.06)).toBe("good");
   // A FULL belt that meets demand is optimal, not critical.
   expect(flowBand(1.0, 60)).toBe("good");
-  // Zero flow is idle, never "under" — under means flowing below half rated.
-  expect(flowBand(0, 0)).toBe("good");
+  // Zero flow is idle — a distinct band (never "under", never healthy green) so
+  // a wired-but-empty belt reads as carrying nothing, not as a full belt.
+  expect(flowBand(0, 0)).toBe("idle");
   // Bottleneck evidence outranks utilization in both directions.
   expect(flowBand(1.0, 60, true)).toBe("bottleneck");
   expect(flowBand(0.2, 12, true)).toBe("bottleneck");

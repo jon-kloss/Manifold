@@ -162,6 +162,9 @@
 .audit-load.bottleneck {
   color: var(--flow-crit);
 }
+.audit-load.idle {
+  color: var(--ink-500);
+}
 .audit-bar {
   height: 5px;
   width: 70px;
@@ -185,6 +188,9 @@
 }
 .audit-bar > span.bottleneck {
   background: var(--flow-crit);
+}
+.audit-bar > span.idle {
+  background: var(--steel-500);
 }
 .audit-proj {
   font-size: 10px;

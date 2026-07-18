@@ -519,11 +519,20 @@ export class MapCanvasLayer extends L.Layer {
       } else {
         ctx.strokeStyle = r.selected
           ? css("--signal-500")
-          : css(band === "bottleneck" ? "--flow-crit" : band === "under" ? "--flow-warn" : "--flow-ok");
+          : css(
+              band === "bottleneck"
+                ? "--flow-crit"
+                : band === "under"
+                  ? "--flow-warn"
+                  : band === "idle"
+                    ? "--steel-500"
+                    : "--flow-ok",
+            );
         ctx.lineWidth = band === "bottleneck" ? 6 : 2;
-        // drones read as dotted air routes; the band grammar overrides
+        // drones read as dotted air routes; the band grammar overrides. Idle
+        // (0-flow) routes read as a dim, sparsely-dotted neutral line, not green.
         ctx.setLineDash(
-          band === "good" ? (r.kind === "drone" ? [2, 5] : []) : band === "under" ? [10, 5] : [6, 4],
+          band === "idle" ? [2, 6] : band === "good" ? (r.kind === "drone" ? [2, 5] : []) : band === "under" ? [10, 5] : [6, 4],
         );
       }
       ctx.stroke();
@@ -595,7 +604,13 @@ export class MapCanvasLayer extends L.Layer {
       const bg = band === "bottleneck" ? css("--flow-crit") : css("--steel-800");
       const border = r.selected ? css("--signal-500") : css("--steel-600");
       const ink =
-        band === "bottleneck" ? css("--on-signal") : band === "under" ? css("--flow-warn") : css("--bp-400");
+        band === "bottleneck"
+          ? css("--on-signal")
+          : band === "under"
+            ? css("--flow-warn")
+            : band === "idle"
+              ? css("--ink-500")
+              : css("--bp-400");
       if (this.placeChip(cx - w / 2, cy - 8, w, 16)) {
         ctx.fillStyle = bg;
         ctx.strokeStyle = border;

@@ -62,14 +62,16 @@ export function fmtDuration(minutes: number): string {
  *  - "bottleneck": the link provably caps demanded throughput (flow-crit
  *    red). Utilization alone NEVER makes a bottleneck — callers must pass
  *    solver evidence (see bottleneckEdges / routeBottleneck).
- *  Idle (flow = 0) stays "good": zero-flow belts keep today's quiet render
- *  and never animate — idle is not "under-used".
+ *  - "idle": zero flow — a connected belt carrying nothing (e.g. a downstream
+ *    line whose feed is fully exported). Rendered dim/neutral and never
+ *    animated, so it reads as "wired but not flowing" instead of healthy green.
  *  The single banding authority for BeltEdgeView strokes, map route
  *  polylines/chips, the audit SATURATION tab, and the status bar. */
-export type FlowBand = "under" | "good" | "bottleneck";
+export type FlowBand = "idle" | "under" | "good" | "bottleneck";
 export function flowBand(saturation: number, flow: number, bottleneck = false): FlowBand {
   if (bottleneck) return "bottleneck";
-  if (flow > 0 && saturation <= 0.5) return "under";
+  if (flow <= 0) return "idle";
+  if (saturation <= 0.5) return "under";
   return "good";
 }
 

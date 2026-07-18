@@ -236,24 +236,48 @@ export default function MakeFromResources({
       // produces two reused items gets ONE set_group_count that satisfies both
       // (two commands in one dispatch would otherwise clobber each other).
       const needCountByGid = new Map<Id, number>();
+      const portRateCmds: Command[] = [];
+      let redirected = false;
       for (const [item, gid] of reuseGroupOf) {
         const prod = existingProducers.get(item)!;
         const newDemand = buildCp.belts
           .filter((b) => b.fromRaw && b.fromItem === item)
           .reduce((s, b) => s + b.rate, 0);
+        // Auto-feed downstream: a reused intermediate was likely fully exported
+        // to the world by an earlier MAKE. Redirect that export into the new
+        // chain by trimming its world OUT port target(s) by the new internal
+        // demand — otherwise the export keeps eating the whole output and the
+        // new consumer starves (idle belts). Non-destructive: the port stays,
+        // just retargeted; raise it back to export surplus again.
+        const worldPorts = Object.values(plan.ports).filter(
+          (p) => p.factory === factoryId && p.direction === "out" && p.item === item && p.boundRoute === null && p.rate > 0,
+        );
+        let toFree = newDemand;
+        let freed = 0;
+        for (const p of worldPorts) {
+          if (toFree <= 1e-6) break;
+          const cut = Math.min(p.rate, toFree);
+          if (cut > 1e-6) {
+            portRateCmds.push({ type: "set_port_rate", id: p.id, rate: p.rate - cut });
+            toFree -= cut;
+            freed += cut;
+            redirected = true;
+          }
+        }
         const committed = derived.factories[factoryId]?.groups[gid]?.outRates[item] ?? 0;
         const capacityNow = prod.per * prod.count * prod.clock;
-        const needed = committed + newDemand;
+        // Output needed after the redirect: current output, minus the export we
+        // just freed, plus the new internal demand.
+        const needed = committed - freed + newDemand;
         if (needed > capacityNow + 1e-6) {
           const needCount = Math.ceil(needed / (prod.per * (prod.clock || 1)));
           needCountByGid.set(gid, Math.max(needCountByGid.get(gid) ?? 0, needCount));
         }
       }
-      const scaleCmds: Command[] = [...needCountByGid].map(([id, count]) => ({
-        type: "set_group_count",
-        id,
-        count,
-      }));
+      const scaleCmds: Command[] = [
+        ...portRateCmds,
+        ...[...needCountByGid].map((entry): Command => ({ type: "set_group_count", id: entry[0], count: entry[1] })),
+      ];
 
       const edgeCmds: Command[] = buildCp.belts.map((b) => {
         const from: EdgeEnd = b.fromRaw
@@ -270,7 +294,7 @@ export default function MakeFromResources({
 
       setSelection(null);
       const reuseNote = reuseGroupOf.size
-        ? ` — reused your ${[...reuseGroupOf.keys()].map(name).join(", ")}`
+        ? ` — reused your ${[...reuseGroupOf.keys()].map(name).join(", ")}${redirected ? " (redirected from world export to feed this chain)" : ""}`
         : "";
       pushToast(
         `Built ${name(target)}${reuseNote} — ${buildCp.groups.length} new machine group(s).`,
