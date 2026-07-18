@@ -248,6 +248,12 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const [buildSheet, setBuildSheet] = useState(false);
   const [makeOpen, setMakeOpen] = useState(false);
   const [ctx, setCtx] = useState<CtxTarget | null>(null);
+  // Canvas tool (Figma-style): PAN (default) drags the view; SELECT drags a
+  // marquee. Holding Space temporarily forces pan regardless of tool. The
+  // effective "am I selecting" is tool==="select" && !space.
+  const [tool, setTool] = useState<"pan" | "select">("pan");
+  const [spacePan, setSpacePan] = useState(false);
+  const selecting = tool === "select" && !spacePan;
   // True while a marquee box-selection is in progress — suppresses the
   // single-selection sync so React Flow keeps the whole multi-selection.
   const boxSelRef = useRef(false);
@@ -721,6 +727,16 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         void dispatch(del).then((r) => {
           if (r) setSelection(null);
         });
+      } else if (e.key === "v" || e.key === "V") {
+        setTool("select");
+      } else if (e.key === "h" || e.key === "H") {
+        setTool("pan");
+      } else if (e.key === " ") {
+        // Space-hold = temporary pan (Figma). Skip when a control is focused so
+        // Space still activates buttons; preventDefault stops the page scroll.
+        if ((e.target as HTMLElement)?.closest?.("button, a[href], [role='button']")) return;
+        e.preventDefault();
+        setSpacePan(true);
       } else if (e.key === "r" || e.key === "R") {
         setStripOpen((o) => !o);
       } else if (e.key === "f" || e.key === "F") {
@@ -732,8 +748,16 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         });
       }
     };
+    // Space is a HOLD: release ends the temporary pan.
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " ") setSpacePan(false);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, [selection, addMenu, dispatch, setSelection, setView, fitView, getNodes]);
 
   const flowRef = useRef<HTMLDivElement>(null);
@@ -920,7 +944,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       </div>
 
       <div
-        className="graph-canvas"
+        className={`graph-canvas ${selecting ? "tool-select" : "tool-pan"}`}
         ref={flowRef}
         onDoubleClick={(e) => {
           // dblclick canvas = add group (4c)
@@ -980,11 +1004,12 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
           fitView
           proOptions={{ hideAttribution: true }}
           deleteKeyCode={null}
-          // Left-drag on the canvas box-selects the machines it touches; scroll/
-          // trackpad pans and pinch/ctrl-scroll zooms, so drag-to-pan giving way
-          // to marquee select still leaves the graph fully navigable.
-          selectionOnDrag
-          panOnDrag={false}
+          // Pan/Select tool (Space-hold forces pan): the PAN tool left-drags the
+          // view (right/middle-drag pans too); the SELECT tool left-drags a
+          // marquee while right/middle still pan. Scroll/trackpad always pans and
+          // pinch/ctrl-scroll zooms, so the graph stays navigable in either tool.
+          selectionOnDrag={selecting}
+          panOnDrag={selecting ? [1, 2] : true}
           panOnScroll
           selectionMode={SelectionMode.Partial}
         >
@@ -1000,6 +1025,28 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
             bgColor="var(--steel-950)"
           />
         </ReactFlow>
+        <div className="graph-tools" role="group" aria-label="Canvas tool" data-testid="graph-tools">
+          <button
+            type="button"
+            className={`graph-tool ${tool === "pan" ? "active" : ""}`}
+            onClick={() => setTool("pan")}
+            aria-pressed={tool === "pan"}
+            title="Pan (H) — drag to move the view · hold Space anytime"
+            data-testid="graph-tool-pan"
+          >
+            <span aria-hidden>✋</span>
+          </button>
+          <button
+            type="button"
+            className={`graph-tool ${tool === "select" ? "active" : ""}`}
+            onClick={() => setTool("select")}
+            aria-pressed={tool === "select"}
+            title="Select (V) — drag a box to select machines"
+            data-testid="graph-tool-select"
+          >
+            <span aria-hidden>⬚</span>
+          </button>
+        </div>
         <div className="minimap-caption mono">ESC ⟶ WORLD</div>
       </div>
 

@@ -117,8 +117,12 @@ export default function App() {
         const st = useStore.getState();
         st.setAdvisorOpen(!st.advisorOpen);
       } else if ((e.key === "h" || e.key === "H") && !e.metaKey && !e.ctrlKey && !isEditableTarget(e)) {
-        // H toggles the resume dashboard (home) — but never over a review.
+        // H toggles the resume dashboard (home) — but never over a review, and
+        // never inside the factory graph: there H is the Pan-tool hotkey (Figma
+        // hand), which GraphView owns. Escape is the graph's way back to the
+        // map, so H=home stays reachable one keystroke away.
         const st = useStore.getState();
+        if (st.view.mode === "factory") return;
         if (!st.reviewing) st.setDashboardOpen(!st.dashboardOpen);
       } else if (e.key === "Escape") {
         const st = useStore.getState();

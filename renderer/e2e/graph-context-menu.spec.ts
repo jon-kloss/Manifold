@@ -64,6 +64,9 @@ test("box-select machines then bulk-delete from the context menu", async ({ page
     if (await skip.isVisible().catch(() => false)) await skip.click();
     await openGraph(page, "CTX BULK");
 
+    // Activate the Select tool (default is Pan) so a left-drag marquees.
+    await page.getByTestId("graph-tool-select").click();
+
     // Box-select: drag a rectangle that encloses both cards, starting on empty
     // pane just above-left of them (so the mousedown doesn't grab a node).
     const canvas = (await page.locator(".graph-canvas").boundingBox())!;
@@ -107,10 +110,13 @@ test("Escape clears a box-selection instead of ejecting to the map", async ({ pa
     const skip = page.getByTestId("onboard-skip");
     if (await skip.isVisible().catch(() => false)) await skip.click();
     await openGraph(page, "CTX ESC");
+    await page.getByTestId("graph-tool-select").click(); // Pan is default; switch to Select
     const c = (await page.locator(".graph-canvas").boundingBox())!;
-    await page.mouse.move(c.x + 40, c.y + 40);
+    // Start the marquee from the bottom-right corner and drag up-left: the same
+    // rectangle, but the mousedown lands clear of the top-left tool toolbar.
+    await page.mouse.move(c.x + c.width - 40, c.y + c.height - 40);
     await page.mouse.down();
-    await page.mouse.move(c.x + c.width - 40, c.y + c.height - 40, { steps: 8 });
+    await page.mouse.move(c.x + 40, c.y + 40, { steps: 8 });
     await page.mouse.up();
     await expect(page.locator(".react-flow__node.selected")).toHaveCount(2);
     await page.keyboard.press("Escape");
