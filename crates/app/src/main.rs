@@ -43,6 +43,13 @@ fn plan_undo(
 }
 
 #[tauri::command]
+fn new_empire(window: tauri::Window, state: State<AppState>) -> Result<EditResponse, SessionError> {
+    let resp = state.0.lock().unwrap().new_empire()?;
+    let _ = window.emit("state://patch", &resp);
+    Ok(resp)
+}
+
+#[tauri::command]
 fn plan_redo(
     window: tauri::Window,
     state: State<AppState>,
@@ -295,6 +302,7 @@ fn main() {
             plan_edit,
             plan_undo,
             plan_redo,
+            new_empire,
             set_view_state,
             wizard_solve,
             wizard_progress,

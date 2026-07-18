@@ -301,6 +301,12 @@ export interface AppStore {
       false when the backend refused (recorded in `cmdError`, never a rejection).
       Web-only — non-wasm backends reject and this surfaces the refusal. */
   uploadDocs(bytes: Uint8Array): Promise<boolean>;
+  /** Wipe the current plan (KEEPING the gamedata catalog) and re-hydrate to an
+      empty empire — the "start over" before importing a fresh, unrelated save.
+      A cross-platform Session::new_empire over every transport. Resolves true on
+      success; false on a backend error (recorded in `cmdError`, never a
+      rejection). */
+  newEmpire(): Promise<boolean>;
   /** Sync Phase 2: parse a re-read `.sav` and run it through import — headless
       (no preview modal), the one-click counterpart to the ImportModal flow.
       Drift opens the review surface; every branch fires a toast. Resolves with
@@ -800,6 +806,24 @@ export const useStore = create<AppStore>((set, get) => ({
     await get().hydrate();
     const recipes = Object.keys(get().gamedata.recipes).length;
     get().pushToast(`Catalog loaded — ${recipes.toLocaleString()} recipes`, "success");
+    return true;
+  },
+
+  async newEmpire() {
+    // Wipe the plan via Session::new_empire (keeps the catalog), then re-hydrate
+    // onto the empty session. Selection/view could point at now-deleted entities,
+    // so reset them before the re-projection. A backend error surfaces on the
+    // chip — never a rejection to the UI.
+    try {
+      await backend.newEmpire();
+    } catch (e) {
+      get().reportCmdError(`Couldn't start a new empire — ${errText(e)}`);
+      return false;
+    }
+    get().setSelection(null);
+    get().setView({ mode: "map" });
+    await get().hydrate();
+    get().pushToast("New empire — the old plan was cleared. Import your save to begin.", "success");
     return true;
   },
 

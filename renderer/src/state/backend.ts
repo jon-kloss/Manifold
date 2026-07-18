@@ -102,6 +102,11 @@ export interface Backend {
    *  — the desktop shell and dev bridge read the catalog from the host
    *  (FICSIT_DOCS_JSON), so their implementations reject. */
   uploadDocs(bytes: Uint8Array): Promise<void>;
+  /** Clear the whole plan + undo journal (KEEPING the gamedata catalog) and
+   *  project the empty plan — "start a new empire" for importing an unrelated
+   *  save. A `Session::new_empire` op on every transport: SQLite wipe (desktop /
+   *  dev bridge) or the wasm store reset snapshotted to IndexedDB (web). */
+  newEmpire(): Promise<void>;
 }
 
 /** The desktop shell and dev bridge get their catalog from the host process
@@ -206,6 +211,9 @@ class TauriBackend implements Backend {
   }
   uploadDocs() {
     return docsUploadUnsupported();
+  }
+  async newEmpire() {
+    await this.invoke("new_empire");
   }
 }
 
@@ -316,6 +324,9 @@ class BridgeBackend implements Backend {
   }
   uploadDocs() {
     return docsUploadUnsupported();
+  }
+  async newEmpire() {
+    await this.call("new_empire", { method: "POST" });
   }
 }
 

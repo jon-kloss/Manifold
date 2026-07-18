@@ -100,6 +100,10 @@ fn main() -> anyhow::Result<()> {
                     Ok(resp) => ok(&resp),
                     Err(e) => err(500, e),
                 },
+                (Method::Post, "/api/new_empire") => match s.new_empire() {
+                    Ok(resp) => ok(&resp),
+                    Err(e) => err(500, e),
+                },
                 (Method::Post, "/api/redo") => match s.redo() {
                     Ok(resp) => ok(&resp),
                     Err(e) => err(500, e),

@@ -189,6 +189,9 @@ impl WebSession {
             }
             "undo" => Ok((true, to_js(&self.inner.undo().map_err(err)?)?)),
             "redo" => Ok((true, to_js(&self.inner.redo().map_err(err)?)?)),
+            // Start over: wipe the plan (keep the catalog). `mutated=true` so the
+            // worker snapshots the now-empty store blob to IndexedDB.
+            "new_empire" => Ok((true, to_js(&self.inner.new_empire().map_err(err)?)?)),
             "set_view_state" => {
                 // The renderer sends the ViewState object; the store persists it
                 // as a JSON string (mirrors dev-bridge `POST /api/view`). Writes

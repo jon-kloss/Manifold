@@ -46,6 +46,12 @@ pub trait PlanStore {
         applied: usize,
     ) -> Result<(), PersistError>;
 
+    /// Wipe ALL persisted plan state to empty — entity rows, the undo journal,
+    /// the meta KV store, advisor cards, and mutes. Used by
+    /// `Session::new_empire` to start over; gamedata/world live outside the
+    /// store and are the caller's to keep. Atomic where the medium supports it.
+    fn reset(&mut self) -> Result<(), PersistError>;
+
     // --- KV / singleton accessors (meta store, outside the undo journal) ---
 
     fn set_view_state(&self, json: &str) -> Result<(), PersistError>;

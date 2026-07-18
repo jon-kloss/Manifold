@@ -247,6 +247,25 @@ impl PlanStore for SqlitePlanStore {
         Ok(())
     }
 
+    fn reset(&mut self) -> Result<(), PersistError> {
+        let tx = self.conn.unchecked_transaction()?;
+        // Truncate every plan-bearing table + the whole meta KV store in one
+        // transaction, so a reset either lands whole or not at all.
+        self.conn.execute_batch(
+            "DELETE FROM entities;
+             DELETE FROM routes;
+             DELETE FROM proposals;
+             DELETE FROM proposal_items;
+             DELETE FROM undo_log;
+             DELETE FROM advisor_cards;
+             DELETE FROM mutes;
+             DELETE FROM style_guides;
+             DELETE FROM meta;",
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Persist an undo/redo move: entity rows + cursor, atomically.
     fn checkpoint(
         &mut self,
@@ -453,5 +472,29 @@ mod tests {
         assert_eq!(state3.factories[&fid].name, "NORTHERN FORGE");
         // .bak exists after reopening an existing file.
         assert!(path.with_extension("ficsit.bak").exists());
+    }
+
+    #[test]
+    fn reset_durably_wipes_the_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("world.ficsit");
+        {
+            let mut file = PlanFile::open(&path).unwrap();
+            let mut state = PlanState::default();
+            let mut log = UndoLog::new();
+            let tx = apply(&mut state, &cmd_create("DOOMED WORKS")).unwrap();
+            let entry = log.commit(tx);
+            file.commit(&entry, &state.meta, log.entries().len())
+                .unwrap();
+            file.set_view_state("{\"zoom\":3}").unwrap();
+            file.reset().unwrap();
+        }
+        // Reopen from disk: the wipe must be durable — empty state, no journal.
+        let file2 = PlanFile::open(&path).unwrap();
+        let (state, entries, cursor) = file2.load().unwrap();
+        assert!(state.factories.is_empty(), "entities truncated on disk");
+        assert!(entries.is_empty(), "undo journal truncated on disk");
+        assert_eq!(cursor, 0);
+        assert!(file2.view_state().is_none(), "meta KV cleared");
     }
 }

@@ -1626,6 +1626,33 @@ impl Session {
         self.undo.entries().len()
     }
 
+    /// Start a NEW EMPIRE: wipe the entire plan — canonical state, the undo/redo
+    /// journal, save-derived facts (unlocked / purchased schematics), and
+    /// ambient advisor state — plus the persisted store, while KEEPING the
+    /// loaded gamedata catalog and world snapshot (a new save must not cost
+    /// re-uploading the game catalog; gamedata/world are construction-only and
+    /// live outside the store). The store is cleared FIRST, mirroring the
+    /// disk-before-memory invariant `commit_mutation` holds: if persistence
+    /// fails, the in-memory plan is left intact and the error surfaces. Returns
+    /// the projection of the now-empty plan (same shape as undo/import); the
+    /// renderer re-hydrates after it regardless.
+    pub fn new_empire(&mut self) -> Result<EditResponse, SessionError> {
+        self.store.reset()?;
+        self.state = PlanState::default();
+        self.undo = UndoLog::new();
+        self.slow_solves.clear();
+        self.advisor = AdvisorState::default();
+        self.unlocked.clear();
+        self.purchased_schematics.clear();
+        // Reload the world snapshot: gamedata is an immutable catalog, but `world`
+        // is mutated in place by `apply_purity_overrides` on every solve and only
+        // ever OVERWRITES purities (never reverts to catalog default). With
+        // node_overrides now empty a re-solve can't undo a discarded save's purity
+        // corrections, so reload the pristine ambient world (matches the ctor).
+        self.world = gamedata::worldnodes::load();
+        Ok(self.nav_response(PatchBatch::default()))
+    }
+
     fn nav_response(&mut self, batch: PatchBatch) -> EditResponse {
         EditResponse {
             patches: batch,

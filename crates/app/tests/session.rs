@@ -3028,3 +3028,64 @@ fn expand_bank_materializes_machines_and_junctions_and_undoes() {
         "input belt back on the bank"
     );
 }
+
+#[test]
+fn new_empire_wipes_the_plan_and_journal_but_keeps_the_catalog() {
+    let mut s = Session::in_memory(None).unwrap();
+    let recipes_before = s.gamedata.recipes.len();
+    let nodes_before = s.world.nodes.len();
+    assert!(recipes_before > 0, "the fixture catalog is loaded");
+
+    // Build a real plan with an edit history (so undo is non-empty).
+    build_modular_frame_factory(&mut s);
+    assert!(!s.state.factories.is_empty(), "plan has factories");
+    assert!(s.undo.can_undo(), "edits left an undo history");
+
+    // Save-derived facts that new_empire must also clear (a discarded save's
+    // milestones/alt-recipe gating must not leak into the fresh empire).
+    s.unlocked.insert("Recipe_Alternate_Wire_1_C".into());
+    s.purchased_schematics.insert("Schematic_3-1_C".into());
+
+    let resp = s.new_empire().unwrap();
+    assert!(s.unlocked.is_empty(), "unlocked recipes cleared");
+    assert!(
+        s.purchased_schematics.is_empty(),
+        "purchased schematics cleared"
+    );
+    assert!(s.advisor.cards.is_empty(), "advisor state reset");
+
+    // Plan + journal wiped...
+    assert!(s.state.factories.is_empty(), "factories wiped");
+    assert!(s.state.groups.is_empty(), "groups wiped");
+    assert!(s.state.ports.is_empty(), "ports wiped");
+    assert!(!s.undo.can_undo(), "undo stack cleared");
+    assert!(!s.undo.can_redo(), "redo stack cleared");
+    assert!(
+        !resp.can_undo && !resp.can_redo,
+        "response reflects the empty journal"
+    );
+    // ...but the catalog + world are KEPT (a new save must not cost the catalog).
+    assert_eq!(
+        s.gamedata.recipes.len(),
+        recipes_before,
+        "gamedata catalog kept"
+    );
+    assert_eq!(s.world.nodes.len(), nodes_before, "world snapshot kept");
+
+    // A fresh edit works on the empty plan (no lingering corruption).
+    let fid = s
+        .edit(vec![Command::CreateFactory {
+            name: "AFTER RESET".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: "GRASS FIELDS".into(),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    assert_eq!(s.state.factories.len(), 1);
+    assert_eq!(s.state.factories[&fid].name, "AFTER RESET");
+}

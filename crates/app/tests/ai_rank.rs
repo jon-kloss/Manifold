@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use app::ai::{
-    apply_model_ranking, config_public, rank_next_moves, rank_state, set_config, AiConfig,
-    AiConfigUpdate, ModelReply, DEFAULT_TIMEOUT_SECS,
+    apply_model_ranking, apply_rank_reply, config_public, prepare_rank_on_device, rank_next_moves,
+    rank_state, set_config, AiConfig, AiConfigUpdate, ModelReply, RankPrep, DEFAULT_TIMEOUT_SECS,
 };
 use app::opportunities::{Opportunity, OpportunityAction, OpportunityKind};
 use app::Session;
@@ -1227,4 +1227,115 @@ fn keyless_call_sends_no_authorization_header() {
         !requests[0].to_ascii_lowercase().contains("authorization:"),
         "keyless config must not send an Authorization header"
     );
+}
+
+// ---------- on-device (host-run model) apply path ----------
+// Small local models are sloppy JSON writers. The apply firewall salvages what
+// it can and degrades QUIETLY (no error chip) when a reply carries no ranking —
+// the "heuristic" badge already tells the user the model didn't contribute.
+
+fn on_device_job(s: &mut Session) -> app::ai::RankJob {
+    match prepare_rank_on_device(s, "local-1") {
+        RankPrep::Call(job) => job,
+        RankPrep::Done(_) => panic!("expected a rank job for a seeded session"),
+    }
+}
+
+#[test]
+fn on_device_salvages_a_bare_array_ordering() {
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    assert!(ids.len() >= 2, "seed should yield >=2 candidates");
+    // The model returns just the ordered ids as a bare array (no envelope),
+    // reversing the heuristic order.
+    let reversed: Vec<String> = ids.iter().rev().cloned().collect();
+    let content = serde_json::to_string(&reversed).unwrap();
+    let resp = apply_rank_reply(on_device_job(&mut s), &content);
+    assert_eq!(resp.engine, "model");
+    assert!(resp.error.is_none());
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, reversed);
+}
+
+#[test]
+fn on_device_unparseable_reply_degrades_quietly() {
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    // Pure prose — no JSON at all. Quiet heuristic fallback, NO error chip.
+    let resp = apply_rank_reply(on_device_job(&mut s), "I'm not sure how to rank these.");
+    assert_eq!(resp.engine, "heuristic");
+    assert!(
+        resp.error.is_none(),
+        "on-device parse failure must not surface an error"
+    );
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids);
+}
+
+#[test]
+fn on_device_empty_schema_reply_is_quiet() {
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    // Valid JSON that carries no ranking → quiet heuristic (native would error).
+    let resp = apply_rank_reply(on_device_job(&mut s), "here you go: {}");
+    assert_eq!(resp.engine, "heuristic");
+    assert!(resp.error.is_none());
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids);
+}
+
+#[cfg(feature = "native-http")]
+#[test]
+fn all_unknown_order_ids_are_a_schema_failure_not_a_model_badge() {
+    // Post-lenient-coercion regression guard: a reply whose order is a bare/numeric
+    // list of ids that are NOT candidates (candidate ids are structured strings,
+    // never bare numbers) survives coerce_reply as a non-empty order, but
+    // apply_model_ranking drops all of them → the untouched heuristic order. It
+    // must NOT wear engine:"model"; the native path surfaces the schema error.
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    let (base, _) = stub_provider(Box::new(|_| (200, completion("{\"order\":[1,2,3]}"))));
+    set_config(&mut s, cfg(&base, "stub-1", None, None));
+    let resp = rank_next_moves(&mut s);
+    assert_eq!(resp.engine, "heuristic");
+    assert!(resp.model.is_none() && resp.headline.is_none());
+    assert_eq!(
+        resp.error.as_deref(),
+        Some("model reply did not match the rank schema")
+    );
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids, "the safe heuristic order still ships");
+}
+
+#[test]
+fn on_device_all_unknown_order_ids_degrade_quietly() {
+    // Same all-unknown reply on the on-device path: quiet heuristic (no error),
+    // never a model badge on the untouched order.
+    let mut s = seeded_session();
+    let ids = heuristic_ids(&mut s);
+    let resp = apply_rank_reply(on_device_job(&mut s), "[\"nope-1\",\"nope-2\"]");
+    assert_eq!(resp.engine, "heuristic");
+    assert!(resp.error.is_none());
+    let got: Vec<String> = resp
+        .opportunities
+        .iter()
+        .map(|o| o.opportunity.id.clone())
+        .collect();
+    assert_eq!(got, ids);
 }

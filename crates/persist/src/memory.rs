@@ -155,6 +155,15 @@ impl MemoryPlanStore {
 }
 
 impl PlanStore for MemoryPlanStore {
+    fn reset(&mut self) -> Result<(), PersistError> {
+        self.entities.borrow_mut().clear();
+        self.journal.borrow_mut().clear();
+        self.meta.borrow_mut().clear();
+        self.cards.borrow_mut().clear();
+        self.mutes.borrow_mut().clear();
+        Ok(())
+    }
+
     fn load(&self) -> Result<(PlanState, Vec<UndoEntry>, usize), PersistError> {
         let mut state = PlanState::default();
         if let Some(json) = self.get_meta("plan_meta") {

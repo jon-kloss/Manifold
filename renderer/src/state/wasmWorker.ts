@@ -247,7 +247,9 @@ async function uploadDocs(bytes: Uint8Array): Promise<void> {
 interface Req {
   id: number;
   /** Control message kind. Absent → the normal `dispatch(cmd, args)` path.
-   *  "upload_docs" → rebuild the session over an uploaded Docs.json (Phase 4a). */
+   *  "upload_docs" → rebuild the session over an uploaded Docs.json (Phase 4a).
+   *  ("new_empire" is a plain dispatch — Session::new_empire — not a control
+   *   message, so the worker's snapshot-after-mutate persists the empty plan.) */
   kind?: "upload_docs";
   cmd?: string;
   args?: unknown;

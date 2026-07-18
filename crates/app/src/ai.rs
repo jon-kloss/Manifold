@@ -176,13 +176,14 @@ pub fn set_config(s: &mut Session, update: AiConfigUpdate) -> AiConfigPublic {
     config_public(s)
 }
 
-/// The model's expected reply shape. MISSING fields degrade individually (no
-/// order → heuristic order; no notes → no notes), but a field of the WRONG
-/// TYPE fails the whole parse — and that is the safe direction: the reply is
-/// rejected wholesale and the untouched heuristic list ships with a surfaced
-/// error. A reply that parses but carries NONE of the fields is treated as a
-/// schema failure by [`execute_rank`] (a `{}` buried in prose must not wear
-/// the `engine:"model"` badge).
+/// The model's expected reply shape. Built by [`coerce_reply`], which is
+/// lenient: MISSING fields degrade individually (no order → heuristic order; no
+/// notes → no notes), and a WRONG-TYPED field is salvaged where sensible
+/// (numeric `order` ids / numeric notes are stringified) or dropped, rather than
+/// failing the whole parse. A reply that carries no model CONTENT — no headline,
+/// no surviving wildcard, and an order/notes referencing no real candidate — is
+/// treated as a schema failure by [`ranked_response`] (it must not wear the
+/// `engine:"model"` badge on the untouched heuristic order).
 #[derive(Debug, Default, Deserialize)]
 pub struct ModelReply {
     #[serde(default)]
@@ -506,19 +507,91 @@ fn strip_fences(content: &str) -> &str {
     rest.trim().strip_suffix("```").unwrap_or(rest).trim()
 }
 
-/// Salvage the ONE complete JSON object from model prose: strip a courtesy
-/// fence, seek the first '{', then stream-deserialize exactly one value —
-/// the stream iterator parses a single complete object and IGNORES anything
-/// after it, so "Sure! {…} Let me know!" succeeds where a first-`{`/last-`}`
-/// window would not. Prose braces BEFORE the real JSON still fail the parse
-/// → heuristic fallback (never worse than the old strict parse).
+/// Salvage a [`ModelReply`] from model prose. Strip a courtesy fence, seek the
+/// first JSON container ('{' or '['), then stream-deserialize exactly one value —
+/// the stream iterator parses a single complete value and IGNORES anything after
+/// it, so "Sure! {…} Let me know!" succeeds where a first-`{`/last-`}` window
+/// would not. The parsed value is then coerced LENIENTLY (see [`coerce_reply`]):
+/// small/quantized on-device models routinely get the shape right but a field's
+/// TYPE slightly wrong (an `order` of numbers, a note that's a number) or emit a
+/// bare array instead of the `{order:[…]}` envelope — salvaging those recovers
+/// the model's work instead of throwing it away. Returns None only when there is
+/// no readable JSON container at all (genuinely non-JSON output) → heuristic
+/// fallback (never worse than the old strict parse). Prose braces BEFORE the
+/// real JSON still fail the parse.
 fn extract_reply(content: &str) -> Option<ModelReply> {
     let t = strip_fences(content);
-    let start = t.find('{')?;
-    serde_json::Deserializer::from_str(&t[start..])
-        .into_iter::<ModelReply>()
+    let start = t.find(['{', '['])?;
+    let value: serde_json::Value = serde_json::Deserializer::from_str(&t[start..])
+        .into_iter::<serde_json::Value>()
         .next()?
-        .ok()
+        .ok()?;
+    Some(coerce_reply(value))
+}
+
+/// One model-supplied id: a JSON string, or a bare number coerced to its decimal
+/// string (a weak model sometimes emits `"order":[1,2]`).
+fn value_to_id(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::String(s) => {
+            let t = s.trim();
+            (!t.is_empty()).then(|| t.to_string())
+        }
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+/// One note/prose value: a string, or a number/bool stringified (some models
+/// answer a per-id note with a bare number).
+fn value_to_prose(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::String(s) => {
+            let t = s.trim();
+            (!t.is_empty()).then(|| t.to_string())
+        }
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+/// Leniently map a parsed JSON value onto a [`ModelReply`]. A bare array is read
+/// as the ordered id list; an object contributes each field we can read and
+/// drops the rest (a wrong-typed field no longer rejects the whole reply). An
+/// all-empty result is fine — the shared emptiness guard in [`ranked_response`]
+/// treats it as a schema miss, so this never wears the model badge on nothing.
+fn coerce_reply(value: serde_json::Value) -> ModelReply {
+    use serde_json::Value;
+    let mut reply = ModelReply::default();
+    match value {
+        Value::Array(items) => {
+            reply.order = items.iter().filter_map(value_to_id).collect();
+        }
+        Value::Object(map) => {
+            if let Some(Value::Array(items)) = map.get("order") {
+                reply.order = items.iter().filter_map(value_to_id).collect();
+            }
+            reply.headline = map
+                .get("headline")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            if let Some(Value::Object(notes)) = map.get("notes") {
+                reply.notes = notes
+                    .iter()
+                    .filter_map(|(k, v)| value_to_prose(v).map(|s| (k.clone(), s)))
+                    .collect();
+            }
+            if let Some(Value::Array(items)) = map.get("wildcards") {
+                reply.wildcards = items
+                    .iter()
+                    .filter_map(|v| serde_json::from_value::<WildcardReply>(v.clone()).ok())
+                    .collect();
+            }
+        }
+        _ => {}
+    }
+    reply
 }
 
 /// Provider-call failure: a SHORT user-facing message (status-bar chip) plus
@@ -661,15 +734,16 @@ impl RankJob {
 /// generation (e.g. the user disabled on-device AI mid-rank) — not a parse
 /// failure worth flagging on the status chip.
 pub fn apply_rank_reply(job: RankJob, content: &str) -> RankResponse {
-    if content.trim().is_empty() {
-        return heuristic(job.candidates, None);
-    }
+    // On-device (host-run) models are best-effort enrichment. Anything that
+    // isn't a usable ranking — empty output, pure prose, or JSON that carries no
+    // ranking — degrades QUIETLY to the heuristic order (no error chip): the
+    // engine badge already reads "heuristic", so flagging every flaky local
+    // generation as an error is noise, not signal. (The native provider path
+    // keeps its loud, actionable errors — a configured endpoint is expected to
+    // return valid JSON.)
     match extract_reply(content) {
-        Some(reply) => ranked_response(job, &reply),
-        None => heuristic(
-            job.candidates,
-            Some("model reply was not valid JSON".to_string()),
-        ),
+        Some(reply) => ranked_response(job, &reply, true),
+        None => heuristic(job.candidates, None),
     }
 }
 
@@ -837,24 +911,30 @@ fn request_body(job: &RankJob, lean: bool) -> serde_json::Value {
     body
 }
 
-/// Ok-arm finish. A FULLY-EMPTY parse (no order, no notes, headline absent
-/// or blank) is treated as a schema failure: `{}` buried in prose or a
-/// structurally unrelated JSON object would otherwise ship as
-/// `engine:"model"` with zero model content — a silent no-op wearing the AI
-/// badge. Partial replies still degrade per field (see [`ModelReply`]), and
-/// the pure firewall keeps its own empty-tolerance as defense in depth.
-fn ranked_response(job: RankJob, reply: &ModelReply) -> RankResponse {
+/// Ok-arm finish. A reply that carries no MODEL CONTENT is a schema failure:
+/// `{}` buried in prose, a structurally unrelated JSON object, or an `order`/
+/// `notes` made up ENTIRELY of ids that aren't candidates (which the firewall
+/// drops, leaving the untouched heuristic order). Any of those would otherwise
+/// ship as `engine:"model"` — a silent no-op wearing the AI badge — so they fall
+/// back instead (native surfaces the actionable error; on-device stays quiet).
+/// Partial replies still degrade per field (see [`ModelReply`]).
+fn ranked_response(job: RankJob, reply: &ModelReply, on_device: bool) -> RankResponse {
     // Validate wildcards FIRST (catalog + preferences): a reply that carries
-    // ONLY valid wildcards is still model CONTENT, not a schema failure. But a
-    // bare `{}` (or wildcards that all wash out — empty titles, filtered by
-    // preference) leaves nothing, so it still falls back and never earns the
-    // `engine:"model"` badge.
+    // ONLY valid wildcards is still model CONTENT, not a schema failure.
     let wildcards = validate_wildcards(&reply.wildcards, &job.catalog_items, &job.prefs);
     let headline_blank = reply.headline.as_deref().unwrap_or("").trim().is_empty();
-    if reply.order.is_empty() && reply.notes.is_empty() && headline_blank && wildcards.is_empty() {
+    // "Carries content" = references at least one REAL candidate (post-firewall),
+    // a headline, or a surviving wildcard. Gating on raw order/notes non-emptiness
+    // would let an all-unknown-id reply (e.g. `{"order":[1,2,3]}` — candidate ids
+    // are structured strings, never bare numbers) wear the model badge and swallow
+    // the native schema error, since apply_model_ranking drops every unknown id.
+    let known: BTreeSet<&str> = job.candidates.iter().map(|c| c.id.as_str()).collect();
+    let refs_candidate = reply.order.iter().any(|id| known.contains(id.as_str()))
+        || reply.notes.keys().any(|id| known.contains(id.as_str()));
+    if !refs_candidate && headline_blank && wildcards.is_empty() {
         return heuristic(
             job.candidates,
-            Some("model reply did not match the rank schema".to_string()),
+            (!on_device).then(|| "model reply did not match the rank schema".to_string()),
         );
     }
     let (headline, opportunities) = apply_model_ranking(job.candidates, reply);
@@ -902,7 +982,7 @@ pub fn execute_rank(job: RankJob) -> RankResponse {
         job.timeout_secs,
         &full,
     ) {
-        Ok(reply) => ranked_response(job, &reply),
+        Ok(reply) => ranked_response(job, &reply, false),
         Err(first) if matches!(first.status, Some(400 | 422)) => {
             let lean = request_body(&job, true);
             match call_provider(
@@ -911,7 +991,7 @@ pub fn execute_rank(job: RankJob) -> RankResponse {
                 job.timeout_secs,
                 &lean,
             ) {
-                Ok(reply) => ranked_response(job, &reply),
+                Ok(reply) => ranked_response(job, &reply, false),
                 Err(second) => heuristic(
                     job.candidates,
                     Some(format!(
@@ -933,5 +1013,70 @@ pub fn rank_next_moves(s: &mut Session) -> RankResponse {
     match prepare_rank(s) {
         RankPrep::Done(resp) => resp,
         RankPrep::Call(job) => execute_rank(job),
+    }
+}
+
+#[cfg(test)]
+mod extract_tests {
+    use super::*;
+
+    // The lenient salvage layer (small on-device models are sloppy JSON writers).
+    // These exercise extract_reply/coerce_reply directly — no session or provider.
+
+    #[test]
+    fn plain_envelope_parses() {
+        let r =
+            extract_reply(r#"{"order":["a","b"],"headline":"hi","notes":{"a":"first"}}"#).unwrap();
+        assert_eq!(r.order, vec!["a", "b"]);
+        assert_eq!(r.headline.as_deref(), Some("hi"));
+        assert_eq!(r.notes.get("a").map(String::as_str), Some("first"));
+    }
+
+    #[test]
+    fn fenced_json_is_unwrapped() {
+        let r = extract_reply("```json\n{\"order\":[\"a\"]}\n```").unwrap();
+        assert_eq!(r.order, vec!["a"]);
+    }
+
+    #[test]
+    fn prose_before_and_after_the_json_is_ignored() {
+        let r = extract_reply("Sure! {\"order\":[\"a\",\"b\"]} Hope that helps!").unwrap();
+        assert_eq!(r.order, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn a_bare_array_is_read_as_the_order() {
+        // A weak model drops the envelope and just lists ids.
+        let r = extract_reply(r#"["x","y","z"]"#).unwrap();
+        assert_eq!(r.order, vec!["x", "y", "z"]);
+        assert!(r.headline.is_none());
+    }
+
+    #[test]
+    fn numeric_order_ids_are_coerced_to_strings() {
+        // `"order":[1,2]` instead of `["1","2"]` — a common small-model slip.
+        let r = extract_reply(r#"{"order":[1,2,3]}"#).unwrap();
+        assert_eq!(r.order, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn a_numeric_note_is_stringified_not_rejected() {
+        // A wrong-typed note used to fail the WHOLE parse; now it degrades locally.
+        let r = extract_reply(r#"{"order":["a"],"notes":{"a":3}}"#).unwrap();
+        assert_eq!(r.order, vec!["a"]);
+        assert_eq!(r.notes.get("a").map(String::as_str), Some("3"));
+    }
+
+    #[test]
+    fn non_json_prose_yields_none() {
+        assert!(extract_reply("I cannot help with that.").is_none());
+        assert!(extract_reply("").is_none());
+    }
+
+    #[test]
+    fn empty_object_coerces_to_an_empty_reply() {
+        // Parses, but carries nothing — the ranked_response guard rejects it.
+        let r = extract_reply("here you go: {}").unwrap();
+        assert!(r.order.is_empty() && r.headline.is_none() && r.notes.is_empty());
     }
 }

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MapCanvasLayer } from "./CanvasLayer";
+import { attachSmoothWheelZoom } from "./smoothZoom";
 import type { CanvasLayerData, NodeRenderState } from "./CanvasLayer";
 import { fromLatLng, toLatLng } from "./maputil";
 import { useStore } from "../state/store";
@@ -152,6 +153,22 @@ export default function MapView() {
   // dropped straight onto the map. `.sav` opens the import review, `.json` (web
   // only) swaps in the player's real recipe catalog.
   const [dataMenu, setDataMenu] = useState(false);
+  // "Start new empire" (web only): a two-click destructive latch — the first
+  // click arms the confirm, the second wipes the plan (keeping the Docs.json).
+  const newEmpire = useStore((s) => s.newEmpire);
+  const factoryCount = useStore((s) => Object.keys(s.plan.factories).length);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const closeDataMenu = useCallback(() => {
+    setDataMenu(false);
+    setConfirmReset(false);
+  }, []);
+  // Disarm the destructive "Start new empire" confirm whenever the menu closes
+  // by ANY path (a sibling item's bare setDataMenu(false), the backdrop, Esc) —
+  // otherwise an armed confirm survives the close and a single click on the next
+  // open would wipe the plan with no second-click guard.
+  useEffect(() => {
+    if (!dataMenu) setConfirmReset(false);
+  }, [dataMenu]);
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
   const loadDocsFile = useCallback(
@@ -405,7 +422,11 @@ export default function MapView() {
       attributionControl: false,
       minZoom: 1,
       maxZoom: 6,
-      zoomSnap: 0.5,
+      // zoomSnap 0 lets the eased wheel zoom land on any fractional level;
+      // scrollWheelZoom off hands the wheel to attachSmoothWheelZoom (below) so
+      // Leaflet's stepped handler doesn't double-zoom.
+      zoomSnap: 0,
+      scrollWheelZoom: false,
       doubleClickZoom: false,
     });
     const b = useStore.getState().world.bounds;
@@ -440,7 +461,18 @@ export default function MapView() {
     mapRef.current = map;
     setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
 
-    map.on("zoomend", () => setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100)));
+    // Live zoom stamp: a direct DOM write on every zoom frame (NOT React state —
+    // the eased wheel zoom fires `zoom`/`moveend` per rAF frame, so a setState or
+    // a persistence write per frame would re-render this heavy component / spam
+    // the backend and undo the smoothness). This attribute lets the smooth-zoom
+    // e2e observe the glide; the % readout + persistence land on the debounced
+    // settle below.
+    const stampZoom = () => {
+      const rootEl = map.getContainer().closest<HTMLElement>('[data-testid="map-root"]');
+      (rootEl ?? map.getContainer()).dataset.zoom = map.getZoom().toFixed(3);
+    };
+    map.on("zoom", stampZoom);
+    stampZoom();
     // Testability stamp (M5): world-coord center on the map-root element — a
     // cheap string piggybacked on the settle we already handle, so the fly
     // e2e can assert the camera actually moved after a SHOW click. Stamped
@@ -451,15 +483,33 @@ export default function MapView() {
       const rootEl = map.getContainer().closest<HTMLElement>('[data-testid="map-root"]');
       (rootEl ?? map.getContainer()).dataset.center = `${w.x.toFixed(0)},${w.y.toFixed(0)}`;
     };
+    // The eased zoom fires `moveend` once per frame; debounce the EXPENSIVE work
+    // (a backend persistence write + the React % readout) to the true settle so a
+    // ~1s gesture is one write + one re-render, not ~60. The cheap DOM stamps
+    // above run inline so the smoothness/testability signal stays per-frame.
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    const persistSettle = () => {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        settleTimer = null;
+        const c = map.getCenter();
+        // Principle 1: position is never lost — persisted on every settle.
+        useStore.getState().saveViewState({ map: { center: [c.lat, c.lng], zoom: map.getZoom() } });
+        setZoomPct(Math.round(Math.pow(2, map.getZoom() - 2) * 100));
+      }, 200);
+    };
     map.on("moveend", () => {
-      const c = map.getCenter();
-      // Principle 1: position is never lost — persisted on every settle.
-      useStore.getState().saveViewState({ map: { center: [c.lat, c.lng], zoom: map.getZoom() } });
       stampCenter();
+      persistSettle();
     });
     stampCenter();
 
+    // Eased, continuous wheel zoom (replaces Leaflet's chunky stepped zoom).
+    const detachZoom = attachSmoothWheelZoom(map, map.getContainer());
+
     return () => {
+      detachZoom();
+      if (settleTimer) clearTimeout(settleTimer);
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
@@ -880,7 +930,7 @@ export default function MapView() {
           <div className="data-menu-wrap">
             <button
               className={`btn btn-ghost ${dataMenu ? "active" : ""}`}
-              onClick={() => setDataMenu((o) => !o)}
+              onClick={() => (dataMenu ? closeDataMenu() : setDataMenu(true))}
               data-testid="btn-data-menu"
               title="Import a save or load your game's Docs.json"
             >
@@ -888,7 +938,7 @@ export default function MapView() {
             </button>
             {dataMenu && (
               <>
-                <div className="data-menu-backdrop" onClick={() => setDataMenu(false)} />
+                <div className="data-menu-backdrop" onClick={closeDataMenu} />
                 <div className="data-menu" data-testid="data-menu">
                   {/* Web + still-on-fixture: the catalog must load BEFORE a save
                       so classes resolve, so state the order loudly and float the
@@ -1026,6 +1076,33 @@ export default function MapView() {
                       <span className="data-menu-item-sub">swap in a different game version's catalog</span>
                     </button>
                   )}
+                  {/* Start over: a cross-platform Session::new_empire (SQLite
+                      wipe on desktop, store reset → IndexedDB on web), shown only
+                      when there's something to clear. Two-click confirm guards the
+                      destructive wipe; the gamedata catalog is kept. */}
+                  {factoryCount > 0 && (
+                    <button
+                      className={`data-menu-item data-menu-danger ${confirmReset ? "armed" : ""}`}
+                      onClick={() => {
+                        if (!confirmReset) {
+                          setConfirmReset(true);
+                          return;
+                        }
+                        closeDataMenu();
+                        void newEmpire();
+                      }}
+                      data-testid="btn-new-empire"
+                    >
+                      <span className="data-menu-item-label">
+                        {confirmReset ? "Click again to delete everything" : "Start new empire"}
+                      </span>
+                      <span className="data-menu-item-sub">
+                        {confirmReset
+                          ? `deletes all ${factoryCount} ${factoryCount === 1 ? "factory" : "factories"} & routes — keeps your Docs.json`
+                          : "wipe the current plan to import a fresh save"}
+                      </span>
+                    </button>
+                  )}
                   <div className="data-menu-hint">
                     <div className="data-menu-hint-head">Or drag &amp; drop a file anywhere</div>
                     <div className="data-menu-hint-row">
@@ -1082,7 +1159,7 @@ export default function MapView() {
             <button onClick={() => zoomBy(-0.5)} aria-label="Zoom out">
               −
             </button>
-            <span>{zoomPct}%</span>
+            <span data-testid="zoom-pct">{zoomPct}%</span>
             <button onClick={() => zoomBy(0.5)} aria-label="Zoom in">
               +
             </button>

@@ -104,6 +104,13 @@ export class WasmBackend implements Backend {
     });
   }
 
+  /** Clear the plan (keep the catalog). A normal `dispatch("new_empire")`: the
+   *  wasm `Session::new_empire` resets the store, and the worker's
+   *  snapshot-after-mutate writes the now-empty blob to IndexedDB. */
+  async newEmpire() {
+    await this.call("new_empire");
+  }
+
   hydrate() {
     return this.call<InitPayload>("hydrate");
   }
