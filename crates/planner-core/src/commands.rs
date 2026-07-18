@@ -1593,6 +1593,19 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .get(id)
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // Upgrading a miner is a PLAN change, and imported claims must stay
+            // editable (players want to upgrade their base's miners). But a Built
+            // claim's extractor/clock is game ground-truth — only import sync may
+            // write it (§3.1.1). So an edit to a Built claim flips it to a Planned
+            // upgrade rather than silently overwriting the baseline: keep its
+            // save_node_id so re-import still re-binds this node, but drop the
+            // built/import provenance so it reads as the honest planned change it
+            // is. (Claims carry no delta overlay like groups do, so the whole
+            // claim converts.)
+            if c.status == Status::Built {
+                c.status = Status::Planned;
+                c.created_by = CreatedBy::Manual;
+            }
             c.extractor = extractor.clone();
             c.clock = clamp_clock(*clock)?;
             tx.record(state.upsert(Entity::NodeClaim(c)));

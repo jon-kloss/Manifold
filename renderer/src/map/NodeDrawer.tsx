@@ -112,7 +112,16 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
     const cmds: Parameters<typeof dispatch>[0] = [
       { type: "set_claim", id: c.id, extractor: nextExtractor, clock: c.clock },
     ];
-    const port = Object.values(plan.ports).find(
+    // Find the boundary input port this claim feeds so its ceiling tracks the
+    // new rate. Match conservatively (same factory + item + the OLD ceiling),
+    // and when several claims of this factory feed indistinguishable ports,
+    // prefer the one actually wired into the graph — bumping the belt-carrying
+    // port, not an idle sibling (same disambiguation moveClaim uses).
+    const portWired = (pid: string) =>
+      Object.values(plan.edges).some(
+        (e) => (e.from.kind === "port" && e.from.id === pid) || (e.to.kind === "port" && e.to.id === pid),
+      );
+    const candidates = Object.values(plan.ports).filter(
       (p) =>
         p.factory === c.factory &&
         p.direction === "in" &&
@@ -120,6 +129,7 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
         p.boundRoute === null &&
         Math.abs((p.rateCeiling ?? -1) - oldRate) < 0.5,
     );
+    const port = candidates.find((p) => portWired(p.id)) ?? candidates[0];
     if (port) cmds.push({ type: "set_port_ceiling", id: port.id, rateCeiling: newRate });
     void dispatch(cmds);
   };

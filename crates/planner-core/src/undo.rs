@@ -853,6 +853,75 @@ mod tests {
     }
 
     #[test]
+    fn set_claim_edits_planned_and_flips_built_to_a_planned_upgrade() {
+        let mut state = PlanState::default();
+        let mut log = UndoLog::new();
+        let fid = create_factory(&mut state, &mut log);
+
+        let tx = apply(
+            &mut state,
+            &Command::ClaimNode {
+                factory: fid.clone(),
+                node: "node-1".into(),
+                extractor: "Build_MinerMk1_C".into(),
+                clock: 1.0,
+            },
+        )
+        .unwrap();
+        let cid = tx.created[0].clone();
+        log.commit(tx);
+
+        // A planned claim edits its extractor in place and stays Planned.
+        let tx = apply(
+            &mut state,
+            &Command::SetClaim {
+                id: cid.clone(),
+                extractor: "Build_MinerMk2_C".into(),
+                clock: 1.0,
+            },
+        )
+        .unwrap();
+        log.commit(tx);
+        assert_eq!(state.node_claims[&cid].extractor, "Build_MinerMk2_C");
+        assert_eq!(state.node_claims[&cid].status, Status::Planned);
+
+        // Simulate an imported miner: built provenance + a save node ref.
+        {
+            let c = state.node_claims.get_mut(&cid).unwrap();
+            c.status = Status::Built;
+            c.created_by = CreatedBy::Import("imp-1".into());
+            c.save_node_id = Some("save-ref-1".into());
+        }
+
+        // Upgrading a built miner is allowed, but becomes an honest planned
+        // upgrade — never a silent rewrite of game ground truth — and keeps its
+        // save ref so re-import still re-binds this node.
+        let tx = apply(
+            &mut state,
+            &Command::SetClaim {
+                id: cid.clone(),
+                extractor: "Build_MinerMk3_C".into(),
+                clock: 1.0,
+            },
+        )
+        .unwrap();
+        log.commit(tx);
+        let c = &state.node_claims[&cid];
+        assert_eq!(c.extractor, "Build_MinerMk3_C");
+        assert_eq!(
+            c.status,
+            Status::Planned,
+            "built claim flips to a planned upgrade"
+        );
+        assert_eq!(c.created_by, CreatedBy::Manual);
+        assert_eq!(
+            c.save_node_id.as_deref(),
+            Some("save-ref-1"),
+            "save ref preserved for re-import"
+        );
+    }
+
+    #[test]
     fn setting_built_values_back_clears_the_delta() {
         let mut state = PlanState::default();
         let mut log = UndoLog::new();
