@@ -96,3 +96,52 @@ test("box-select machines then bulk-delete from the context menu", async ({ page
     await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
   }
 });
+
+test("Escape clears a box-selection instead of ejecting to the map", async ({ page, request }) => {
+  await resetView(request);
+  const f = (await edit(request, [{ type: "create_factory", name: "CTX ESC", position: { x: -1200, y: 1200 }, region: "GRASS FIELDS" }])).created[0];
+  await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 1, clock: 1, graphPos: { x: 200, y: 120 }, floor: 0 }]);
+  await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_Screw_C", count: 1, clock: 1, graphPos: { x: 560, y: 120 }, floor: 0 }]);
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await openGraph(page, "CTX ESC");
+    const c = (await page.locator(".graph-canvas").boundingBox())!;
+    await page.mouse.move(c.x + 40, c.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(c.x + c.width - 40, c.y + c.height - 40, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(".react-flow__node.selected")).toHaveCount(2);
+    await page.keyboard.press("Escape");
+    // selection cleared, still inside the factory graph (not on the map)
+    await expect(page.locator(".react-flow__node.selected")).toHaveCount(0);
+    await expect(page.locator(".react-flow__pane")).toBeVisible();
+    await expect(page.getByTestId("map-root")).toHaveCount(0);
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});
+
+test("an already-exported product is not re-offered for send-out", async ({ page, request }) => {
+  await resetView(request);
+  const f = (await edit(request, [{ type: "create_factory", name: "CTX SURPLUS", position: { x: -1000, y: 1000 }, region: "GRASS FIELDS" }])).created[0];
+  const ingot = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_IronIngot_C", rate: 0, rateCeiling: 200, graphPos: { x: 0, y: 100 } }])).created[0];
+  const rod = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 1, clock: 1, graphPos: { x: 320, y: 100 }, floor: 0 }])).created[0];
+  const rodOut = (await edit(request, [{ type: "add_port", factory: f, direction: "out", item: "Desc_IronRod_C", rate: 0, rateCeiling: null, graphPos: { x: 640, y: 100 } }])).created[0];
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "port", id: ingot }, to: { kind: "group", id: rod }, item: "Desc_IronIngot_C", tier: 3 }]);
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "group", id: rod }, to: { kind: "port", id: rodOut }, item: "Desc_IronRod_C", tier: 3 }]);
+  await edit(request, [{ type: "set_port_rate", id: rodOut, rate: 15 }]); // all rod output exported
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await openGraph(page, "CTX SURPLUS");
+    await page.locator(`.react-flow__node[data-id="${rod}"]`).click({ button: "right" });
+    await expect(page.getByTestId("graph-ctx-menu")).toBeVisible();
+    // rod is fully exported → no surplus → no send-out row for it
+    await expect(page.getByTestId("ctx-send-Desc_IronRod_C")).toHaveCount(0);
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});

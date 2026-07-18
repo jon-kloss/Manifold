@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../state/store";
 import { itemLabel } from "../lib/format";
-import { POWER_ITEM, type Command, type Id } from "../state/types";
+import { POWER_ITEM, effClock, effCount, type Command, type Id } from "../state/types";
 import { minBeltTier } from "./logistics";
 
 export interface CtxTarget {
@@ -59,17 +59,13 @@ export default function GraphContextMenu({
     return [...set].sort((a, b) => a - b);
   }, [plan, factoryId]);
 
-  // Single machine → offer to send each product out of the factory.
   const soleGroup = groupIds.length === 1 && junctionIds.length === 0 && portIds.length === 0 ? groupIds[0] : null;
-  const sendable = useMemo(() => {
-    if (!soleGroup) return [];
-    const recipe = gamedata.recipes[plan.groups[soleGroup]!.recipe];
-    return (recipe?.products ?? [])
-      .map(([item]) => item)
-      .filter((item) => item !== POWER_ITEM);
-  }, [soleGroup, gamedata.recipes, plan.groups]);
 
-  /** Shippable surplus of `item` at group `gid`: produced − consumed internally. */
+  /** Shippable surplus of `item` at group `gid`: the group's NAMEPLATE output
+   *  (what it can make, not the demand-driven realized rate — an unconsumed
+   *  product solves to 0 yet is exactly what you want to send out) minus what's
+   *  already committed: existing export-port targets + internal consumption. So
+   *  a product already fully exported reports ~0 and isn't re-offered. */
   const surplus = (gid: Id, item: string): number => {
     const df = derived.factories[factoryId];
     const g = plan.groups[gid]!;
@@ -77,15 +73,32 @@ export default function GraphContextMenu({
     const perMachine = recipe && recipe.durationS > 0
       ? ((recipe.products.find(([i]) => i === item)?.[1] ?? 0) * 60) / recipe.durationS
       : 0;
-    const out = df?.groups[gid]?.outRates[item] ?? perMachine * g.count * g.clock;
-    let internal = 0;
+    // Nameplate capacity, NOT the demand-driven clock: an idle output solves to
+    // clock 0, but that's precisely what you want to send out, so floor the
+    // clock at 100% (and honor an overclock above it).
+    const potential = perMachine * effCount(g) * Math.max(effClock(g), 1);
+    let committed = 0;
     for (const e of Object.values(plan.edges)) {
-      if (e.factory === factoryId && e.item === item && e.from.kind === "group" && e.from.id === gid && e.to.kind !== "port") {
-        internal += df?.edges[e.id]?.flow ?? 0;
-      }
+      if (e.factory !== factoryId || e.item !== item || e.from.kind !== "group" || e.from.id !== gid) continue;
+      committed +=
+        e.to.kind === "port"
+          ? (plan.ports[e.to.id]?.rate ?? 0) // already exported at this target
+          : (df?.edges[e.id]?.flow ?? 0); // consumed internally
     }
-    return Math.max(0, out - internal);
+    return Math.max(0, potential - committed);
   };
+
+  // Single machine → offer to send each product that still has surplus out of
+  // the factory. Products already fully routed/exported are not re-offered
+  // (a second send would create a duplicate, over-subscribed output port).
+  const sendable = useMemo(() => {
+    if (!soleGroup) return [];
+    const recipe = gamedata.recipes[plan.groups[soleGroup]!.recipe];
+    return (recipe?.products ?? [])
+      .map(([item]) => item)
+      .filter((item) => item !== POWER_ITEM && surplus(soleGroup, item) > 1e-6);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soleGroup, gamedata.recipes, plan.groups, plan.edges, derived]);
 
   const sendOut = async (gid: Id, item: string) => {
     const g = plan.groups[gid]!;

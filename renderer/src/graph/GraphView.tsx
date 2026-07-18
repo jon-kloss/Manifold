@@ -267,6 +267,25 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     e.preventDefault();
     setCtx({ x: e.clientX, y: e.clientY, nodeIds: sel.map((n) => n.id) });
   }, []);
+  // Clicking one member of a box-selection narrows to just it. React Flow emits
+  // no select change for a plain click on an already-selected node, so drive the
+  // collapse here or the marquee would stay stuck with no inspector.
+  const narrowOnClick = useCallback(
+    (_: ReactMouseEvent, node: Node) => {
+      if (getNodes().filter((n) => n.selected).length <= 1) return;
+      boxSelRef.current = false;
+      setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === node.id })));
+      const st = useStore.getState().plan;
+      setSelection(
+        st.groups[node.id]
+          ? { kind: "group", id: node.id }
+          : st.junctions[node.id]
+            ? { kind: "junction", id: node.id }
+            : { kind: "port", id: node.id },
+      );
+    },
+    [getNodes, setSelection],
+  );
 
   // Display derived: T0 projection during drag, else authoritative T1.
   const df: DerivedFactory | undefined =
@@ -648,11 +667,41 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     const onKey = (e: KeyboardEvent) => {
       if (isEditableTarget(e)) return;
       if (e.key === "Escape") {
-        if (addMenu) setAddMenu(null);
-        else if (selection) setSelection(null);
+        if (addMenu) {
+          setAddMenu(null);
+          return;
+        }
+        setCtx(null);
+        // A marquee box-selection lives in React Flow, not the store, so clear
+        // it here — otherwise Escape would skip past it and eject to the map.
+        if (getNodes().some((n) => n.selected)) {
+          boxSelRef.current = false;
+          setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
+          setSelection(null);
+        } else if (selection) setSelection(null);
         else setView({ mode: "map" });
       } else if (e.key === "Backspace" || e.key === "Delete") {
         const sel = useStore.getState().selection;
+        // Delete a box-selection (which lives in React Flow, so store selection
+        // is null) — remove every selected group / junction / port at once.
+        const boxed = getNodes().filter((n) => n.selected);
+        if (!sel && boxed.length) {
+          const st = useStore.getState().plan;
+          void dispatch(
+            boxed
+              .map((n): Command | null =>
+                st.groups[n.id]
+                  ? { type: "delete_group", id: n.id }
+                  : st.junctions[n.id]
+                    ? { type: "delete_junction", id: n.id }
+                    : st.ports[n.id]
+                      ? { type: "delete_port", id: n.id }
+                      : null,
+              )
+              .filter((c): c is Command => c !== null),
+          );
+          return;
+        }
         if (!sel) return;
         const del: Command[] | null =
           sel.kind === "group"
@@ -685,7 +734,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selection, addMenu, dispatch, setSelection, setView, fitView]);
+  }, [selection, addMenu, dispatch, setSelection, setView, fitView, getNodes]);
 
   const flowRef = useRef<HTMLDivElement>(null);
 
@@ -916,6 +965,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
           onSelectionEnd={() => {
             boxSelRef.current = false;
           }}
+          onNodeClick={narrowOnClick}
           onNodeContextMenu={openNodeCtx}
           onSelectionContextMenu={openSelectionCtx}
           onPaneContextMenu={(e) => {
