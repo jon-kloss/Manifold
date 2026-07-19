@@ -157,16 +157,11 @@ test("PWR chip shows the generation segment only when generation > 0", async ({ 
     expect(zeroText).toMatch(/PWR .*MW/);
     expect(zeroText).not.toContain("/");
 
-    // Pick a Generator-kind machine and a recipe that runs in it from the catalog.
-    const h = await hydrate(request);
-    const machines = h.gamedata.machines as Record<string, { className: string; kind: string }>;
-    const recipes = h.gamedata.recipes as Record<string, { className: string; producedIn: string[] }>;
-    const genMachine = Object.values(machines).find((m) => m.kind === "generator");
-    expect(genMachine, "fixture catalog must expose a generator machine").toBeTruthy();
-    const genRecipe = Object.values(recipes).find((r) => r.producedIn.includes(genMachine!.className));
-    expect(genRecipe, "fixture catalog must expose a burn recipe for the generator").toBeTruthy();
-
-    // Create a factory holding a single un-wired generator group (nameplate → gen>0).
+    // Create a factory holding a single RECIPE-LESS generator group — the
+    // nameplate fallback path, which is deterministic: a generator with a
+    // resolvable burn recipe but no fuel wiring solves to 0 MW (the solved
+    // figure wins over nameplate by design — fuel-starved truth), which
+    // would keep generation at 0 and prove nothing about the segment.
     genFactory = (
       await edit(request, [
         { type: "create_factory", name: "GEN PROBE", position: { x: -2600, y: 2600 }, region: "GRASS FIELDS" },
@@ -176,8 +171,8 @@ test("PWR chip shows the generation segment only when generation > 0", async ({ 
       {
         type: "add_group",
         factory: genFactory,
-        machine: genMachine!.className,
-        recipe: genRecipe!.className,
+        machine: "Build_GeneratorGeoThermal_C",
+        recipe: "",
         count: 1,
         clock: 1,
         graphPos: { x: 300, y: 80 },
