@@ -2164,17 +2164,48 @@ impl Session {
                 dst_factory.clone(),
                 dst_factory.as_ref().and_then(|f| derived.factories.get(f)),
             ) {
-                let requested = self
-                    .state
-                    .factories
-                    .get(&fid)
-                    .and_then(|f| {
-                        f.ports.iter().find_map(|pid| {
-                            let p = self.state.ports.get(pid)?;
-                            (p.direction == PortDirection::Out).then_some(p.rate)
+                // `requested` = the rate of the output whose solve produced
+                // this target_ceiling — mirroring trigger_for_factory: the
+                // trigger's own rate when the edit targeted one of THIS
+                // factory's ports, else the sole Out port's canonical rate
+                // (the synthesized single-output SetTarget). A multi-output
+                // factory not named by the trigger solves as Recompute, so
+                // its target_ceiling is None and the probe path sizes the
+                // deficit. The old code took the factory's FIRST Out port's
+                // rate unconditionally — for a multi-output factory that is
+                // an unrelated output, which both gated phantom deficits
+                // (first.rate > max_rate while the edited target was met) and
+                // mis-scaled `needed` by the wrong target (audit #125).
+                let requested = match trigger {
+                    // Out-direction guard mirrors trigger_for_factory exactly:
+                    // an In-port SetPortRate (raw command API; no shipped UI
+                    // emits one) falls through to the sole-Out-port arm, like
+                    // the synthesized solve it sizes against — its typed rate
+                    // is in INPUT units and must never scale an output-unit
+                    // max_rate.
+                    T0Edit::SetTarget { port, rate }
+                        if self.state.ports.get(port).is_some_and(|p| {
+                            p.factory == fid && p.direction == PortDirection::Out
+                        }) =>
+                    {
+                        *rate
+                    }
+                    _ => self
+                        .state
+                        .factories
+                        .get(&fid)
+                        .and_then(|f| {
+                            let mut outs = f.ports.iter().filter_map(|pid| {
+                                let p = self.state.ports.get(pid)?;
+                                (p.direction == PortDirection::Out).then_some(p.rate)
+                            });
+                            match (outs.next(), outs.next()) {
+                                (Some(rate), None) => Some(rate),
+                                _ => None,
+                            }
                         })
-                    })
-                    .unwrap_or(0.0);
+                        .unwrap_or(0.0),
+                };
                 let ceiling_max = df.target_ceiling.as_ref().and_then(|c| match &c.binding {
                     solver::model::Constraint::InputCeiling { port, .. } if port == dst_port => {
                         Some(c.max_rate)
