@@ -113,6 +113,13 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
       <header className="group-card-head">
         <ItemIcon item={group.machine} displayName={machine} size={20} />
         <span className="group-card-name">
+          {/* 7l/status grammar: a planned (or projected) card carries the ◇
+              in its title — it reads as blueprint from the first frame. */}
+          {(group.status === "planned" || isProjected) && (
+            <span className="status-glyph status-planned" aria-hidden>
+              ◇{" "}
+            </span>
+          )}
           {machine.toUpperCase()}{" "}
           <span className={`mono ${numCls}`} style={settleAt(0)}>
             ×{group.count}

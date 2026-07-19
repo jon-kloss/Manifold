@@ -217,8 +217,11 @@ button {
 }
 .settle {
   display: inline-block; /* transform needs a box on these inline spans */
-  animation: settle-ripple 360ms var(--ease) backwards;
-  animation-delay: calc(var(--settle-i, 0) * 120ms);
+  animation: settle-ripple 120ms var(--ease) backwards;
+  /* --build-i shifts a 7m chain-built card's ripple to its ~900ms
+     construction slot — otherwise the settle plays while the card is still
+     held invisible by mount-build and is never seen. 0 everywhere else. */
+  animation-delay: calc(var(--settle-i, 0) * 120ms + var(--build-i, 0) * 900ms);
 }
 @media (prefers-reduced-motion: reduce) {
   .settle {

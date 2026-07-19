@@ -373,7 +373,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const [motionSkip, setMotionSkip] = useState(false);
   const prevIdsRef = useRef<{ factoryId: string; nodeIds: Set<string>; edgeIds: Set<string> } | null>(null);
   const nodeGeomSnapRef = useRef<Map<string, { x: number; y: number; w: number; h: number }>>(new Map());
-  const edgePathSnapRef = useRef<Map<string, string>>(new Map());
+  const edgePathSnapRef = useRef<Map<string, { d: string; from: string; to: string }>>(new Map());
 
   // ---- nodes (positions locally tracked while dragging; committed on drop) ----
   const buildNodes = useCallback((): Node[] => {
@@ -686,7 +686,11 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     // Opening a factory view (or switching factories) is never a mutation.
     if (!prev || prev.factoryId !== factoryId || reducedMotion) return;
     const now = Date.now();
-    const kind = motionKind(useStore.getState().motion, now);
+    // The verb must be stamped for THIS plan commit (hash match) — hydrate,
+    // sync-import, auto-pull and proposal-accept advance planHash without
+    // stamping, so their diffs never inherit a stale edit/undo/redo grammar.
+    const st = useStore.getState();
+    const kind = motionKind(st.motion, now, st.planHash);
     if (!kind) return;
     const nodesDiff = diffIds(prev.nodeIds, nodeIds);
     const edgesDiff = diffIds(prev.edgeIds, edgeIds);
@@ -701,11 +705,15 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         const g = nodeGeomSnapRef.current.get(id);
         if (g) born.push({ id, kind: ghostKind, ...g, at: now });
       }
+      const removedSet = new Set(nodesDiff.removed);
       const bornEdges: EdgeGhost[] =
         ghostKind === "delete"
           ? edgesDiff.removed.flatMap((id) => {
-              const d = edgePathSnapRef.current.get(id);
-              return d ? [{ id, d, at: now }] : [];
+              const snap = edgePathSnapRef.current.get(id);
+              if (!snap) return [];
+              // 7k: retract INTO the survivor — when the path's source end
+              // was the deleted node, collapse toward the start's opposite.
+              return [{ id, d: snap.d, rev: removedSet.has(snap.to), at: now }];
             })
           : [];
       if (born.length) setNodeGhosts((gs) => [...pruneGhosts(gs, now, (g) => ghostTtlMs(g.kind)), ...born]);
@@ -738,6 +746,9 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       setMountCls(cls);
       setBuildIdx(idx);
       setEdgeDraw(draw);
+      // A fresh batch un-latches a previous 7m interrupt — otherwise one
+      // skip would silently mute every later batch's choreography.
+      setMotionSkip(false);
     }
   }, [factory, plan.groups, plan.junctions, plan.ports, plan.edges, factoryId, reducedMotion]);
 
@@ -757,10 +768,11 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     nodeGeomSnapRef.current = snap;
   }, [nodes]);
   useEffect(() => {
-    const snap = new Map<string, string>();
+    const snap = new Map<string, { d: string; from: string; to: string }>();
     for (const e of edges) {
-      const d = (e.data as BeltEdgeData | undefined)?.geom?.path;
-      if (d) snap.set(e.id, d);
+      const be = e.data as BeltEdgeData | undefined;
+      const d = be?.geom?.path;
+      if (d && be) snap.set(e.id, { d, from: be.edge.from.id, to: be.edge.to.id });
     }
     edgePathSnapRef.current = snap;
   }, [edges]);
@@ -1254,7 +1266,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
               {edgeGhosts.length > 0 && (
                 <svg className="mfd-ghost-edges" aria-hidden>
                   {edgeGhosts.map((g) => (
-                    <path key={g.id} d={g.d} pathLength={1} />
+                    <path key={g.id} d={g.d} pathLength={1} className={g.rev ? "rev" : ""} />
                   ))}
                 </svg>
               )}

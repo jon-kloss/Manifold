@@ -1400,8 +1400,11 @@
     mfd-del-collapse 150ms var(--ease) both,
     mfd-ghost-fade 120ms var(--ease) 150ms both;
 }
-/* 7k — removed belts retract into their neighbors (200ms): the ghost path
-   replays the edge's last geometry and pulls back via dashoffset. */
+/* 7k — removed belts retract INTO their surviving neighbor (200ms): the
+   ghost path replays the edge's last geometry in the real belt color
+   (a7-deledge retracts flow-ok green, not blueprint blue) and pulls back
+   via dashoffset — .rev flips the collapse direction when the survivor is
+   the path's source end. */
 .mfd-ghost-edges {
   position: absolute;
   left: 0;
@@ -1419,12 +1422,25 @@
     opacity: 0;
   }
 }
+@keyframes mfd-edge-retract-rev {
+  from {
+    stroke-dashoffset: 0;
+    opacity: 0.9;
+  }
+  to {
+    stroke-dashoffset: -1;
+    opacity: 0;
+  }
+}
 .mfd-ghost-edges path {
   fill: none;
-  stroke: var(--bp-400);
+  stroke: var(--flow-ok);
   stroke-width: 2;
   stroke-dasharray: 1;
   animation: mfd-edge-retract 200ms var(--ease) both;
+}
+.mfd-ghost-edges path.rev {
+  animation-name: mfd-edge-retract-rev;
 }
 
 /* 7m is interruptible: any input while a chain build staggers jumps every

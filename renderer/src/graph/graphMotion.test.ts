@@ -46,9 +46,12 @@ describe("graphMotion", () => {
     expect(live.map((g) => g.id)).toEqual(["young"]);
   });
 
-  it("motionKind trusts only fresh verbs", () => {
-    expect(motionKind({ kind: "undo", at: 1000 }, 1000 + MOTION_FRESH_MS - 1)).toBe("undo");
-    expect(motionKind({ kind: "undo", at: 1000 }, 1000 + MOTION_FRESH_MS)).toBeNull();
-    expect(motionKind(null, 0)).toBeNull();
+  it("motionKind trusts only fresh verbs stamped for THIS plan commit", () => {
+    const verb = { kind: "undo" as const, at: 1000, hash: "h1" };
+    expect(motionKind(verb, 1000 + MOTION_FRESH_MS - 1, "h1")).toBe("undo");
+    expect(motionKind(verb, 1000 + MOTION_FRESH_MS, "h1")).toBeNull();
+    // a hydrate/sync/accept advanced the plan without stamping → no claim
+    expect(motionKind(verb, 1001, "h2")).toBeNull();
+    expect(motionKind(null, 0, "h1")).toBeNull();
   });
 });

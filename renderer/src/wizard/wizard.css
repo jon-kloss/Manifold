@@ -177,14 +177,27 @@
   color: var(--ink-faint);
 }
 
+/* MANIFOLD motion 7g — solver phases stack as log lines (the reference
+   types them one under another) and each TYPES in (steps(20) width reveal,
+   ~0.8s) the moment it really starts, its trailing ✓/▸ landing as the last
+   character. The base state is COLLAPSED (max-width 0), so a pending phase
+   shows nothing and the reveal never re-types already-visible text; the
+   column layout means a mid-type line can't shove its siblings around.
+   Sharing one animation value between .active and .done means each line
+   types exactly once (the active→done class flip doesn't restart it). */
 .wizard-phases {
   display: flex;
-  gap: 14px;
+  flex-direction: column;
+  gap: 2px;
   margin-bottom: 10px;
+  min-height: 58px; /* all 4 lines' worth — the modal doesn't grow per line */
 }
 .wizard-phase {
   font-size: 10.5px;
   color: var(--ink-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 0;
 }
 .wizard-phase.done {
   color: var(--flow-ok);
@@ -192,11 +205,6 @@
 .wizard-phase.active {
   color: var(--signal-500);
 }
-
-/* MANIFOLD motion 7g — a solver phase TYPES in (steps(20) width reveal,
-   ~0.8s) the moment it really starts, its trailing ✓/▸ landing as the last
-   character. Sharing one animation value between .active and .done means the
-   line types exactly once (the active→done class flip doesn't restart it). */
 @keyframes mfd-type {
   from {
     max-width: 0;
@@ -207,14 +215,13 @@
 }
 .wizard-phase.active,
 .wizard-phase.done {
-  overflow: hidden;
-  white-space: nowrap;
   animation: mfd-type 0.8s steps(20, end) both;
 }
 @media (prefers-reduced-motion: reduce) {
   .wizard-phase.active,
   .wizard-phase.done {
     animation: none;
+    max-width: 260px;
   }
 }
 

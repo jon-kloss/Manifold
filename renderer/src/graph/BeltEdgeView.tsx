@@ -148,11 +148,16 @@ export default function BeltEdgeView(props: EdgeProps) {
   // before its card in a 7m chain). Inline so the delay can vary per edge;
   // the keyframes live in graph.css and reduced-motion is enforced upstream
   // (GraphView never sets mountDelayMs under prefers-reduced-motion).
+  // The growth origin is the SOURCE end (the neighbor it extends from):
+  // geometrically that's the left edge of the bounding box except when the
+  // path runs right → left (a feedback belt) — then it's the right edge.
+  const srcIsRight =
+    data.geom && data.geom.points.length >= 2 && data.geom.points[0].x > data.geom.points[data.geom.points.length - 1].x;
   const mountAnim: CSSProperties | undefined =
     data.mountDelayMs !== undefined
       ? {
           transformBox: "fill-box",
-          transformOrigin: "left center",
+          transformOrigin: srcIsRight ? "right center" : "left center",
           animation: `mfd-edge-extend 200ms var(--ease) ${data.mountDelayMs}ms backwards`,
         }
       : undefined;

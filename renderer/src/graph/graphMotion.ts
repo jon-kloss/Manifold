@@ -20,6 +20,9 @@ export interface EdgeGhost {
   id: string;
   /** SVG path of the edge as it last rendered — the retract replays it. */
   d: string;
+  /** Retract direction (7k: "into the survivor"): false = collapse toward
+   *  the path END (survivor is the target), true = toward the START. */
+  rev: boolean;
   at: number;
 }
 
@@ -63,14 +66,17 @@ export function pruneGhosts<T extends { at: number }>(
   return live.length === ghosts.length ? [...ghosts] : live;
 }
 
-/** A motion verb is only trusted while fresh — a stale verb (e.g. an edit
- *  seconds ago) must not claim a later render's diff (sync, hydrate). */
+/** A motion verb is only trusted for the exact plan commit that stamped it
+ *  (hash = the response's planHash) AND while fresh. Hydrate, sync-import,
+ *  auto-pull and proposal-accept all advance planHash WITHOUT stamping, so
+ *  their diffs can never be claimed by a stale verb from an earlier edit. */
 export const MOTION_FRESH_MS = 1500;
 
 export function motionKind(
-  motion: { kind: "edit" | "undo" | "redo"; at: number } | null,
+  motion: { kind: "edit" | "undo" | "redo"; at: number; hash: string } | null,
   now: number,
+  planHash: string,
 ): "edit" | "undo" | "redo" | null {
-  if (!motion) return null;
+  if (!motion || motion.hash !== planHash) return null;
   return now - motion.at < MOTION_FRESH_MS ? motion.kind : null;
 }
