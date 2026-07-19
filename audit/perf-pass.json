@@ -1,0 +1,11 @@
+{
+  "scale": { "factories": 42, "groups": 420, "edges": 462, "routes": 146, "hydrateKB": 693 },
+  "targets": { "editP95Ms": 250, "hydrateMs": 1000 },
+  "measured": {
+    "editMs": { "p50": 17.3, "p95": 58.9, "max": 58.9 },
+    "hydrateMs": { "min": 23.1, "max": 29.1 },
+    "client": { "mapReadyMs": 1615, "graphReadyMs": 2208, "worstFrameMs2s": 17 }
+  },
+  "verdict": "PASS — all measures inside charter budgets; no O(n^2) symptoms at stress scale",
+  "method": "release dev-bridge, scratch plan seeded via /api/edit; 20 sequential set_group_clock edits (full empire recompute incl. 146 routes); 5x hydrate; chromium 1600x900 cold load + heaviest graph mount + 2s rAF stall watch"
+}
