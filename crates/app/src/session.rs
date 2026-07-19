@@ -2318,23 +2318,52 @@ impl Session {
                 let root = find(&mut parent, &fid);
                 grids.entry(root).or_default().push(fid);
             }
-            let gen_of = |fid: &Id| -> f64 {
-                derived
+            // Per-group generation with the nameplate fallback — the SINGLE
+            // source of truth for both the per-grid cards and the empire
+            // total below, so the two can never disagree: the solved
+            // POWER_ITEM output when the group's recipe resolves and its
+            // factory solved (a fuel-starved plant reads its real, lower
+            // output), else nameplate mw × count × clock. The nameplate arm
+            // covers recipe-less imported generators (#58), geothermal (no
+            // synthesized burn recipe by design), unresolvable recipes, and
+            // solve-skipped/errored factories: never a silent 0 that would
+            // read as a false "NO GEN" on a grid card while the empire total
+            // reports the nameplate (the audit's two-contradictory-numbers
+            // failure), or a shed threshold computed off a 0 baseline.
+            let group_gen_mw = |g: &planner_core::entities::MachineGroup| -> Option<f64> {
+                let mw = match self.gamedata.machines.get(&g.machine).map(|m| &m.kind) {
+                    Some(gamedata::docs::MachineKind::Generator {
+                        power_production_mw,
+                    }) => *power_production_mw,
+                    _ => return None,
+                };
+                let solved = derived
                     .factories
-                    .get(fid)
-                    .map(|df| {
-                        df.groups
-                            .values()
-                            .map(|g| {
-                                g.out_rates
-                                    .get(gamedata::docs::POWER_ITEM)
-                                    .copied()
-                                    .unwrap_or(0.0)
-                            })
-                            .sum::<f64>()
-                    })
-                    .unwrap_or(0.0)
+                    .get(&g.factory)
+                    .filter(|df| df.solve_error.is_none())
+                    .and_then(|df| df.groups.get(&g.id))
+                    .map(|dg| {
+                        dg.out_rates
+                            .get(gamedata::docs::POWER_ITEM)
+                            .copied()
+                            .unwrap_or(0.0)
+                    });
+                match solved {
+                    Some(solved) if self.gamedata.recipes.contains_key(&g.recipe) => Some(solved),
+                    _ => Some(mw * g.effective_count() as f64 * g.effective_clock()),
+                }
             };
+            // Folded ONCE into a per-factory map: gen_of is called per grid
+            // member and again per switch-side factory, and a full
+            // state.groups rescan on every call would make the per-grid pass
+            // O((members + switch sides) × total groups) on every recompute.
+            let mut gen_by_factory: BTreeMap<Id, f64> = BTreeMap::new();
+            for g in self.state.groups.values() {
+                if let Some(mw) = group_gen_mw(g) {
+                    *gen_by_factory.entry(g.factory.clone()).or_insert(0.0) += mw;
+                }
+            }
+            let gen_of = |fid: &Id| -> f64 { gen_by_factory.get(fid).copied().unwrap_or(0.0) };
             for (i, (_, members)) in grids.into_iter().enumerate() {
                 let generation_mw: f64 = members.iter().map(&gen_of).sum();
                 let demand_mw: f64 = members
@@ -2424,43 +2453,11 @@ impl Session {
                     next_shed,
                 });
             }
-            // Empire generation, per generator group: the solved POWER_ITEM
-            // output when the group's recipe resolves and its factory solved —
-            // so a fuel-starved plant reads its real (lower) output, matching
-            // the per-grid sums above — else nameplate mw × count × clock.
-            // The nameplate arm covers recipe-less imported generators (#58),
-            // unresolvable recipes, and solve-skipped/errored factories: never
-            // a silent 0 that would read as a false "NO GEN".
-            derived.total_generation_mw = self
-                .state
-                .groups
-                .values()
-                .filter_map(|g| {
-                    let mw = match self.gamedata.machines.get(&g.machine).map(|m| &m.kind) {
-                        Some(gamedata::docs::MachineKind::Generator {
-                            power_production_mw,
-                        }) => *power_production_mw,
-                        _ => return None,
-                    };
-                    let solved = derived
-                        .factories
-                        .get(&g.factory)
-                        .filter(|df| df.solve_error.is_none())
-                        .and_then(|df| df.groups.get(&g.id))
-                        .map(|dg| {
-                            dg.out_rates
-                                .get(gamedata::docs::POWER_ITEM)
-                                .copied()
-                                .unwrap_or(0.0)
-                        });
-                    match solved {
-                        Some(solved) if self.gamedata.recipes.contains_key(&g.recipe) => {
-                            Some(solved)
-                        }
-                        _ => Some(mw * g.effective_count() as f64 * g.effective_clock()),
-                    }
-                })
-                .sum();
+            // Empire generation: the SAME per-group fold as the per-grid sums
+            // above (gen_by_factory covers every factory with a generator,
+            // gridded or not) — so the status bar total and the grid cards
+            // agree by construction.
+            derived.total_generation_mw = gen_by_factory.values().sum();
         }
         // Build queue: a pure projection over canonical state + gamedata,
         // recomputed here like circuits/deficits (no stored ordering entity).

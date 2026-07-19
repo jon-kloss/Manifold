@@ -53,22 +53,44 @@ export default function StatusBar({ overlayMode }: { overlayMode: boolean }) {
     return out;
   }, [derived]);
 
-  // PWR chip color: the WORST per-circuit level (orange is a verb — it follows
-  // the derived condition). No grids yet ⇒ color the raw draw against total
-  // generation, so an ungridded empire's overdraw still tints.
-  const powerLevelWorst: PowerLevel = useMemo(() => {
-    const rank = { ok: 0, warn: 1, crit: 2 } as const;
+  // PWR chip: the bar's fill WIDTH and fill COLOR come from the SAME source —
+  // the worst per-circuit headroom (orange is a verb — it follows the derived
+  // condition). They previously used different denominators (aggregate
+  // draw/generation for width, worst circuit for color), so an unbalanced
+  // multi-grid empire rendered a nearly-empty bar painted alarm-red (or a full
+  // green bar while one grid sat at the brink). No grids yet ⇒ both fall back
+  // to the aggregate draw against total generation, so an ungridded empire's
+  // overdraw still tints.
+  const power = useMemo((): { level: PowerLevel; fillPct: number; title?: string } => {
     if (derived.circuits.length === 0) {
-      return powerLevel(circuitHeadroom(derived.totalGenerationMw, derived.totalPowerMw));
+      const fillPct =
+        derived.totalGenerationMw > 0
+          ? (derived.totalPowerMw / derived.totalGenerationMw) * 100
+          : derived.totalPowerMw / 5;
+      return { level: powerLevel(circuitHeadroom(derived.totalGenerationMw, derived.totalPowerMw)), fillPct };
     }
-    let worst: PowerLevel = "ok";
+    let worst = derived.circuits[0];
+    let worstHeadroom = circuitHeadroom(worst.generationMw, worst.demandMw);
     for (const c of derived.circuits) {
-      const lvl = powerLevel(circuitHeadroom(c.generationMw, c.demandMw));
-      if (rank[lvl] > rank[worst]) worst = lvl;
+      const h = circuitHeadroom(c.generationMw, c.demandMw);
+      if (h < worstHeadroom) {
+        worst = c;
+        worstHeadroom = h;
+      }
     }
-    return worst;
+    // A consumer-only grid (no generator in the component) is DEFINITIVELY
+    // 100% overdrawn the moment it draws anything — render it full, matching
+    // the audit drawer's card for the same circuit, never a near-empty
+    // alarm-red sliver (the exact width/color contradiction this memo fixes).
+    const fillPct =
+      worst.generationMw > 0 ? (worst.demandMw / worst.generationMw) * 100 : worst.demandMw > 0 ? 100 : 0;
+    return {
+      level: powerLevel(worstHeadroom),
+      fillPct,
+      title: `Tightest grid — ${worst.name}: ${fmtPower(worst.demandMw)} of ${fmtPower(worst.generationMw)} generated`,
+    };
   }, [derived.circuits, derived.totalGenerationMw, derived.totalPowerMw]);
-  const powerClass = powerLevelWorst === "crit" ? "sb-crit" : powerLevelWorst === "warn" ? "sb-warn" : "";
+  const powerClass = power.level === "crit" ? "sb-crit" : power.level === "warn" ? "sb-warn" : "";
 
   const jumpToCrit = () => {
     const first = critEdges[0];
@@ -96,20 +118,13 @@ export default function StatusBar({ overlayMode }: { overlayMode: boolean }) {
 
   return (
     <footer className="statusbar">
-      <span className={`sb-item mono ${powerClass}`} data-testid="sb-power">
+      <span className={`sb-item mono ${powerClass}`} data-testid="sb-power" title={power.title}>
         PWR {fmtPower(derived.totalPowerMw)}
         {derived.totalGenerationMw > 0 && <span className="sb-gen"> / {fmtPower(derived.totalGenerationMw)}</span>}
         <span className="sb-powerbar" aria-hidden>
           <span
-            className={powerLevelWorst === "ok" ? "" : powerLevelWorst}
-            style={{
-              width: `${Math.min(
-                100,
-                derived.totalGenerationMw > 0
-                  ? (derived.totalPowerMw / derived.totalGenerationMw) * 100
-                  : derived.totalPowerMw / 5,
-              )}%`,
-            }}
+            className={power.level === "ok" ? "" : power.level}
+            style={{ width: `${Math.min(100, power.fillPct)}%` }}
           />
         </span>
       </span>

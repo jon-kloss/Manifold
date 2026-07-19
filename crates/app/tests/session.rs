@@ -3089,3 +3089,146 @@ fn new_empire_wipes_the_plan_and_journal_but_keeps_the_catalog() {
     assert_eq!(s.state.factories.len(), 1);
     assert_eq!(s.state.factories[&fid].name, "AFTER RESET");
 }
+
+// ---------------------------------------------------------------------------
+// Audit #124: per-grid generation carries the SAME nameplate fallback as the
+// empire total. A recipe-less generator (every imported generator, and
+// geothermal by design — no synthesized burn recipe) contributes no solved
+// __PowerMW out_rate, so the per-grid sum used to read 0 MW while the status
+// bar showed the nameplate — two contradictory numbers for one physical
+// plant, and switch-shed thresholds computed off the 0 baseline.
+// ---------------------------------------------------------------------------
+
+/// A grid holding two recipe-less geothermal generators (200 MW nameplate
+/// each) must attribute 400 MW to the CIRCUIT, matching total_generation_mw.
+#[test]
+fn recipe_less_generator_grid_reads_nameplate_not_zero() {
+    let mut s = Session::in_memory(None).unwrap();
+    let geo = mk_factory(&mut s, "GEO FARM", 0.0);
+    // Recipe-less (imported-style) generator group, count 2 via two adds of 1?
+    // AddGroup helper is count=1; add one group then set its count to 2.
+    let g = add_group(
+        &mut s,
+        &geo,
+        "Build_GeneratorGeoThermal_C",
+        "",
+        GraphPos { x: 0.0, y: 0.0 },
+    );
+    s.edit(vec![Command::SetGroupCount { id: g, count: 2 }])
+        .unwrap();
+    let load = mk_factory(&mut s, "LOAD SINK", 800.0);
+    s.edit(vec![Command::AddRoute {
+        kind: RouteKind::Power,
+        from: geo.clone(),
+        to: load.clone(),
+        path: vec![
+            MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            MapPos {
+                x: 800.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        ],
+    }])
+    .unwrap();
+
+    let d = s.solve_all_readonly();
+    assert_eq!(d.circuits.len(), 1, "one grid joining the two factories");
+    let c = &d.circuits[0];
+    assert!(
+        (c.generation_mw - 400.0).abs() < 1e-6,
+        "grid card reads the 2 x 200 MW nameplate, got {}",
+        c.generation_mw
+    );
+    // Empire total and per-grid attribution agree by construction.
+    assert!(
+        (d.total_generation_mw - c.generation_mw).abs() < 1e-6,
+        "empire total ({}) must equal the grid's generation ({})",
+        d.total_generation_mw,
+        c.generation_mw
+    );
+}
+
+/// The fallback must NOT mask a solved, fuel-starved plant: a coal generator
+/// with a resolvable burn recipe and a solved factory keeps its REAL (solved)
+/// output in both the per-grid sum and the empire total — nameplate applies
+/// only when the recipe can't resolve.
+#[test]
+fn solved_generator_keeps_real_output_in_grid_sum() {
+    let mut s = Session::in_memory(None).unwrap();
+    let plant = mk_factory(&mut s, "COAL PLANT", 0.0);
+    let coal_in = mk_port(
+        &mut s,
+        &plant,
+        PortDirection::In,
+        "Desc_Coal_C",
+        Some(480.0),
+    );
+    let mw_out = mk_port(&mut s, &plant, PortDirection::Out, "__PowerMW", None);
+    let gens = add_group(
+        &mut s,
+        &plant,
+        "Build_GeneratorCoal_C",
+        "Recipe_Power_Build_GeneratorCoal_Desc_Coal_C",
+        GraphPos { x: 0.0, y: 0.0 },
+    );
+    connect(
+        &mut s,
+        &plant,
+        EdgeEnd::Port(coal_in),
+        EdgeEnd::Group(gens.clone()),
+        "Desc_Coal_C",
+        6,
+    );
+    connect(
+        &mut s,
+        &plant,
+        EdgeEnd::Group(gens),
+        EdgeEnd::Port(mw_out.clone()),
+        "__PowerMW",
+        6,
+    );
+    // Drive the plant to 30 MW — well under the 75 MW nameplate.
+    s.edit(vec![Command::SetPortRate {
+        id: mw_out,
+        rate: 30.0,
+    }])
+    .unwrap();
+    let load = mk_factory(&mut s, "TOWN", 800.0);
+    s.edit(vec![Command::AddRoute {
+        kind: RouteKind::Power,
+        from: plant.clone(),
+        to: load.clone(),
+        path: vec![
+            MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            MapPos {
+                x: 800.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        ],
+    }])
+    .unwrap();
+
+    let d = s.solve_all_readonly();
+    assert_eq!(d.circuits.len(), 1);
+    let c = &d.circuits[0];
+    assert!(
+        (c.generation_mw - 30.0).abs() < 1e-6,
+        "solved output (30 MW), not the 75 MW nameplate, got {}",
+        c.generation_mw
+    );
+    assert!(
+        (d.total_generation_mw - 30.0).abs() < 1e-6,
+        "empire total matches the solved grid figure, got {}",
+        d.total_generation_mw
+    );
+}
