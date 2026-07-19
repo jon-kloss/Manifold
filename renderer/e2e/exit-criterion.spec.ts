@@ -85,7 +85,12 @@ test("plan the Modular Frame factory end-to-end, offline", async ({ page }) => {
   // dying predecessor left behind, then blank the viewState. A no-op on the
   // happy path (a-resume already did exactly this), but it means a-resume
   // dying mid-run no longer poisons this spec's fresh-Onboarding precondition.
-  for (let i = 0; i < 50; i++) {
+  // Cap must exceed the WHOLE journal the preceding seeded specs can leave
+  // (each audit-* probe file adds dozens of edit entries); the loop breaks at
+  // !canUndo, so a generous cap costs nothing on the happy path. At 50 the
+  // rewind stopped mid-history with a non-empty plan and the fresh-Onboarding
+  // assert below went red the moment the suite grew past ~50 edits.
+  for (let i = 0; i < 1000; i++) {
     const h = await (await page.request.get("/api/hydrate")).json();
     if (!h.canUndo) break;
     await page.request.post("/api/undo");
