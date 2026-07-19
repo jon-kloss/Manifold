@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useStore } from "../state/store";
-import { extractionRate, EXTRACTORS } from "./maputil";
+import { extractionRate, extractorsFor } from "./maputil";
 import { pickReusePort } from "./claimPorts";
 import { fmtRate, itemLabel } from "../lib/format";
 import type { WorldNode } from "../state/types";
@@ -19,7 +19,13 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
 
   const factories = Object.values(plan.factories);
   const [factoryId, setFactoryId] = useState(factories[0]?.id ?? "");
-  const [extractor, setExtractor] = useState(EXTRACTORS[0]);
+  // Legal extractors follow the NODE's item: miners for solid ores, the Oil
+  // Extractor for crude — a fluid node never offers a miner (and vice versa).
+  const options = extractorsFor(node.item);
+  const [extractor, setExtractor] = useState(options[0]);
+  // A drawer kept open while selection jumps between nodes must re-seed the
+  // pick when the node kind changes (a miner pick is illegal on oil).
+  if (!options.includes(extractor)) setExtractor(options[0]);
 
   // save-only nodes carry item:"" — degrade to a readable title, never blank.
   const item = itemLabel(gamedata.items, node.item) || "RESOURCE NODE";
@@ -258,20 +264,20 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
             <div className="drawer-row" key={c.id}>
               <span className="drawer-row-name">{plan.factories[c.factory]?.name ?? "?"}</span>
               <select
-                aria-label="Miner tier"
+                aria-label="Extractor"
                 data-testid="claim-tier"
                 value={c.extractor}
                 onChange={(e) => changeExtractor(c, e.target.value)}
                 style={{ height: 22 }}
-                title="Change this claim's miner tier"
+                title="Change this claim's extractor"
               >
-                {EXTRACTORS.filter((m) => gamedata.machines[m]).map((m) => (
+                {options.filter((m) => gamedata.machines[m]).map((m) => (
                   <option key={m} value={m}>
                     {gamedata.machines[m].displayName}
                   </option>
                 ))}
                 {/* keep an unknown/legacy extractor selectable so its rate stays honest */}
-                {!EXTRACTORS.includes(c.extractor) && <option value={c.extractor}>{gamedata.machines[c.extractor]?.displayName ?? c.extractor}</option>}
+                {!options.includes(c.extractor) && <option value={c.extractor}>{gamedata.machines[c.extractor]?.displayName ?? c.extractor}</option>}
               </select>
               <span className="t-data-12 projected">
                 {fmtRate(extractionRate(gamedata.machines[c.extractor], node.purity, c.clock))}
@@ -341,7 +347,7 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
             </div>
             <div className="drawer-row">
               <select value={extractor} onChange={(e) => setExtractor(e.target.value)} style={{ flex: 1, height: 28 }}>
-                {EXTRACTORS.filter((c) => gamedata.machines[c]).map((c) => (
+                {options.filter((c) => gamedata.machines[c]).map((c) => (
                   <option key={c} value={c}>
                     {gamedata.machines[c].displayName}
                   </option>

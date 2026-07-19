@@ -20,6 +20,16 @@ use serde::{Deserialize, Serialize};
 
 const WIZARD_EXTRACTOR: &str = "Build_MinerMk2_C";
 
+/// Extractor the wizard claims a node of `item` with. Fluid nodes take their
+/// dedicated pump — the wizard must never stamp a miner on crude oil (twin of
+/// the renderer's maputil::extractorsFor on the manual claim path).
+fn extractor_for(item: &str) -> &'static str {
+    match item {
+        "Desc_LiquidOil_C" => "Build_OilPump_C",
+        _ => WIZARD_EXTRACTOR,
+    }
+}
+
 /// Hard ceiling on demand-expansion steps AND on the resolver's backtracking
 /// budget — a pure combinatorial backstop, never a normal exit. The deepest
 /// legitimate real-catalog expansion (nuclear, alternates included) pops ≈994
@@ -433,7 +443,7 @@ pub fn global_solve(
     let floor = purity_rank(&c.purity_floor);
 
     // pick nodes per raw item, best purity first, clustered near first pick
-    let mut picked_nodes: Vec<(String, String, f64)> = Vec::new(); // (node id, item, rate at Mk.2)
+    let mut picked_nodes: Vec<(String, String, f64)> = Vec::new(); // (node id, item, extraction rate — per-item extractor via extractor_for)
     let mut anchor: Option<(f64, f64)> = None;
     // Running sum of picked node coordinates → the site lands on their centroid
     // (close to every resource it draws), not just the first pick + a fixed
@@ -483,7 +493,7 @@ pub fn global_solve(
                 ));
                 break;
             }
-            let machine = gd.machines.get(WIZARD_EXTRACTOR);
+            let machine = gd.machines.get(extractor_for(item));
             let rate = machine
                 .map(|m| extraction_rate(m, &n.purity, 1.0))
                 .unwrap_or(0.0);
@@ -781,12 +791,20 @@ pub fn global_solve(
             kind: ProposalItemKind::Claim,
             included: true,
             label: format!("◉ CLAIM {}", node.to_uppercase()),
-            detail: format!("{} · Mk.2 miner · {:.0}/min", item_name(item), rate),
+            detail: format!(
+                "{} · {} · {:.0}/min",
+                item_name(item),
+                gd.machines
+                    .get(extractor_for(item))
+                    .map(|m| m.display_name.as_str())
+                    .unwrap_or(extractor_for(item)),
+                rate
+            ),
             impact: "FREE ✓".into(),
             commands: vec![Command::ClaimNode {
                 factory: "$site".into(),
                 node: node.clone(),
-                extractor: WIZARD_EXTRACTOR.into(),
+                extractor: extractor_for(item).into(),
                 clock: 1.0,
             }],
             aliases: vec![None],

@@ -781,6 +781,13 @@ mod tests {
         assert_eq!(extraction_rate(miner, "normal", 1.0), 60.0);
         assert_eq!(extraction_rate(miner, "pure", 1.0), 120.0);
         assert_eq!(extraction_rate(miner, "impure", 1.0), 30.0);
+        // Fluid extraction: the Oil Extractor parses off the same
+        // FGBuildableResourceExtractor arm and purity-scales identically —
+        // 120/min normal (2/cycle at 1s), never a miner-tier concept.
+        let pump = &gd.machines["Build_OilPump_C"];
+        assert_eq!(extraction_rate(pump, "normal", 1.0), 120.0);
+        assert_eq!(extraction_rate(pump, "pure", 1.0), 240.0);
+        assert_eq!(extraction_rate(pump, "impure", 1.0), 60.0);
         // full buildable catalog: everything FGBuildable* is displayable
         assert_eq!(
             gd.buildables["Build_ConveyorAttachmentSplitter_C"].display_name,
