@@ -230,6 +230,9 @@ export interface AppStore {
    *  so stale verbs never animate a later render. Visual-only — never gates
    *  data. */
   motion: { kind: "edit" | "undo" | "redo"; at: number; hash: string } | null;
+  /** Stamped by a BACKGROUND auto-pull apply: the map plays the quick land
+   *  sweep for its built additions instead of the full import cinematic. */
+  syncAppliedAt: number | null;
   /** last refused backend command — status-bar chip, NOT the full-screen
       BACKEND UNREACHABLE card (that is `error`, set only by a failed FIRST
       boot; live re-hydrate failures route here instead). */
@@ -601,6 +604,7 @@ export const useStore = create<AppStore>((set, get) => ({
   projected: null,
   settled: new Set(),
   motion: null,
+  syncAppliedAt: null,
   placingFactory: false,
   viewState: {},
   planHash: "",
@@ -940,6 +944,9 @@ export const useStore = create<AppStore>((set, get) => ({
       get().pushToast(`Auto-sync couldn't read the save — ${errText(e)}`, "error");
       return null;
     }
+    // The user never initiated this tick — the map plays its quick land
+    // sweep for the additions, not the full import cinematic.
+    set({ syncAppliedAt: Date.now() });
     await get().hydrate();
     if (outcome.outcome === "drift") {
       const items = get().plan.proposals[outcome.proposal]?.items ?? [];

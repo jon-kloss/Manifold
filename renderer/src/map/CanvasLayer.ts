@@ -194,6 +194,7 @@ export class MapCanvasLayer extends L.Layer {
 
   setData(data: CanvasLayerData) {
     this.data = data;
+    this.motionRestored = data.motion == null || Date.now() >= data.motion.until;
     this.redraw();
     this.syncAnimLoop();
   }
@@ -263,6 +264,12 @@ export class MapCanvasLayer extends L.Layer {
   private motionLive(): boolean {
     return this.animRaf != null && this.data.motion != null && Date.now() < this.data.motion.until;
   }
+
+  /** One-shot static restore on window expiry: without it a still-flowing
+   *  route keeps the RAF loop alive past `until`, the cancel-branch redraw
+   *  never runs, and a deferred entity stays missing from the static canvas
+   *  until an incidental pan/zoom repaints. */
+  private motionRestored = true;
 
   /** Start/stop the RAF loop so the animation never burns background CPU:
    *  it runs only with ≥1 flowing route (or a live motion window), a visible
@@ -354,6 +361,12 @@ export class MapCanvasLayer extends L.Layer {
     const now = Date.now();
     if (now >= motion.until) {
       this.syncAnimLoop();
+      // The loop may legitimately stay alive for flowing routes — repaint
+      // the static canvas ONCE so deferred entities come back regardless.
+      if (!this.motionRestored) {
+        this.motionRestored = true;
+        this.redraw();
+      }
       return;
     }
     // 7a — claim tethers draw node → factory (dash-clip via partialPath)
@@ -404,13 +417,15 @@ export class MapCanvasLayer extends L.Layer {
       const c = map.latLngToContainerPoint(toLatLng({ x: cl.x, y: cl.y }));
       const pull = easeOut(t);
       const fade = t > 0.9 ? 1 - (t - 0.9) / 0.2 : 1;
-      ctx.fillStyle = css("--ink-500");
+      // iron-tint grays per the spec — alternate base/light for depth
+      const iron = [css("--resource-iron"), css("--resource-iron-light")];
       ctx.globalAlpha = 0.85 * Math.max(0, fade);
-      for (const d of cl.dots) {
+      cl.dots.forEach((d, i) => {
+        ctx.fillStyle = iron[i % 2];
         ctx.beginPath();
         ctx.arc(c.x + d.dx * (1 - pull), c.y + d.dy * (1 - pull), 3, 0, Math.PI * 2);
         ctx.fill();
-      }
+      });
       ctx.globalAlpha = 1;
     }
   }

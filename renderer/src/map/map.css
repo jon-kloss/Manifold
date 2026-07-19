@@ -1131,10 +1131,6 @@
   pointer-events: none;
   animation: mfd-pin-ring 500ms var(--ease) calc(var(--pin-delay, 0ms) + 120ms) both;
 }
-.pin-icon.pin-motion-drop .pin-wrap::before {
-  border-color: var(--signal-500);
-}
-
 /* 7h — a redo/undo-returned pin pops 1.12×. */
 @keyframes mfd-pin-pop {
   0% {
@@ -1201,7 +1197,8 @@
   border: 1px solid var(--bp-400);
   border-radius: 3px;
   pointer-events: none;
-  animation: mfd-accept-chip 2.5s var(--ease) both;
+  /* rises LAST: after the pin sweep + tether draw (delay set inline) */
+  animation: mfd-accept-chip 2.5s var(--ease) var(--chip-delay, 0ms) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -192,19 +192,28 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
   useEffect(() => {
     const prev = prevHashRef.current;
     prevHashRef.current = drawerPlanHash;
-    if (!open || reducedMotion || prev === null || prev === drawerPlanHash) return;
+    // Track the hash even while closed (a change while closed must NOT
+    // sweep on reopen), and closing mid-sweep releases the state so the
+    // RE-AUDITING tag can never stick.
+    if (!open || reducedMotion) {
+      setReauditAt(0);
+      return;
+    }
+    if (prev === null || prev === drawerPlanHash) return;
     setReauditAt(Date.now());
     const t = window.setTimeout(() => setReauditAt(0), 1200);
     return () => window.clearTimeout(t);
   }, [drawerPlanHash, open, reducedMotion]);
   // 7i — the brownout TRACE playback: which circuit is tracing, since when.
-  const [traceSim, setTraceSim] = useState<{ circuit: string; at: number } | null>(null);
+  const [traceSim, setTraceSim] = useState<{ circuit: string; clearAt: number } | null>(null);
   useEffect(() => {
     if (!traceSim) return;
-    const steps = derived.circuits.find((c) => c.name === traceSim.circuit)?.switches.length ?? 0;
-    const t = window.setTimeout(() => setTraceSim(null), steps * 700 + 1200);
+    // clearAt was fixed at click time — an unrelated recompute mid-trace
+    // must neither reschedule nor prolong the playback, and the timeout
+    // lands only after the LAST row's ease-back completes.
+    const t = window.setTimeout(() => setTraceSim(null), Math.max(0, traceSim.clearAt - Date.now()));
     return () => window.clearTimeout(t);
-  }, [traceSim, derived.circuits]);
+  }, [traceSim]);
 
   // PR 9 openAudit action: consume a store-level tab request (App has already
   // opened the drawer for it) and clear it so it fires once.
@@ -596,7 +605,13 @@ export default function AuditDrawer({ open, onToggle }: { open: boolean; onToggl
                           // order IN PLACE, down the priority list — each row
                           // flashes flow-crit then dims, in sequence. The
                           // per-switch TRACE chips below still jump to the map.
-                          onClick={() => setTraceSim({ circuit: c.name, at: Date.now() })}
+                          onClick={() =>
+                            setTraceSim({
+                              circuit: c.name,
+                              // last row starts at (n−1)·700ms and plays 2.4s
+                              clearAt: Date.now() + (c.switches.length - 1) * 700 + 2400,
+                            })
+                          }
                           data-testid={`brownout-trace-${c.name}`}
                         >
                           TRACE
