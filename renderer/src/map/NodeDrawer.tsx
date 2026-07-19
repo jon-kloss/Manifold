@@ -127,7 +127,14 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
   const moveClaim = (c: (typeof claims)[number], toFactory: string) => {
     if (!toFactory || toFactory === c.factory) return;
     const claimRate = extractionRate(gamedata.machines[c.extractor], node.purity, c.clock);
-    const cmds: Parameters<typeof dispatch>[0] = [{ type: "release_node", id: c.id }];
+    const cmds: Parameters<typeof dispatch>[0] = [];
+    // A ◆ Built (imported) claim can't be released directly (§3.1.1 guard) —
+    // but MOVING it is a plan decision the user owns. Convert first via
+    // set_claim (the sanctioned Built→Planned door), then release + re-claim.
+    if (c.status === "built") {
+      cmds.push({ type: "set_claim", id: c.id, extractor: c.extractor, clock: c.clock });
+    }
+    cmds.push({ type: "release_node", id: c.id });
     // Best-effort: retire the boundary input port this claim fed on the old
     // factory. The port isn't linked to the claim, so match conservatively —
     // same item + extraction ceiling, not route-bound, AND not wired into the
@@ -293,6 +300,16 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
                 className="btn btn-ghost"
                 style={{ height: 22, padding: "0 8px" }}
                 onClick={() => releaseClaim(c)}
+                // ◆ Built claims are game ground truth: the domain rejects a
+                // direct release (§3.1.1), so don't offer it. Demolish in game
+                // & re-sync — or change the tier, which converts it to planned.
+                disabled={c.status === "built"}
+                title={
+                  c.status === "built"
+                    ? "Imported from your save — demolish it in game & re-sync, or change its miner tier (which converts it to a planned claim) before releasing"
+                    : undefined
+                }
+                data-testid="claim-release"
               >
                 RELEASE
               </button>

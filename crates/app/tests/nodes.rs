@@ -396,6 +396,15 @@ fn save_only_relocation_corrects_and_override_only_node_not_rendered() {
         .unwrap()
         .id
         .clone();
+    // §3.1.1 (audit #122): a ◆ Built claim no longer releases directly — flip
+    // it Planned first (SetClaim converts deliberately), then release.
+    let claim = s.state.node_claims.get(&claim_id).unwrap().clone();
+    s.edit(vec![Command::SetClaim {
+        id: claim_id.clone(),
+        extractor: claim.extractor.clone(),
+        clock: claim.clock,
+    }])
+    .unwrap();
     let resp = s.edit(vec![Command::ReleaseNode { id: claim_id }]).unwrap();
     assert!(
         !resp.derived.nodes.contains_key("save:far"),
@@ -404,5 +413,101 @@ fn save_only_relocation_corrects_and_override_only_node_not_rendered() {
     assert!(
         s.state.node_overrides.contains_key("save:far"),
         "the override stays inert until re-import dissolves it"
+    );
+}
+
+/// Audit #122 — §3.1.1: releasing a ◆ Built (imported) claim is REJECTED like
+/// every other delete on built entities; a Planned claim still releases fine.
+#[test]
+fn release_node_rejects_built_claim() {
+    let mut s = Session::in_memory(None).unwrap();
+    let node = s.world.nodes[0].clone();
+    let snap = ImportSnapshot {
+        machines: vec![smelter(node.x, node.y)],
+        extractors: vec![miner(node.x, node.y, "BP_A1")],
+        ..Default::default()
+    };
+    let outcome = s.import_save(snap).unwrap();
+    assert!(matches!(outcome, ImportOutcome::Imported { .. }));
+    let (cid, claim) = s
+        .state
+        .node_claims
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .next()
+        .expect("import minted a claim");
+    assert_eq!(claim.status, Status::Built, "imported claim is ◆ Built");
+
+    let err = s
+        .edit(vec![Command::ReleaseNode { id: cid.clone() }])
+        .expect_err("releasing a built claim must be rejected");
+    assert!(
+        format!("{err:?}").contains("BuiltImmutable"),
+        "expected BuiltImmutable, got {err:?}"
+    );
+    assert!(
+        s.state.node_claims.contains_key(&cid),
+        "the claim survives the rejected release"
+    );
+
+    // A Planned claim (drawer-made) still releases.
+    let fid = s.state.factories.keys().next().unwrap().clone();
+    let other = s.world.nodes[1].clone();
+    let resp = s
+        .edit(vec![Command::ClaimNode {
+            factory: fid,
+            node: other.id.clone(),
+            extractor: "Build_MinerMk1_C".into(),
+            clock: 1.0,
+        }])
+        .unwrap();
+    let planned_id = resp.created[0].clone();
+    s.edit(vec![Command::ReleaseNode {
+        id: planned_id.clone(),
+    }])
+    .expect("planned claims release freely");
+    assert!(!s.state.node_claims.contains_key(&planned_id));
+}
+
+/// Audit #122 — a no-op edit (empty transaction) must not push a phantom undo
+/// step or truncate the redo tail.
+#[test]
+fn noop_edit_preserves_redo_tail() {
+    let mut s = Session::in_memory(None).unwrap();
+    let resp = s
+        .edit(vec![Command::CreateFactory {
+            name: "REDO KEEPER".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: "GRASS FIELDS".into(),
+        }])
+        .unwrap();
+    let fid = resp.created[0].clone();
+    // rename → undo → canRedo
+    s.edit(vec![Command::RenameFactory {
+        id: fid.clone(),
+        name: "X".into(),
+    }])
+    .unwrap();
+    let u = s.undo().unwrap().expect("one step to undo");
+    assert!(u.can_redo, "undo leaves a redoable tail");
+
+    // no-op: tidy an empty factory records nothing
+    let n = s
+        .edit(vec![Command::TidyLayout {
+            factory: fid.clone(),
+        }])
+        .unwrap();
+    assert!(n.can_redo, "no-op edit must NOT truncate the redo tail");
+    assert!(n.patches.is_empty(), "no-op edit emits no patches");
+
+    let r = s.redo().unwrap().expect("redo tail intact after no-op");
+    assert_eq!(
+        s.state.factories[&fid].name, "X",
+        "the rename redoes after the no-op (got patches: {:?})",
+        r.patches
     );
 }

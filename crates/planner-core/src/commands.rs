@@ -1574,6 +1574,12 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .get(id)
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
+            // §3.1.1 — a ◆ Built claim is game ground truth: releasing it from
+            // the plan would silently drop an imported miner. Reject like every
+            // other delete command (demolish in game + re-sync, or edit the
+            // tier via SetClaim, which converts Built→Planned deliberately).
+            // This closes the DECISIONS.md deferral that predates ◆ imports.
+            require_planned(c.status, id, "release")?;
             if let Some(mut f) = state.factories.get(&c.factory).cloned() {
                 f.node_claims.retain(|cid| cid != id);
                 tx.record(state.upsert(Entity::Factory(f)));

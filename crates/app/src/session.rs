@@ -509,6 +509,25 @@ impl Session {
             }
         }
 
+        // A transaction that recorded NOTHING (no-op tidy on an empty factory,
+        // clearing an override that doesn't exist) must not become an undo
+        // entry: UndoLog::push would truncate the redo tail and leave a
+        // phantom step that undoes nothing. Answer with current derived state
+        // and touch neither the journal nor the plan file.
+        if tx.forward.is_empty() && tx.created.is_empty() {
+            let derived = self.empire_solve(&T0Edit::Recompute, None);
+            return Ok(EditResponse {
+                patches: PatchBatch::default(),
+                derived,
+                can_undo: self.undo.can_undo(),
+                can_redo: self.undo.can_redo(),
+                undo_label: self.undo.undo_label().map(String::from),
+                created: vec![],
+                plan_hash: self.plan_hash(),
+                advisor: self.advisor_feed(),
+            });
+        }
+
         // Empire re-solve (SDD §5.4): edits ripple downstream through routes.
         // Solver-owned write-backs (counts/clocks, clamped targets, route
         // manifests) fold into the same undo entry as the causing edit.
