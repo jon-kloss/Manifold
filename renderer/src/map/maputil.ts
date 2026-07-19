@@ -23,3 +23,4 @@ export function extractionRate(machine: GameMachine | undefined, purity: string,
 }
 
 export const EXTRACTORS = ["Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C"];
+
