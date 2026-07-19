@@ -23,3 +23,15 @@ export function extractionRate(machine: GameMachine | undefined, purity: string,
 }
 
 export const EXTRACTORS = ["Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C"];
+/** Fluid nodes take dedicated extractors, never miners: crude oil is pumped
+ *  by the Oil Extractor (no Mk tiers, purity-scaled like everything else). */
+export const FLUID_EXTRACTORS: Record<string, string[]> = {
+  Desc_LiquidOil_C: ["Build_OilPump_C"],
+};
+
+/** The extractor classes a node of `item` can legally claim with — miners
+ *  for solid ores, the dedicated pump for fluids. Single authority for both
+ *  drawer pickers (twin of app::wizard::extractor_for on the MAKE path). */
+export function extractorsFor(item: string): string[] {
+  return FLUID_EXTRACTORS[item] ?? EXTRACTORS;
+}

@@ -74,3 +74,38 @@ test("claim TIER change edits in place without double-booking", async ({ page, r
     await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
   }
 });
+
+test("oil node offers the Oil Extractor — never a miner (fluid extraction)", async ({ page, request }) => {
+  await resetView(request);
+  const f = (
+    await edit(request, [
+      { type: "create_factory", name: "OIL WORKS", position: { x: 900, y: -1400 }, region: "GRASS FIELDS" },
+    ])
+  ).created[0];
+
+  await page.goto("/");
+  const skip = page.getByTestId("onboard-skip");
+  if (await skip.isVisible().catch(() => false)) await skip.click();
+
+  await page.locator(".searchbox input").fill("crude oil");
+  await page.keyboard.press("Enter");
+  const drawer = page.getByTestId("node-drawer");
+  await expect(drawer).toBeVisible();
+
+  // The extractor picker is item-aware: an oil node lists ONLY the pump.
+  const claimFor = drawer.locator("section:has(h3:has-text('CLAIM FOR'))");
+  await expect(claimFor.locator("select").nth(1).locator("option")).toHaveText(["Oil Extractor"]);
+
+  await claimFor.locator("select").first().selectOption({ label: "OIL WORKS" });
+  await page.getByTestId("btn-claim").click();
+
+  const after = await hydrate(request);
+  const claim = Object.values<any>(after.plan.nodeClaims).find((c) => c.factory === f)!;
+  expect(claim.extractor).toBe("Build_OilPump_C");
+  // Port ceiling = the pump's purity-scaled rate (120/min normal base).
+  const ceil = Object.values<any>(after.plan.ports).find((p) => p.factory === f && p.direction === "in")!
+    .rateCeiling as number;
+  expect([60, 120, 240]).toContain(ceil);
+  // The per-claim picker offers no miner either.
+  await expect(page.getByTestId("claim-tier").locator("option")).toHaveText(["Oil Extractor"]);
+});

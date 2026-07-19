@@ -316,6 +316,13 @@
     "mPowerConsumption": "30.000000",
     "mItemsPerCycle": "4.000000",
     "mExtractCycleTime": "1.000000"
+   },
+   {
+    "ClassName": "Build_OilPump_C",
+    "mDisplayName": "Oil Extractor",
+    "mPowerConsumption": "40.000000",
+    "mItemsPerCycle": "2.000000",
+    "mExtractCycleTime": "1.000000"
    }
   ]
  },
