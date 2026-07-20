@@ -214,6 +214,27 @@ export default function MakeFromResources({
     return Math.floor(rate * ratio);
   }, [shortfalls, rawDemand, headroom, rate]);
 
+  // The MOST these nodes can feed for the picked item: scale the build until the
+  // tightest raw hits its extraction headroom. Raw draw is linear in rate, so
+  // rate × min(headroom/need) is the ceiling regardless of the current rate
+  // (invariant, so editing the rate field never moves it). null = no raw is
+  // capped (a null-ceiling input assumes unlimited supply) → keep a plain
+  // default. This is the item mirror of MAKE POWER's maxMwOf.
+  const maxRate = useMemo(() => {
+    let ratio = Infinity;
+    for (const [raw, need] of rawDemand) if (need > 0) ratio = Math.min(ratio, (headroom.get(raw) ?? 0) / need);
+    return Number.isFinite(ratio) ? Math.floor(rate * ratio) : null;
+  }, [rawDemand, headroom, rate]);
+
+  // Default the rate to that max — build as much as the claimed nodes support,
+  // and let the user dial it DOWN if they want less. Re-seeds only when the
+  // picked item changes: maxRate is invariant under rate edits (see above), so a
+  // manual entry is never overwritten, and target+maxRate both move on a new
+  // pick. Unconstrained supply (maxRate null) leaves the standing default.
+  useEffect(() => {
+    if (target && maxRate != null && maxRate >= 1) setRate(maxRate);
+  }, [target, maxRate]);
+
   // Free-up: existing groups in THIS factory that consume a short raw.
   // Smallest draw first, and only as many as the gap needs — deleting every
   // consumer would over-free far beyond the shortfall. Draw is the solver's
@@ -719,6 +740,21 @@ export default function MakeFromResources({
                 />
                 <span className="unit mono">/min</span>
               </label>
+              {/* Defaults to the most the nodes can feed; this snaps back to it
+                  after a dial-down and doubles as the "your nodes feed up to N"
+                  readout. Hidden when over-typed into a shortfall — the warning's
+                  BUILD-AT button owns that case. */}
+              {!blocked && maxRate != null && maxRate >= 1 && (
+                <button
+                  className="btn btn-ghost mfr-max"
+                  disabled={busy || rate >= maxRate}
+                  onClick={() => setRate(maxRate)}
+                  data-testid="mfr-max"
+                  title="Set to the most your claimed nodes can feed"
+                >
+                  MAX {maxRate}/min
+                </button>
+              )}
               {blocked && feasibleRate >= 1 && (
                 <button
                   className="btn btn-ghost"
