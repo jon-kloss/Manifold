@@ -3575,3 +3575,99 @@ fn in_port_rate_edit_does_not_fabricate_a_deficit() {
         resp.derived.deficits
     );
 }
+
+/// Audit #127 / PR #57: an IDLE solve (nothing consumes a group's output) is
+/// absence of demand, not a sizing — the settle write-back must NOT erase the
+/// user's authored clock with 0. A group that IS demanded still gets sized.
+#[test]
+fn idle_settle_preserves_the_authored_clock() {
+    let mut s = Session::in_memory(None).unwrap();
+    let fid = s
+        .edit(vec![Command::CreateFactory {
+            name: "IDLE CLOCK".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: String::new(),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let in_port = s
+        .edit(vec![Command::AddPort {
+            factory: fid.clone(),
+            direction: PortDirection::In,
+            item: "Desc_IronIngot_C".into(),
+            rate: 0.0,
+            rate_ceiling: Some(200.0),
+            graph_pos: gp(0.0, 100.0),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let g = s
+        .edit(vec![Command::AddGroup {
+            factory: fid.clone(),
+            machine: "Build_ConstructorMk1_C".into(),
+            recipe: "Recipe_IronRod_C".into(),
+            count: 1,
+            clock: 0.5,
+            graph_pos: gp(320.0, 100.0),
+            floor: 0,
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    s.edit(vec![Command::AddEdge {
+        factory: fid.clone(),
+        from: EdgeEnd::Port(in_port),
+        to: EdgeEnd::Group(g.clone()),
+        item: "Desc_IronIngot_C".into(),
+        tier: 3,
+    }])
+    .unwrap();
+
+    // The rod output has no consumer and no export target: the group solves
+    // idle on every one of those settles. The authored clock must survive.
+    assert_eq!(s.state.groups[&g].count, 1);
+    assert!(
+        (s.state.groups[&g].clock - 0.5).abs() < 1e-9,
+        "idle settle erased the authored clock: {}",
+        s.state.groups[&g].clock
+    );
+
+    // Once the output is DEMANDED (export target), the settle sizes the group
+    // for real — demand-driven write-back still works.
+    let out_port = s
+        .edit(vec![Command::AddPort {
+            factory: fid.clone(),
+            direction: PortDirection::Out,
+            item: "Desc_IronRod_C".into(),
+            rate: 0.0,
+            rate_ceiling: None,
+            graph_pos: gp(680.0, 100.0),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    s.edit(vec![Command::AddEdge {
+        factory: fid.clone(),
+        from: EdgeEnd::Group(g.clone()),
+        to: EdgeEnd::Port(out_port.clone()),
+        item: "Desc_IronRod_C".into(),
+        tier: 3,
+    }])
+    .unwrap();
+    s.edit(vec![Command::SetPortRate {
+        id: out_port,
+        rate: 15.0,
+    }])
+    .unwrap();
+    assert!(
+        (s.state.groups[&g].clock - 1.0).abs() < 1e-6,
+        "a demanded group is still sized by the settle: {}",
+        s.state.groups[&g].clock
+    );
+}

@@ -157,3 +157,43 @@ test("filtering to the source floor keeps a group->port belt whole", async ({ pa
     await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
   }
 });
+
+// ---------------------------------------------------------------------------
+// PROBE 4 — A junction-only floor earns a floor plate (labeled by junction
+// count), and a group↔port belt never counts toward any plate's lift stats.
+//
+// EXPECTED: with groups on floor 0 and ONLY a splitter on floor 1, the graph
+// renders floor-plate-0 AND floor-plate-1; floor-plate-1's label reads
+// "1 JUNCTION"; and floor-plate-0 shows no lift tallies (its only belts run
+// group→port, which are floor-agnostic, and group→junction across floors is
+// the single real lift, tallied on both plates).
+// ---------------------------------------------------------------------------
+test("junction-only floor earns a plate labeled by junction count", async ({ page, request }) => {
+  await resetView(request);
+  const f = (await edit(request, [{ type: "create_factory", name: "JUNCTION FLOOR", position: { x: -1000, y: 1600 }, region: "GRASS FIELDS" }])).created[0];
+  const ingot = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_IronIngot_C", rate: 0, rateCeiling: 200, graphPos: { x: 0, y: 100 } }])).created[0];
+  const g = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 1, clock: 1, graphPos: { x: 320, y: 100 }, floor: 0 }])).created[0];
+  const j = (await edit(request, [{ type: "add_junction", factory: f, kind: "splitter", graphPos: { x: 680, y: 100 }, floor: 1 }])).created[0];
+  await edit(request, [
+    { type: "add_edge", factory: f, from: P(ingot), to: G(g), item: "Desc_IronIngot_C", tier: 3 },
+    { type: "add_edge", factory: f, from: G(g), to: { kind: "junction", id: j }, item: "Desc_IronRod_C", tier: 3 },
+  ]);
+
+  try {
+    await page.goto("/");
+    await dismissOnboarding(page);
+    await openGraph(page, "JUNCTION FLOOR");
+
+    // Both floors earn plates — floor 1 holds ONLY the junction.
+    await expect(page.getByTestId("floor-plate-0")).toBeVisible();
+    const plate1 = page.getByTestId("floor-plate-1");
+    await expect(plate1).toBeVisible();
+    await expect(plate1).toContainText("1 JUNCTION");
+    // The real cross-floor lift (group F0 → junction F1) is tallied; the
+    // group→port and port→group belts contribute nothing.
+    await expect(page.getByTestId("floor-plate-0")).toContainText("1⤒");
+    await expect(plate1).toContainText("1 IN");
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});
