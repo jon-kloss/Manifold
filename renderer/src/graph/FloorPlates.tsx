@@ -5,27 +5,46 @@
 
 import { useMemo } from "react";
 import { ViewportPortal } from "@xyflow/react";
-import type { BeltEdge, MachineGroup } from "../state/types";
+import type { BeltEdge, Junction, MachineGroup } from "../state/types";
 
 const PAD = 28;
 const LABEL_H = 26;
 
 export interface FloorPlatesProps {
   groups: MachineGroup[];
+  /** Junction pucks occupy floors too — a junction-only floor earns a plate. */
+  junctions: Junction[];
   edges: BeltEdge[];
-  /** measured card geometry by group id */
+  /** measured card geometry by node id (groups + junctions) */
   geoms: Record<string, { x: number; y: number; w: number; h: number }>;
   activeFloor: "all" | number;
 }
 
-export default function FloorPlates({ groups, edges, geoms, activeFloor }: FloorPlatesProps) {
+export default function FloorPlates({ groups, junctions, edges, geoms, activeFloor }: FloorPlatesProps) {
   const plates = useMemo(() => {
-    const byFloor = new Map<number, MachineGroup[]>();
-    for (const g of groups) byFloor.set(g.floor, [...(byFloor.get(g.floor) ?? []), g]);
+    const byFloor = new Map<number, { groups: MachineGroup[]; junctions: Junction[] }>();
+    const bucket = (floor: number) => {
+      const b = byFloor.get(floor) ?? { groups: [], junctions: [] };
+      byFloor.set(floor, b);
+      return b;
+    };
+    for (const g of groups) bucket(g.floor).groups.push(g);
+    for (const j of junctions) bucket(j.floor).junctions.push(j);
     if (byFloor.size < 2) return []; // single-floor factories stay clean
 
-    const floorOf = (end: { kind: string; id: string }) =>
-      end.kind === "group" ? groups.find((g) => g.id === end.id)?.floor ?? 0 : 0;
+    // A boundary port has no floor — a group↔port belt is never a lift, so
+    // a port end reads as the other end's floor (mirrors the edge renderer).
+    const floorOf = (end: { kind: string; id: string }): number | null =>
+      end.kind === "group"
+        ? groups.find((g) => g.id === end.id)?.floor ?? 0
+        : end.kind === "junction"
+          ? junctions.find((j) => j.id === end.id)?.floor ?? 0
+          : null;
+    const endFloors = (e: BeltEdge): [number, number] => {
+      const src = floorOf(e.from);
+      const dst = floorOf(e.to);
+      return [src ?? dst ?? 0, dst ?? src ?? 0];
+    };
 
     return [...byFloor.entries()]
       .sort((a, b) => a[0] - b[0])
@@ -34,8 +53,8 @@ export default function FloorPlates({ groups, edges, geoms, activeFloor }: Floor
         let minY = Infinity;
         let maxX = -Infinity;
         let maxY = -Infinity;
-        for (const g of members) {
-          const geom = geoms[g.id];
+        for (const n of [...members.groups, ...members.junctions]) {
+          const geom = geoms[n.id];
           if (!geom) continue;
           minX = Math.min(minX, geom.x);
           minY = Math.min(minY, geom.y);
@@ -43,13 +62,25 @@ export default function FloorPlates({ groups, edges, geoms, activeFloor }: Floor
           maxY = Math.max(maxY, geom.y + geom.h);
         }
         if (!isFinite(minX)) return null;
-        const liftsUp = edges.filter((e) => floorOf(e.from) === floor && floorOf(e.to) > floor).length;
-        const liftsDown = edges.filter((e) => floorOf(e.from) === floor && floorOf(e.to) < floor).length;
-        const liftsIn = edges.filter((e) => floorOf(e.to) === floor && floorOf(e.from) !== floor).length;
-        return { floor, minX, minY, maxX, maxY, liftsUp, liftsDown, liftsIn, count: members.length };
+        const floors = edges.map(endFloors);
+        const liftsUp = floors.filter(([s, d]) => s === floor && d > floor).length;
+        const liftsDown = floors.filter(([s, d]) => s === floor && d < floor).length;
+        const liftsIn = floors.filter(([s, d]) => d === floor && s !== floor).length;
+        return {
+          floor,
+          minX,
+          minY,
+          maxX,
+          maxY,
+          liftsUp,
+          liftsDown,
+          liftsIn,
+          count: members.groups.length,
+          junctionCount: members.junctions.length,
+        };
       })
       .filter((p): p is NonNullable<typeof p> => p !== null);
-  }, [groups, edges, geoms]);
+  }, [groups, junctions, edges, geoms]);
 
   if (plates.length === 0) return null;
 
@@ -61,6 +92,10 @@ export default function FloorPlates({ groups, edges, geoms, activeFloor }: Floor
         if (p.liftsUp) liftBits.push(`${p.liftsUp}⤒`);
         if (p.liftsDown) liftBits.push(`${p.liftsDown}⤓`);
         if (p.liftsIn) liftBits.push(`${p.liftsIn} IN`);
+        const countBits: string[] = [];
+        if (p.count > 0) countBits.push(`${p.count} ${p.count === 1 ? "GROUP" : "GROUPS"}`);
+        if (p.junctionCount > 0)
+          countBits.push(`${p.junctionCount} ${p.junctionCount === 1 ? "JUNCTION" : "JUNCTIONS"}`);
         return (
           <div
             key={p.floor}
@@ -75,7 +110,7 @@ export default function FloorPlates({ groups, edges, geoms, activeFloor }: Floor
             <div className="floor-plate-label">
               <span className="t-label">FLOOR {p.floor}</span>
               <span className="mono floor-plate-meta">
-                {p.count} {p.count === 1 ? "GROUP" : "GROUPS"}
+                {countBits.join(" · ")}
                 {liftBits.length > 0 && ` · ${liftBits.join(" ")}`}
               </span>
             </div>

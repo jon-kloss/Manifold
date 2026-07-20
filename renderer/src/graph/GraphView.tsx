@@ -603,14 +603,19 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     const portalCounts = new Map<string, number>();
     return beltEdges.map((e) => {
       const d = df?.edges[e.id];
-      const floorOfEnd = (end: { kind: string; id: string }) =>
+      // A boundary port has no floor — it rides whatever floor its belt's
+      // other end is on, so a group↔port belt is never a cross-floor lift
+      // and never splits under the floor filter.
+      const floorOfEnd = (end: { kind: string; id: string }): number | null =>
         end.kind === "group"
           ? groupFloor(end.id)
           : end.kind === "junction"
             ? useStore.getState().plan.junctions[end.id]?.floor ?? 0
-            : 0;
-      const srcFloor = floorOfEnd(e.from);
-      const dstFloor = floorOfEnd(e.to);
+            : null;
+      const srcRaw = floorOfEnd(e.from);
+      const dstRaw = floorOfEnd(e.to);
+      const srcFloor = srcRaw ?? dstRaw ?? 0;
+      const dstFloor = dstRaw ?? srcRaw ?? 0;
       const lift = srcFloor !== dstFloor;
       // Trace dim: an edge stays lit only when it links two on-chain nodes.
       const traceDim = !!traceSet && !(traceSet.has(e.from.id) && traceSet.has(e.to.id));
@@ -815,18 +820,29 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   }, [buildIdx, motionSkip]);
 
   // Card geometry for the floor plates (same source as the edge layout).
+  // Junction pucks count too — a junction-only floor still earns its plate.
   const plateGeoms = useMemo(() => {
     const out: Record<string, NodeGeom> = {};
     for (const n of nodes) {
-      if (n.type !== "group") continue;
+      if (n.type !== "group" && n.type !== "junction") continue;
       const m = (n as { measured?: { width?: number; height?: number } }).measured;
-      out[n.id] = { x: n.position.x, y: n.position.y, w: m?.width ?? 248, h: m?.height ?? 150 };
+      const fallback = n.type === "junction" ? { w: 96, h: 72 } : { w: 248, h: 150 };
+      out[n.id] = {
+        x: n.position.x,
+        y: n.position.y,
+        w: m?.width ?? fallback.w,
+        h: m?.height ?? fallback.h,
+      };
     }
     return out;
   }, [nodes]);
   const factoryGroups = useMemo(
     () => (factory ? factory.groups.map((gid) => plan.groups[gid]).filter(Boolean) : []),
     [factory, plan.groups],
+  );
+  const factoryJunctions = useMemo(
+    () => Object.values(plan.junctions).filter((j) => j.factory === factoryId),
+    [plan.junctions, factoryId],
   );
   const factoryEdges = useMemo(
     () => Object.values(plan.edges).filter((e) => e.factory === factoryId),
@@ -1259,7 +1275,13 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
           selectionMode={SelectionMode.Partial}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1.5} color="var(--graph-dot)" />
-          <FloorPlates groups={factoryGroups} edges={factoryEdges} geoms={plateGeoms} activeFloor={floorFilter} />
+          <FloorPlates
+            groups={factoryGroups}
+            junctions={factoryJunctions}
+            edges={factoryEdges}
+            geoms={plateGeoms}
+            activeFloor={floorFilter}
+          />
           {(nodeGhosts.length > 0 || edgeGhosts.length > 0) && (
             // Removal afterimages in flow coordinates (7h undo flash / 7k
             // deconstruct): dashed bp outlines + retracting edge stubs.

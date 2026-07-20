@@ -2055,6 +2055,16 @@ impl Session {
                             {
                                 continue;
                             }
+                            // An IDLE solve (nothing pulls this group: 0
+                            // machine-equivalents) is absence of demand, not a
+                            // sizing — writing clock 0 would erase the user's
+                            // authored clock, and everything sized from planned
+                            // capacity (send-out, exports) would lose the real
+                            // number. Idleness already shows in derived (0/min);
+                            // keep the authored count/clock.
+                            if gr.clock <= 1e-9 {
+                                continue;
+                            }
                             if g.count != gr.count || (g.clock - gr.clock).abs() > 1e-9 {
                                 let mut g = g.clone();
                                 g.count = gr.count;

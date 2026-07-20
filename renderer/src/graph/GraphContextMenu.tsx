@@ -74,10 +74,6 @@ export default function GraphContextMenu({
     const perMachine = recipe && recipe.durationS > 0
       ? ((recipe.products.find(([i]) => i === item)?.[1] ?? 0) * 60) / recipe.durationS
       : 0;
-    // Nameplate capacity, NOT the demand-driven clock: an idle output solves to
-    // clock 0, but that's precisely what you want to send out, so floor the
-    // clock at 100% (and honor an overclock above it).
-    const potential = perMachine * effCount(g) * Math.max(effClock(g), 1);
     let committed = 0;
     for (const e of Object.values(plan.edges)) {
       if (e.factory !== factoryId || e.item !== item || e.from.kind !== "group" || e.from.id !== gid) continue;
@@ -86,6 +82,15 @@ export default function GraphContextMenu({
           ? (plan.ports[e.to.id]?.rate ?? 0) // already exported at this target
           : (df?.edges[e.id]?.flow ?? 0); // consumed internally
     }
+    // Capacity to measure against. An UNTOUCHED producer (nothing committed)
+    // keeps its authored clock through the settle (idle groups are never
+    // demand-resized), so honor a deliberate underclock exactly — 0.5 clock
+    // offers half nameplate, not nameplate. A CONSUMED producer's planned
+    // clock has been demand-sized by the settle (capacity ≈ committed, so
+    // authored-clock surplus is 0 by construction); the authored value is
+    // gone, and nameplate is the only honest spare-capacity reference.
+    const clock = committed > 1e-6 ? Math.max(effClock(g), 1) : effClock(g);
+    const potential = perMachine * effCount(g) * clock;
     return Math.max(0, potential - committed);
   };
 
