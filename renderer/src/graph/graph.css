@@ -1124,6 +1124,11 @@
 .mfr-foot .btn-primary {
   margin-left: auto;
 }
+.mfr-max-hint {
+  font-size: 11px;
+  color: var(--ink-400);
+  letter-spacing: 0.02em;
+}
 
 /* ---- graph right-click context menu (send-out + bulk actions) ---- */
 .ctx-backdrop {

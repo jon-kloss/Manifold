@@ -10,7 +10,7 @@
 //     (e.g. rods when you ask for screws), reuse & scale that group instead of
 //     duplicating it (opt-in checkbox, on by default).
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { fmtRate, itemLabel } from "../lib/format";
 import ItemIcon from "../lib/ItemIcon";
@@ -145,58 +145,71 @@ export default function MakeFromResources({
   // raw draw, plus (b) for each reused feed, only the remainder its
   // redirectable exports can't cover — expanded to raws via a sub-chain,
   // since scaling the reused line up pulls that much more from its inputs.
-  const rawDemand = useMemo(() => {
-    const d = new Map<string, number>();
-    const cp = reuseItems.size ? buildCp : freshCp;
-    if (!cp) return d;
-    for (const b of cp.belts) {
-      if (!b.fromRaw || reuseItems.has(b.fromItem)) continue;
-      d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
-    }
-    // One expansion per reused GROUP: the build scales a group that feeds two
-    // reused items ONCE (max count wins), so expanding each item's remainder
-    // separately would double that group's raws — keep only the biggest.
-    const extraByGid = new Map<Id, { item: string; extra: number; machines: number }>();
-    for (const item of reuseItems) {
-      const prod = existingProducers.get(item);
-      if (!prod) continue;
-      const newDemand = cp.belts
-        .filter((b) => b.fromRaw && b.fromItem === item)
-        .reduce((s, b) => s + b.rate, 0);
-      if (newDemand <= 1e-6) continue;
-      // Mirrors the build path's redirect: world exports THIS group feeds are
-      // trimmable into the new chain without any new extraction — but a port
-      // TARGET can exceed what the group really outputs (a starved export),
-      // so credit no more than the solver's committed flow, exactly like the
-      // build's min(freed, committed).
-      const fedByGroup = (pid: Id) =>
-        Object.values(plan.edges).some(
-          (e) => e.from.kind === "group" && e.from.id === prod.id && e.to.kind === "port" && e.to.id === pid,
-        );
-      const redirectable = Object.values(plan.ports)
-        .filter(
-          (p) =>
-            p.factory === factoryId &&
-            p.direction === "out" &&
-            p.item === item &&
-            p.boundRoute === null &&
-            p.rate > 0 &&
-            fedByGroup(p.id),
-        )
-        .reduce((s, p) => s + p.rate, 0);
-      const committed = derived.factories[factoryId]?.groups[prod.id]?.outRates[item] ?? 0;
-      const extra = newDemand - Math.min(redirectable, committed);
-      if (extra <= 1e-6) continue;
-      const machines = extra / prod.per;
-      const cur = extraByGid.get(prod.id);
-      if (!cur || machines > cur.machines) extraByGid.set(prod.id, { item, extra, machines });
-    }
-    for (const { item, extra } of extraByGid.values()) {
-      const sub = planChain(gamedata, unlocked, available, item, extra);
-      if (sub) for (const b of sub.belts) if (b.fromRaw) d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
-    }
-    return d;
-  }, [freshCp, buildCp, reuseItems, existingProducers, plan.edges, plan.ports, factoryId, gamedata, unlocked, available, derived]);
+  // ADDED extraction demand for the picked item at an ARBITRARY target rate —
+  // a pure function of the rate, so the capacity guard (at the live rate) and
+  // the max-rate search (below, over many candidate rates) share one source of
+  // truth. Under reuse this is AFFINE in the rate (a constant redirect credit),
+  // not proportional, which is exactly why the max can't be a closed-form
+  // rate × ratio and must be found by search.
+  const rawDemandAt = useCallback(
+    (r: number): Map<string, number> => {
+      const d = new Map<string, number>();
+      if (!target) return d;
+      const fresh = planChain(gamedata, unlocked, available, target, r);
+      const cp = reuseItems.size ? planChain(gamedata, unlocked, effectiveAvailable, target, r) : fresh;
+      if (!cp) return d;
+      for (const b of cp.belts) {
+        if (!b.fromRaw || reuseItems.has(b.fromItem)) continue;
+        d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
+      }
+      // One expansion per reused GROUP: the build scales a group that feeds two
+      // reused items ONCE (max count wins), so expanding each item's remainder
+      // separately would double that group's raws — keep only the biggest.
+      const extraByGid = new Map<Id, { item: string; extra: number; machines: number }>();
+      for (const item of reuseItems) {
+        const prod = existingProducers.get(item);
+        if (!prod) continue;
+        const newDemand = cp.belts
+          .filter((b) => b.fromRaw && b.fromItem === item)
+          .reduce((s, b) => s + b.rate, 0);
+        if (newDemand <= 1e-6) continue;
+        // Mirrors the build path's redirect: world exports THIS group feeds are
+        // trimmable into the new chain without any new extraction — but a port
+        // TARGET can exceed what the group really outputs (a starved export),
+        // so credit no more than the solver's committed flow, exactly like the
+        // build's min(freed, committed).
+        const fedByGroup = (pid: Id) =>
+          Object.values(plan.edges).some(
+            (e) => e.from.kind === "group" && e.from.id === prod.id && e.to.kind === "port" && e.to.id === pid,
+          );
+        const redirectable = Object.values(plan.ports)
+          .filter(
+            (p) =>
+              p.factory === factoryId &&
+              p.direction === "out" &&
+              p.item === item &&
+              p.boundRoute === null &&
+              p.rate > 0 &&
+              fedByGroup(p.id),
+          )
+          .reduce((s, p) => s + p.rate, 0);
+        const committed = derived.factories[factoryId]?.groups[prod.id]?.outRates[item] ?? 0;
+        const extra = newDemand - Math.min(redirectable, committed);
+        if (extra <= 1e-6) continue;
+        const machines = extra / prod.per;
+        const cur = extraByGid.get(prod.id);
+        if (!cur || machines > cur.machines) extraByGid.set(prod.id, { item, extra, machines });
+      }
+      for (const { item, extra } of extraByGid.values()) {
+        const sub = planChain(gamedata, unlocked, available, item, extra);
+        if (sub) for (const b of sub.belts) if (b.fromRaw) d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
+      }
+      return d;
+    },
+    [target, gamedata, unlocked, available, effectiveAvailable, reuseItems, existingProducers, plan.edges, plan.ports, factoryId, derived],
+  );
+
+  const rawDemand = useMemo(() => rawDemandAt(rate), [rawDemandAt, rate]);
 
   const shortfalls = useMemo(() => {
     const out: { item: string; need: number; have: number }[] = [];
@@ -207,12 +220,75 @@ export default function MakeFromResources({
     return out;
   }, [rawDemand, headroom]);
 
-  const feasibleRate = useMemo(() => {
-    if (shortfalls.length === 0) return rate;
-    let ratio = Infinity;
-    for (const [raw, need] of rawDemand) if (need > 0) ratio = Math.min(ratio, (headroom.get(raw) ?? 0) / need);
-    return Math.floor(rate * ratio);
-  }, [shortfalls, rawDemand, headroom, rate]);
+  // The MOST the assigned nodes can feed for the picked item. Raw draw is only
+  // PROPORTIONAL to the rate for a from-scratch build; under reuse it's affine
+  // (a constant redirect credit), so there is no closed-form rate × ratio — a
+  // formula that reads the live rate would drift as the user edits it. Instead
+  // find the largest integer rate whose draw fits every capped raw's headroom by
+  // binary search over the pure rawDemandAt (draw is monotonic non-decreasing in
+  // rate). This never reads the live `rate`, so it's a stable value that can't
+  // oscillate the seeding effect. null = every raw is uncapped (supply assumed
+  // unlimited) → no finite max. 0 = can't feed even 1/min.
+  const maxRate = useMemo(() => {
+    if (!target) return null;
+    const fits = (r: number): { ok: boolean; capped: boolean } => {
+      let capped = false;
+      for (const [raw, need] of rawDemandAt(r)) {
+        const h = headroom.get(raw) ?? Infinity;
+        if (Number.isFinite(h)) capped = true;
+        if (need > h + 1e-6) return { ok: false, capped };
+      }
+      return { ok: true, capped };
+    };
+    const at1 = fits(1);
+    if (!at1.capped) return null; // unlimited supply — no finite ceiling
+    if (!at1.ok) return 0; // can't feed even 1/min
+    let hi = 1;
+    while (hi < 1_000_000 && fits(hi * 2).ok) hi *= 2;
+    let lo = hi;
+    let up = Math.min(hi * 2, 1_000_000);
+    while (up - lo > 1) {
+      const mid = Math.floor((lo + up) / 2);
+      if (fits(mid).ok) lo = mid;
+      else up = mid;
+    }
+    return lo;
+  }, [target, rawDemandAt, headroom]);
+
+  // Unlimited-supply fallback: no finite max exists, so default to a single
+  // final machine at 100% rather than an arbitrary constant — a clean, derived
+  // starting point the user scales up (mirrors MAKE POWER defaulting to one
+  // generator's nameplate when fuel headroom is unbounded).
+  const oneMachineRate = useMemo(() => {
+    if (!target) return null;
+    const g = freshCp?.groups.find((x) => x.item === target);
+    const r = g ? gamedata.recipes[g.recipe] : undefined;
+    const prod = r?.products.find(([it]) => it === target);
+    if (!r || !prod || r.durationS <= 0) return null;
+    return Math.max(1, Math.round((prod[1] * 60) / r.durationS));
+  }, [target, freshCp, gamedata.recipes]);
+
+  // When blocked, the feasible build rate the nodes CAN sustain is exactly the
+  // computed max (headroom-limited), surfaced by the warning's BUILD-AT button.
+  const feasibleRate = maxRate ?? 0;
+
+  // Seed the rate to that max (or the single-machine default when supply is
+  // unlimited) — build as much as the claim supports, dial DOWN for less. Fires
+  // exactly ONCE per item pick, tracked by a ref: never on a rate edit, a reuse
+  // toggle, or a headroom change, so a manual entry is never clobbered.
+  const seededFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!target) {
+      seededFor.current = null;
+      return;
+    }
+    if (seededFor.current === target) return;
+    const seed = maxRate ?? oneMachineRate;
+    if (seed != null && seed >= 1) {
+      seededFor.current = target;
+      setRate(seed);
+    }
+  }, [target, maxRate, oneMachineRate]);
 
   // Free-up: existing groups in THIS factory that consume a short raw.
   // Smallest draw first, and only as many as the gap needs — deleting every
@@ -719,6 +795,29 @@ export default function MakeFromResources({
                 />
                 <span className="unit mono">/min</span>
               </label>
+              {/* Defaults to the most the nodes can feed; this snaps back to it
+                  after a dial-down and doubles as the "your nodes feed up to N"
+                  readout. Hidden when over-typed into a shortfall — the warning's
+                  BUILD-AT button owns that case. */}
+              {!blocked && maxRate != null && maxRate >= 1 && (
+                <button
+                  className="btn btn-ghost mfr-max"
+                  disabled={busy || rate >= maxRate}
+                  onClick={() => setRate(maxRate)}
+                  data-testid="mfr-max"
+                  title="Set to the most your claimed nodes can feed"
+                >
+                  MAX {maxRate}/min
+                </button>
+              )}
+              {/* No finite ceiling: every raw input is uncapped (assumed
+                  unlimited). The field seeded to one full machine — say so, so
+                  the absence of a MAX button reads as "unbounded", not a bug. */}
+              {target && maxRate === null && (
+                <span className="mfr-max-hint mono" data-testid="mfr-unlimited">
+                  supply assumed unlimited — set any rate
+                </span>
+              )}
               {blocked && feasibleRate >= 1 && (
                 <button
                   className="btn btn-ghost"

@@ -33,8 +33,14 @@ test("MAKE targets the requested rate and blocks over-capacity builds", async ({
     const modal = page.getByTestId("make-from-resources");
     await expect(modal).toBeVisible();
 
-    // ---- fitting build: 15/min iron rod (needs 15 ingot ≤ 30) ----
+    // ---- picking an item defaults the rate to the MAX the nodes can feed ----
+    // 30/min ingot → 30/min rod (1:1); the field seeds to 30 and offers MAX.
     await modal.getByTestId("mfr-item-Desc_IronRod_C").click();
+    await expect(modal.getByTestId("mfr-rate")).toHaveValue("30");
+    await expect(modal.getByTestId("mfr-max")).toContainText("MAX 30/min");
+    await expect(modal.getByTestId("mfr-warn")).toHaveCount(0);
+
+    // ---- fitting build: dial DOWN to 15/min iron rod (needs 15 ingot ≤ 30) ----
     await modal.getByTestId("mfr-rate").fill("15");
     await expect(modal.getByTestId("mfr-warn")).toHaveCount(0);
     await modal.getByTestId("mfr-build").click();

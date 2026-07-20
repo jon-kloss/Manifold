@@ -62,6 +62,57 @@ test("MAKE reuses an existing rod line for screws instead of duplicating it", as
   }
 });
 
+test("MAKE default-to-max under reuse: dialing down sticks, toggling reuse never clobbers the rate", async ({ page, request }) => {
+  await resetView(request);
+  // Existing rod line + a capped ingot feed → picking screws offers reuse AND
+  // seeds the rate to a computed max. Under reuse the raw draw is affine (not
+  // proportional), the trap that made a naive rate×ratio max oscillate.
+  const f = (await edit(request, [{ type: "create_factory", name: "REUSE MAX WORKS", position: { x: -1800, y: 1800 }, region: "GRASS FIELDS" }])).created[0];
+  const ingot = (await edit(request, [{ type: "add_port", factory: f, direction: "in", item: "Desc_IronIngot_C", rate: 0, rateCeiling: 200, graphPos: { x: 0, y: 100 } }])).created[0];
+  const rod = (await edit(request, [{ type: "add_group", factory: f, machine: "Build_ConstructorMk1_C", recipe: "Recipe_IronRod_C", count: 1, clock: 1.0, graphPos: { x: 300, y: 100 }, floor: 0 }])).created[0];
+  await edit(request, [{ type: "add_edge", factory: f, from: { kind: "port", id: ingot }, to: { kind: "group", id: rod }, item: "Desc_IronIngot_C", tier: 3 }]);
+
+  try {
+    await page.goto("/");
+    const skip = page.getByTestId("onboard-skip");
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    await openFactoryGraph(page, "REUSE MAX WORKS");
+    await page.getByTestId("btn-make-from-resources").click();
+    const modal = page.getByTestId("make-from-resources");
+    await expect(modal).toBeVisible();
+
+    await modal.getByTestId("mfr-item-Desc_IronScrew_C").click();
+    await expect(modal.getByTestId("mfr-reuse")).toBeVisible(); // reuse ON by default
+
+    // Seeded to a positive max the nodes can feed.
+    const rateInput = modal.getByTestId("mfr-rate");
+    const seeded = Number(await rateInput.inputValue());
+    expect(seeded).toBeGreaterThan(1);
+
+    // Dial DOWN — the value must STICK. A rate-dependent max would re-fire the
+    // seed and pull it back toward the max (or diverge); it must not.
+    const low = Math.max(2, Math.floor(seeded / 3));
+    await rateInput.fill(String(low));
+    await page.waitForTimeout(600);
+    expect(Number(await rateInput.inputValue())).toBe(low);
+
+    // Toggling the reuse checkbox changes the raw totals (hence the computed
+    // max) but must NOT re-seed and discard the user's manual rate.
+    const reuseBox = modal.getByTestId("mfr-reuse").locator('input[type="checkbox"]');
+    await reuseBox.uncheck();
+    await page.waitForTimeout(300);
+    expect(Number(await rateInput.inputValue())).toBe(low);
+    await reuseBox.check();
+    await page.waitForTimeout(300);
+    expect(Number(await rateInput.inputValue())).toBe(low);
+
+    // ...and the modal is still alive (no max-update-depth loop).
+    await expect(modal).toBeVisible();
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: f }]).catch(() => {});
+  }
+});
+
 test("MAKE extend redirects a fully-exported intermediate to feed the new consumer", async ({ page, request }) => {
   await resetView(request);
   // A rod line whose entire output is exported to the world (rodOut = 15/min).
