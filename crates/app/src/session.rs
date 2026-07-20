@@ -2019,10 +2019,14 @@ impl Session {
 
         for fid in &order {
             let Some(mut snapshot) = self.snapshot(fid) else {
-                derived.factories.insert(
-                    fid.clone(),
-                    Self::error_factory("missing recipe or machine data"),
-                );
+                // Even a degraded factory credits its generators their nameplate
+                // so their cards agree with the empire total (which still counts
+                // them via group_gen_mw's nameplate arm). A truly missing machine
+                // (unknown class) has no nameplate to read, so the helper simply
+                // skips it.
+                let mut ef = Self::error_factory("missing recipe or machine data");
+                self.inject_generator_nameplates(fid, &mut ef);
+                derived.factories.insert(fid.clone(), ef);
                 self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                 continue;
             };
@@ -2063,9 +2067,11 @@ impl Session {
             let result = match solver::t1::solve(&snapshot, &trig) {
                 Ok(r) => r,
                 Err(e) => {
-                    derived
-                        .factories
-                        .insert(fid.clone(), Self::error_factory(&e.to_string()));
+                    // A solve failure still credits the factory's generators
+                    // their nameplate so the cards agree with the empire total.
+                    let mut ef = Self::error_factory(&e.to_string());
+                    self.inject_generator_nameplates(fid, &mut ef);
+                    derived.factories.insert(fid.clone(), ef);
                     self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                     continue;
                 }
@@ -2922,6 +2928,21 @@ fn epoch_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Spreadsheet-style grid letters: A..Z, then AA, AB… — 27 grids must not
+/// collide back onto "GRID A".
+fn grid_letters(mut i: usize) -> String {
+    let mut out = Vec::new();
+    loop {
+        out.push(b'A' + (i % 26) as u8);
+        if i < 26 {
+            break;
+        }
+        i = i / 26 - 1;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap()
+}
+
 #[cfg(test)]
 mod circuit_tests {
     use super::{circuit_level, grid_letters};
@@ -2961,19 +2982,4 @@ mod circuit_tests {
         assert_eq!(grid_letters(701), "ZZ");
         assert_eq!(grid_letters(702), "AAA");
     }
-}
-
-/// Spreadsheet-style grid letters: A..Z, then AA, AB… — 27 grids must not
-/// collide back onto "GRID A".
-fn grid_letters(mut i: usize) -> String {
-    let mut out = Vec::new();
-    loop {
-        out.push(b'A' + (i % 26) as u8);
-        if i < 26 {
-            break;
-        }
-        i = i / 26 - 1;
-    }
-    out.reverse();
-    String::from_utf8(out).unwrap()
 }

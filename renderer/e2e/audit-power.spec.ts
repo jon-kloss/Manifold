@@ -123,6 +123,95 @@ test("geothermal grid card reads nameplate generation, not 0", async ({ page, re
 });
 
 // ---------------------------------------------------------------------------
+// PROBE 1b — A live output-target PROJECTION (t0 preview) on a MIXED factory
+// must not flip a recipe-less generator's card to a false 0 MW mid-drag.
+//
+// EXPECTED: A factory holding a producing smelter (recipe-ful, demand-driven
+// from an out-port) AND a recipe-less geothermal generator (200 MW nameplate)
+// shows the generator card at "200 MW". Dragging the smelter out-port's target
+// (which runs the t0 buildSnapshot projection) drives the smelter card into its
+// ◇ projected state, yet the generator card STAYS at 200 MW — the projection
+// snapshot drops recipe-less generators (as the Rust snapshot does), so the card
+// falls back to the stable derived nameplate instead of reading undefined → 0.
+//
+// (Regression guard for the PR #66 review MAJOR: before the fallback, the
+// generator's "⚡ GENERATES" line read 0 MW for every frame a projection was
+// active on its factory — a false "dead generator" flash on any target drag.)
+// ---------------------------------------------------------------------------
+test("output-target projection keeps a recipe-less generator's card at nameplate", async ({ page, request }) => {
+  await resetView(request);
+
+  const mf = (
+    await edit(request, [
+      { type: "create_factory", name: "MIXED POWER", position: { x: -2600, y: 2000 }, region: "GRASS FIELDS" },
+    ])
+  ).created[0];
+  // A demand-driven smelter (ore → ingot) gives us a projectable out-port…
+  const oreIn = (
+    await edit(request, [
+      { type: "add_port", factory: mf, direction: "in", item: "Desc_OreIron_C", rate: 0, rateCeiling: null, graphPos: { x: 0, y: 100 } },
+    ])
+  ).created[0];
+  const ingotOut = (
+    await edit(request, [
+      { type: "add_port", factory: mf, direction: "out", item: "Desc_IronIngot_C", rate: 0, rateCeiling: null, graphPos: { x: 600, y: 100 } },
+    ])
+  ).created[0];
+  const smelter = (
+    await edit(request, [
+      { type: "add_group", factory: mf, machine: "Build_SmelterMk1_C", recipe: "Recipe_IngotIron_C", count: 1, clock: 1.0, graphPos: { x: 300, y: 100 }, floor: 0 },
+    ])
+  ).created[0];
+  await edit(request, [
+    { type: "add_edge", factory: mf, from: { kind: "port", id: oreIn }, to: { kind: "group", id: smelter }, item: "Desc_OreIron_C", tier: 3 },
+    { type: "add_edge", factory: mf, from: { kind: "group", id: smelter }, to: { kind: "port", id: ingotOut }, item: "Desc_IronIngot_C", tier: 3 },
+  ]);
+  // …and alongside it, a recipe-less geothermal generator (200 MW nameplate).
+  await edit(request, [
+    { type: "add_group", factory: mf, machine: "Build_GeneratorGeoThermal_C", recipe: "", count: 1, clock: 1.0, graphPos: { x: 300, y: 340 }, floor: 0 },
+  ]);
+
+  try {
+    await page.goto("/");
+    await expect(page.getByTestId("map-root")).toBeVisible();
+    await dismissOnboarding(page);
+
+    await page.locator(".searchbox input").fill("MIXED POWER");
+    await page.keyboard.press("Enter");
+    await page.getByTestId("btn-open-factory").click();
+
+    // Baseline: the generator card reads its nameplate.
+    const genCard = page.locator(".group-card").filter({ hasText: "GENERATES" });
+    await expect(genCard).toBeVisible();
+    await expect(genCard.locator(".gen-mw")).toHaveText("200 MW");
+
+    // Drive the smelter out-port target — this runs the t0 projection.
+    await page.keyboard.press("f");
+    await page.waitForTimeout(300);
+    await page.getByTestId("port-out-Desc_IronIngot_C").click();
+    const slider = page.getByTestId("target-slider");
+    await expect(slider).toBeVisible();
+    const box = (await slider.boundingBox())!;
+    await page.mouse.move(box.x + 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2, { steps: 10 });
+
+    // Mid-drag the projection is live — the target value is italic-projected…
+    await expect(page.getByTestId("target-value")).toHaveClass(/projected/);
+    // …yet the generator card holds its nameplate, NOT a false 0 MW.
+    await expect(genCard.locator(".gen-mw")).toHaveText("200 MW");
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // And after the projection settles, still 200 MW.
+    await expect(genCard.locator(".gen-mw")).toHaveText("200 MW");
+    await page.keyboard.press("Escape");
+  } finally {
+    await edit(request, [{ type: "delete_factory", id: mf }]).catch(() => {});
+  }
+});
+
+// ---------------------------------------------------------------------------
 // PROBE 2 — The PWR chip shows the generation segment only when generation > 0
 // (draw-vs-generation truth).
 //

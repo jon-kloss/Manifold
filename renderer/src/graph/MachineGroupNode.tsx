@@ -106,7 +106,16 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
   const isGen =
     gamedata.machines[group.machine]?.kind === "generator" ||
     (recipe?.products ?? []).some((pr) => pr[0] === POWER_ITEM);
-  const genMw = dg?.outRates[POWER_ITEM] ?? 0;
+  // A material output-target PROJECTION (t0 preview) never changes a
+  // generator's power, but its buildSnapshot drops recipe-less generators (as
+  // the Rust snapshot does), so the projected group has no POWER_ITEM out-rate
+  // and the card would flip to a false 0 MW mid-drag. Fall back to the stable
+  // derived nameplate (session.rs inject_generator_nameplates) when the
+  // projection lacks it. `?? ` keeps 0 present, so a FUELED generator projecting
+  // to an honest fuel-limited 0 stays 0 — only the missing (undefined) case
+  // falls back.
+  const genMw =
+    dg?.outRates[POWER_ITEM] ?? derived.factories[group.factory]?.groups[group.id]?.outRates[POWER_ITEM] ?? 0;
   const fuelItem = recipe?.ingredients?.[0]?.[0] ?? null;
   const fuelRate = fuelItem ? dg?.inRates[fuelItem] ?? 0 : 0;
   const fuelName = fuelItem ? itemLabel(gamedata.items, fuelItem) : "";

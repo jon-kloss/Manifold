@@ -1452,7 +1452,13 @@ fn imported_generator_counts_nameplate_without_fuel() {
         .and_then(|df| df.groups.get(&gen_id))
         .expect("recipe-less generator gets a derived group with its nameplate");
     assert!(
-        (dg.out_rates.get(gamedata::docs::POWER_ITEM).copied().unwrap_or(0.0) - 300.0).abs() < 1e-4,
+        (dg.out_rates
+            .get(gamedata::docs::POWER_ITEM)
+            .copied()
+            .unwrap_or(0.0)
+            - 300.0)
+            .abs()
+            < 1e-4,
         "generator card reads nameplate MW, not 0: {:?}",
         dg.out_rates
     );
