@@ -5,7 +5,7 @@
 // friction this app exists to remove). Closed, the input reads the chosen
 // item's display name beside its chip; focus clears it into query mode.
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GameItem } from "../state/types";
 import { itemLabel } from "./format";
 import ItemIcon from "./ItemIcon";
@@ -25,6 +25,7 @@ export default function ItemCombobox({
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
   const selected = items.find((i) => i.className === value);
@@ -43,9 +44,19 @@ export default function ItemCombobox({
         const ap = a.displayName.toLowerCase().startsWith(q) ? 0 : 1;
         const bp = b.displayName.toLowerCase().startsWith(q) ? 0 : 1;
         return ap - bp || a.displayName.localeCompare(b.displayName);
-      })
-      .slice(0, 8);
+      });
+    // No cap: a real Docs.json carries hundreds of items and the whole point is
+    // to SCROLL the bounded, scrollable list to find one you can't name. (A
+    // .slice here left the list too short to ever overflow, so it never
+    // scrolled.)
   }, [items, query]);
+
+  // Keep the arrow-key highlight in view now that the list can be long — a
+  // bare highlight state would walk off the bottom of the scroll box.
+  useEffect(() => {
+    if (!open) return;
+    listRef.current?.querySelector<HTMLElement>(".item-combo-option.hl")?.scrollIntoView({ block: "nearest" });
+  }, [highlight, open]);
 
   const pick = (cls: string) => {
     onChange(cls);
@@ -111,7 +122,7 @@ export default function ItemCombobox({
         }}
       />
       {open && (
-        <div className="item-combo-list" role="listbox" id={listId}>
+        <div className="item-combo-list" role="listbox" id={listId} ref={listRef}>
           {matches.length === 0 && <div className="item-combo-empty mono">no items match</div>}
           {matches.map((i, idx) => (
             <button
