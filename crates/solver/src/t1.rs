@@ -42,11 +42,16 @@ const GEN_PENALTY: f64 = 1e3;
 
 /// Penalty per unit of unmet SOFT input (generator cooling water). Small on
 /// purpose: enough to pull real inflow when the resource is piped (idle water
-/// costs nothing to draw), but FAR below GEN_PENALTY so a driven generator
-/// never throttles itself to shrink the water gap — an unwatered plant keeps
-/// its fuel-limited nameplate and simply reports the shortfall. (Per unit of
-/// water/min; GEN_PENALTY is per machine-equivalent, so with real water rates
-/// ~tens/min per machine this stays orders below the nameplate pull.)
+/// costs nothing to draw), but below GEN_PENALTY so a driven generator never
+/// throttles itself to shrink the water gap — an unwatered plant keeps its
+/// fuel-limited nameplate and simply reports the shortfall.
+///
+/// This is per unit of water/min while GEN_PENALTY is per machine-equivalent,
+/// so the "never throttles a DRIVEN generator" guarantee holds only while a
+/// machine's supplemental draw `rate < GEN_PENALTY / SUPP_PENALTY` (~1000/min).
+/// Shipped generators are far under that (coal 45, nuclear 240 per machine), and
+/// `run_lp` `debug_assert!`s the margin so any future gamedata rate that erodes
+/// it fails loudly in tests rather than silently reducing reported power.
 const SUPP_PENALTY: f64 = 1.0;
 
 /// Piecewise-linear CONCAVE fairness reward on each parallel-class member's
@@ -144,6 +149,18 @@ fn run_lp(
     for (gi, g) in snapshot.groups.iter().enumerate() {
         for (item, _) in &g.recipe.inputs {
             if g.soft_inputs.contains(item) {
+                // The "never throttles a driven generator" guarantee is
+                // penalty-magnitude dependent: a machine trading itself off saves
+                // SUPP_PENALTY*rate but costs GEN_PENALTY, so the guarantee needs
+                // rate < GEN_PENALTY/SUPP_PENALTY. Fail loudly in tests if a
+                // future gamedata rate ever erodes that margin.
+                debug_assert!(
+                    g.recipe.in_rate(item) * SUPP_PENALTY < GEN_PENALTY,
+                    "soft input {item} draws {}/min per machine — at/above the \
+                     GEN_PENALTY/SUPP_PENALTY margin, a driven generator could \
+                     throttle itself; raise GEN_PENALTY or lower SUPP_PENALTY",
+                    g.recipe.in_rate(item)
+                );
                 soft_shortfalls.push((gi, item.clone(), vars.add(variable().min(0.0))));
             }
         }
@@ -369,26 +386,33 @@ fn run_lp(
     })
 }
 
-/// Does this edge deliver a soft input (generator cooling water) to its
-/// destination group? A soft-fed edge that saturates is not binding the
-/// ceiling — the demand it serves is elastic, so its capacity never limits the
-/// maximized output.
-fn edge_feeds_soft_input(snapshot: &FactorySnapshot, e: &EdgeSpec) -> bool {
-    if let NodeRef::Group(gid) = &e.to {
-        if let Some(g) = snapshot.groups.iter().find(|g| &g.id == gid) {
-            return g.soft_inputs.contains(&e.item);
-        }
-    }
-    false
+/// The HARD (non-soft) flow on each edge: total LP flow minus the portion that
+/// serves a generator's elastic cooling water. Only hard flow may bind a ceiling
+/// — a pure-soft water pipe carries ~0 hard flow, and a pipe shared with a real
+/// consumer carries only that consumer's demand — so `find_binding` measured
+/// against this can never name water as the binding constraint. Traced by the
+/// shared `t0::soft_edge_flows` so T0 and T1 stay consistent.
+fn hard_flows(snapshot: &FactorySnapshot, cycles: &[f64], flows: &[f64]) -> Vec<f64> {
+    let by_id: BTreeMap<String, f64> = snapshot
+        .groups
+        .iter()
+        .zip(cycles)
+        .map(|(g, &m)| (g.id.clone(), m))
+        .collect();
+    let soft = crate::t0::soft_edge_flows(snapshot, &by_id, flows);
+    flows
+        .iter()
+        .zip(&soft)
+        .map(|(f, s)| (f - s).max(0.0))
+        .collect()
 }
 
-/// Identify the constraint that binds at the ceiling solution.
-fn find_binding(snapshot: &FactorySnapshot, flows: &[f64]) -> Option<Constraint> {
+/// Identify the constraint that binds at the ceiling solution. `hard` is the
+/// per-edge HARD flow (see `hard_flows`); passing hard flow is what keeps
+/// elastic water from ever being named as the binding constraint.
+fn find_binding(snapshot: &FactorySnapshot, hard: &[f64]) -> Option<Constraint> {
     for (i, e) in snapshot.edges.iter().enumerate() {
-        if edge_feeds_soft_input(snapshot, e) {
-            continue;
-        }
-        if flows[i] >= e.capacity - EPS * (1.0 + e.capacity) {
+        if hard[i] >= e.capacity - EPS * (1.0 + e.capacity) {
             return Some(Constraint::BeltCapacity {
                 edge: e.id.clone(),
                 item: e.item.clone(),
@@ -399,16 +423,7 @@ fn find_binding(snapshot: &FactorySnapshot, flows: &[f64]) -> Option<Constraint>
     for p in &snapshot.inputs {
         if let Some(ceiling) = p.ceiling {
             let node = NodeRef::Input(p.id.clone());
-            // Skip a boundary input that feeds only soft demand: its saturation
-            // is an elastic water deficit, not a limit on the maximized output.
-            let feeds_only_soft = edges_out_of(snapshot, &node, None)
-                .all(|ei| edge_feeds_soft_input(snapshot, &snapshot.edges[ei]));
-            if feeds_only_soft {
-                continue;
-            }
-            let used: f64 = edges_out_of(snapshot, &node, None)
-                .map(|ei| flows[ei])
-                .sum();
+            let used: f64 = edges_out_of(snapshot, &node, None).map(|ei| hard[ei]).sum();
             if used >= ceiling - EPS * (1.0 + ceiling) {
                 return Some(Constraint::InputCeiling {
                     port: p.id.clone(),
@@ -428,7 +443,7 @@ fn find_binding(snapshot: &FactorySnapshot, flows: &[f64]) -> Option<Constraint>
 fn attribute_shortfall(
     snapshot: &FactorySnapshot,
     port: &OutputPortSpec,
-    flows: &[f64],
+    hard: &[f64],
 ) -> Option<Constraint> {
     let node = NodeRef::Output(port.id.clone());
     if edges_into(snapshot, &node, None).next().is_none() {
@@ -455,7 +470,7 @@ fn attribute_shortfall(
             }
         }
     }
-    find_binding(snapshot, flows)
+    find_binding(snapshot, hard)
 }
 
 pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, SolveError> {
@@ -486,7 +501,8 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
     if let Some(port) = &edited_port {
         if let Ok(ceiling_pass) = run_lp(snapshot, &targets, Some(port)) {
             let max_rate = ceiling_pass.max_rate;
-            if let Some(binding) = find_binding(snapshot, &ceiling_pass.flows) {
+            let hard = hard_flows(snapshot, &ceiling_pass.cycles, &ceiling_pass.flows);
+            if let Some(binding) = find_binding(snapshot, &hard) {
                 if targets[port] > max_rate + EPS * (1.0 + max_rate) {
                     targets.insert(port.clone(), max_rate);
                     clamped = true;
@@ -502,6 +518,10 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
         shortfalls: port_shortfalls,
         ..
     } = run_lp(snapshot, &targets, None)?;
+
+    // Hard (non-soft) flow for shortfall attribution: elastic water never names
+    // a binding constraint (see `hard_flows`).
+    let hard = hard_flows(snapshot, &cycles, &flows);
 
     let mut groups = BTreeMap::new();
     let mut total_power = 0.0;
@@ -584,7 +604,7 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
                 Shortfall {
                     requested,
                     missing,
-                    binding: attribute_shortfall(snapshot, p, &flows),
+                    binding: attribute_shortfall(snapshot, p, &hard),
                 },
             );
         } else {

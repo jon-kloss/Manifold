@@ -230,6 +230,109 @@ fn demand_pass(
     Ok((edge_flow, group_cycles))
 }
 
+/// The portion of each edge's flow that serves SOFT group inputs (a generator's
+/// cooling water). Soft demand is elastic — it never has to be delivered — so
+/// the flow that genuinely competes for a pipe's or port's capacity, and thus
+/// the only flow that may bind a target ceiling, is `total - soft`. This traces
+/// each group's soft demand backward to the edges (and THROUGH junctions) that
+/// carry it, splitting at each node in proportion to the already-computed total
+/// flow so an edge's soft share never exceeds its total. A snapshot with no
+/// soft inputs yields all zeros — identical to ignoring softness — so ordinary
+/// factories are wholly unaffected. This is what makes the soft-input invariant
+/// robust to merged/shared water (a merger junction, or one water port feeding
+/// both a generator and a refinery), which a per-edge structural test cannot be.
+fn soft_edge_flows_with(
+    graph: &Graph,
+    order: &[NodeRef],
+    cycles: &BTreeMap<String, f64>,
+    total_flows: &[f64],
+) -> Vec<f64> {
+    let s = graph.snapshot;
+    let mut soft = vec![0.0f64; s.edges.len()];
+    // Distribute `amount` of soft demand for `item` entering `node` back across
+    // its incoming edges carrying that item, proportional to their total flow
+    // (equal split only when every candidate carries none).
+    let push = |node: &NodeRef, item: &str, amount: f64, soft: &mut Vec<f64>| {
+        if amount <= 0.0 {
+            return;
+        }
+        let incoming: Vec<usize> = graph
+            .in_edges
+            .get(node)
+            .map(|v| {
+                v.iter()
+                    .copied()
+                    .filter(|&ei| s.edges[ei].item == item)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if incoming.is_empty() {
+            return;
+        }
+        let tot: f64 = incoming.iter().map(|&ei| total_flows[ei]).sum();
+        for &ei in &incoming {
+            let share = if tot > 1e-12 {
+                total_flows[ei] / tot
+            } else {
+                1.0 / incoming.len() as f64
+            };
+            soft[ei] += amount * share;
+        }
+    };
+    for node in order {
+        match node {
+            NodeRef::Group(gid) => {
+                let Some(group) = s.groups.iter().find(|g| &g.id == gid) else {
+                    continue;
+                };
+                let m = cycles.get(gid).copied().unwrap_or(0.0);
+                if m <= 0.0 {
+                    continue;
+                }
+                for (item, _) in &group.recipe.inputs {
+                    if group.soft_inputs.contains(item) {
+                        push(node, item, m * group.recipe.in_rate(item), &mut soft);
+                    }
+                }
+            }
+            NodeRef::Junction(_) => {
+                // Soft demand leaving on out-edges must be pulled in across the
+                // junction's in-edges, so softness propagates through mergers.
+                let mut soft_by_item: BTreeMap<&str, f64> = BTreeMap::new();
+                for &ei in graph
+                    .out_edges
+                    .get(node)
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[])
+                {
+                    *soft_by_item.entry(s.edges[ei].item.as_str()).or_insert(0.0) += soft[ei];
+                }
+                for (item, amount) in soft_by_item {
+                    push(node, item, amount, &mut soft);
+                }
+            }
+            _ => {} // outputs are hard demand; inputs terminate the trace
+        }
+    }
+    soft
+}
+
+/// Standalone soft-flow trace for callers without a prebuilt `Graph` (T1).
+/// Builds the graph and a reverse-topo order; on a cyclic graph it returns all
+/// zeros (no soft subtraction — safe, never over-reports a binding).
+#[cfg(feature = "lp")]
+pub(crate) fn soft_edge_flows(
+    snapshot: &FactorySnapshot,
+    cycles: &BTreeMap<String, f64>,
+    total_flows: &[f64],
+) -> Vec<f64> {
+    let graph = Graph::build(snapshot);
+    match graph.reverse_topo() {
+        Ok(order) => soft_edge_flows_with(&graph, &order, cycles, total_flows),
+        Err(_) => vec![0.0; snapshot.edges.len()],
+    }
+}
+
 pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, SolveError> {
     let start = now_us();
     let graph = Graph::build(snapshot);
@@ -266,37 +369,19 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
     }
     /// Relative tolerance of the ceiling search (bracket + bisection).
     const REL_TOL: f64 = 1e-9;
-    // A soft input (generator cooling water) is an elastic demand: its pipe
-    // capacity must never bound the edited target's ceiling, and must never be
-    // named as the binding constraint. Mirror T1's `find_binding`: drop
-    // soft-fed edges and boundary inputs that feed only soft demand from the
-    // cap set entirely.
-    let edge_feeds_soft = |ei: usize| -> bool {
-        let e = &snapshot.edges[ei];
-        if let NodeRef::Group(gid) = &e.to {
-            if let Some(g) = snapshot.groups.iter().find(|g| &g.id == gid) {
-                return g.soft_inputs.contains(&e.item);
-            }
-        }
-        false
-    };
-    let input_feeds_only_soft = |i: usize| -> bool {
-        let node = NodeRef::Input(snapshot.inputs[i].id.clone());
-        graph
-            .out_edges
-            .get(&node)
-            .map(|v| !v.is_empty() && v.iter().all(|&ei| edge_feeds_soft(ei)))
-            .unwrap_or(false)
-    };
+    // Every belt/pipe edge and every ceilinged input is a cap. Soft (elastic)
+    // water demand is excluded not by dropping caps but by measuring each cap
+    // against HARD flow (`total - soft`, via `soft_edge_flows`) below — so a
+    // pure-soft water pipe carries zero hard flow and never binds, while a pipe
+    // shared with a hard consumer binds only on that consumer's genuine demand.
     let cap_keys: Vec<CapKey> = (0..snapshot.edges.len())
-        .filter(|&i| !edge_feeds_soft(i))
         .map(CapKey::Edge)
         .chain(
             snapshot
                 .inputs
                 .iter()
                 .enumerate()
-                .filter(|(i, p)| p.ceiling.is_some() && !input_feeds_only_soft(*i))
+                .filter(|(_, p)| p.ceiling.is_some())
                 .map(|(i, _)| CapKey::Input(i)),
         )
         .collect();
@@ -370,10 +455,19 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
     if let Some(port) = &edited_port {
         let requested = targets[port];
         let base_targets = targets.clone();
+        // Probes return HARD flow (total minus the soft/elastic water portion),
+        // so the entire bracket/bisect/binding machinery below sees only the
+        // flow that may legitimately bind the ceiling.
         let probe = |t: f64| -> Result<Vec<f64>, SolveError> {
             let mut probe_targets = base_targets.clone();
             probe_targets.insert(port.clone(), t);
-            demand_pass(&graph, &order, &probe_targets).map(|(flows, _)| flows)
+            let (flows, cyc) = demand_pass(&graph, &order, &probe_targets)?;
+            let soft = soft_edge_flows_with(&graph, &order, &cyc, &flows);
+            Ok(flows
+                .iter()
+                .zip(&soft)
+                .map(|(f, s)| (f - s).max(0.0))
+                .collect())
         };
         let f0 = probe(0.0)?;
         // Per-cap slack with the edited target at ZERO. A violation here is
@@ -509,7 +603,14 @@ pub fn solve(snapshot: &FactorySnapshot, edit: &T0Edit) -> Result<SolveResult, S
     // impossible by construction, and a failure here means the ceiling
     // search returned an over-ceiling.
     if cfg!(debug_assertions) && edited_port.is_some() && base_feasible {
-        if let Some((key, slack)) = min_slack(&edge_flow) {
+        // Assert on HARD flow, matching the cap set the ceiling search used.
+        let soft = soft_edge_flows_with(&graph, &order, &group_cycles, &edge_flow);
+        let hard: Vec<f64> = edge_flow
+            .iter()
+            .zip(&soft)
+            .map(|(f, s)| (f - s).max(0.0))
+            .collect();
+        if let Some((key, slack)) = min_slack(&hard) {
             debug_assert!(
                 slack >= -1e-6,
                 "T0 ceiling under-clamped: {:?} violated (normalized slack {slack})",

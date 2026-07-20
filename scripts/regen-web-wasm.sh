@@ -16,12 +16,18 @@ cd "$(dirname "$0")/.."
 
 STAMP="renderer/src/wasm/web-pkg/.web-src.sha256"
 
-# Hash every source that feeds the web wasm build's dispatch surface: the
-# crate's own sources + its Cargo.toml (the dep edges that pick its features).
+# Hash every source that feeds the web wasm build: crates/web AND the workspace
+# crates it statically links (app → solver + gamedata + planner-core + persist).
+# The solve/session/gamedata behavior the web pkg ships lives in those deps, not
+# just crates/web/src — hashing only the wrapper let a session.rs/solver/gamedata
+# change ship a stale binary with a green `check`. Each crate's Cargo.toml is
+# included so dep-edge/feature changes are caught too.
 src_hash() {
   {
-    find crates/web/src -type f -name '*.rs'
-    echo crates/web/Cargo.toml
+    for c in web app solver gamedata planner-core persist; do
+      find "crates/$c/src" -type f -name '*.rs'
+      echo "crates/$c/Cargo.toml"
+    done
   } | sort | xargs sha256sum | sha256sum | cut -d' ' -f1
 }
 
