@@ -1811,6 +1811,9 @@ impl Session {
                 count: g.effective_count(),
                 clock: g.effective_clock(),
                 driven_cycles: None, // set below for un-wired generators
+                // A generator's cooling water is a SOFT input: demanded (and a
+                // visible shortfall when unpiped) but never a throttle on power.
+                soft_inputs: recipe.supplemental.iter().cloned().collect(),
             });
         }
         let mut inputs = Vec::new();

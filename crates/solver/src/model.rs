@@ -59,6 +59,14 @@ pub struct GroupSpec {
     /// `None` = ordinary demand-driven production.
     #[serde(default)]
     pub driven_cycles: Option<f64>,
+    /// Input items treated as SOFT: the group demands them (they still show as a
+    /// shortfall when unsupplied and pull real inflow when piped) but they never
+    /// throttle the group's cycles. A generator's cooling water lives here — a
+    /// coal plant runs at its fuel-limited nameplate whether or not water is yet
+    /// piped, and the missing water surfaces as a deficit instead of zeroing the
+    /// grid. Empty for every ordinary group.
+    #[serde(default)]
+    pub soft_inputs: std::collections::BTreeSet<ItemId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -160,24 +160,36 @@ export interface PowerOption {
   mwPer: number;
   /** fuel items/min per generator at 100% clock. */
   fuelPer: number;
+  /** supplemental fluid this generator burns to run (coal/nuclear → water),
+   *  or null. The bank is fed from the solid fuel; the fluid rides the built
+   *  group's recipe as a demand the solver surfaces until it's piped in. */
+  coolant: { item: string; perMin: number } | null;
 }
 
-/** Generator burn recipes runnable from `available` raws: solid single-fuel
- *  burns whose fuel is one of the factory's inputs. Fuel-less generators
- *  (geothermal) and fluid fuels are excluded — no pipes. */
+/** Generator burn recipes runnable from `available` raws: one SOLID fuel that
+ *  is one of the factory's inputs, plus at most one FLUID supplemental (water,
+ *  for coal/nuclear — now that pipes are modelled). Fuel-less generators
+ *  (geothermal) and fluid FUELS are still excluded. */
 export function powerOptions(g: GameData, available: ReadonlySet<string>): PowerOption[] {
   const out: PowerOption[] = [];
   for (const r of Object.values(g.recipes)) {
     if (r.products.length !== 1 || r.products[0][0] !== POWER_ITEM) continue;
-    if (r.ingredients.length !== 1) continue;
-    const [fuel] = r.ingredients[0];
-    if (!available.has(fuel) || !isBeltable(g, fuel)) continue;
+    // Split ingredients into the solid fuel and any fluid supplemental (water).
+    const solids = r.ingredients.filter(([i]) => isBeltable(g, i));
+    const fluids = r.ingredients.filter(([i]) => !isBeltable(g, i));
+    if (solids.length !== 1 || fluids.length > 1) continue;
+    const [fuel, fuelQty] = solids[0];
+    if (!available.has(fuel)) continue;
     const machine = r.producedIn.find((m) => g.machines[m]?.kind === "generator");
     if (!machine) continue;
     const mwPer = perMachineOut(r, POWER_ITEM);
-    const fuelPer = r.durationS > 0 ? (r.ingredients[0][1] * 60) / r.durationS : 0;
+    const fuelPer = r.durationS > 0 ? (fuelQty * 60) / r.durationS : 0;
     if (mwPer <= 0 || fuelPer <= 0) continue;
-    out.push({ recipe: r.className, machine, fuel, mwPer, fuelPer });
+    const coolant =
+      fluids.length === 1 && r.durationS > 0
+        ? { item: fluids[0][0], perMin: (fluids[0][1] * 60) / r.durationS }
+        : null;
+    out.push({ recipe: r.className, machine, fuel, mwPer, fuelPer, coolant });
   }
   return out.sort((a, b) => b.mwPer - a.mwPer || a.recipe.localeCompare(b.recipe));
 }
@@ -187,7 +199,10 @@ export function powerOptions(g: GameData, available: ReadonlySet<string>): Power
  *  at the game's 1% minimum — a tiny MW ask on a big nameplate builds one
  *  generator at 1% (slightly over target) rather than an impossible clock;
  *  fuel follows the ACTUAL clock so the belts match what really burns. */
-export function sizePowerBank(opt: PowerOption, mw: number): { count: number; clock: number; fuelNeed: number } {
+export function sizePowerBank(
+  opt: Pick<PowerOption, "mwPer" | "fuelPer">,
+  mw: number,
+): { count: number; clock: number; fuelNeed: number } {
   const count = Math.max(1, Math.ceil(mw / opt.mwPer));
   const clock = Math.max(0.01, mw / (count * opt.mwPer));
   return { count, clock, fuelNeed: count * clock * opt.fuelPer };

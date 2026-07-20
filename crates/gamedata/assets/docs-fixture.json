@@ -351,6 +351,7 @@
     "ClassName": "Build_GeneratorCoal_C",
     "mDisplayName": "Coal-Powered Generator",
     "mPowerProduction": "75.000000",
+    "mSupplementalToPowerRatio": "10.000000",
     "mClearanceData": "((ClearanceBox=(Min=(X=-500.000000,Y=-1350.000000,Z=0.000000),Max=(X=500.000000,Y=1250.000000,Z=900.000000),IsValid=True)),(ClearanceBox=(Min=(X=-60.000000,Y=-50.000000,Z=0.000000),Max=(X=200.000000,Y=200.000000,Z=2300.000000),IsValid=True),RelativeTransform=(Translation=(X=-348.724685,Y=800.000000,Z=900.000000)),ExcludeForSnapping=True),(Type=CT_Soft,ClearanceBox=(Min=(X=-20.000000,Y=-20.000000,Z=0.000000),Max=(X=20.000000,Y=20.000000,Z=200.000000),IsValid=True),RelativeTransform=(Translation=(X=265.000000,Y=-1275.000000,Z=900.000000)),ExcludeForSnapping=True),(Type=CT_Soft,ClearanceBox=(Min=(X=-30.000000,Y=-30.000000,Z=0.000000),Max=(X=30.000000,Y=30.000000,Z=75.000000),IsValid=True),RelativeTransform=(Translation=(X=-265.000000,Y=-1300.000000,Z=900.000000)),ExcludeForSnapping=True))",
     "mFuel": [
      {

@@ -265,14 +265,14 @@ describe("powerOptions / sizePowerBank", () => {
 
   it("sizes the bank: fewest generators, evenly under-clocked, exact fuel", () => {
     // 180 MW on 75 MW gens → 3 gens at 80% clock, burning 36 coal/min
-    const s = sizePowerBank({ recipe: "r", machine: "m", fuel: "f", mwPer: 75, fuelPer: 15 }, 180);
+    const s = sizePowerBank({ mwPer: 75, fuelPer: 15 }, 180);
     expect(s.count).toBe(3);
     expect(s.clock).toBeCloseTo(0.8);
     expect(s.fuelNeed).toBeCloseTo(36);
   });
 
   it("nameplate target lands exactly on 100% clocks", () => {
-    const s = sizePowerBank({ recipe: "r", machine: "m", fuel: "f", mwPer: 75, fuelPer: 15 }, 150);
+    const s = sizePowerBank({ mwPer: 75, fuelPer: 15 }, 150);
     expect(s.count).toBe(2);
     expect(s.clock).toBeCloseTo(1.0);
     expect(s.fuelNeed).toBeCloseTo(30);
@@ -315,9 +315,24 @@ describe("powerOptions exclusions + clock floor (review hardening)", () => {
     expect(powerOptions(g, new Set(["Desc_Coal_C"]))).toEqual([]);
   });
 
-  it("excludes multi-ingredient burns (nuclear-style fuel + water)", () => {
+  it("offers a solid-fuel + water burn (coal/nuclear), sourced from the fuel, with the coolant surfaced", () => {
+    // Pipes are modelled now: a coal generator burns coal AND water. It's
+    // offered from the coal input; the water rides as `coolant` so the UI can
+    // note it and the built group demands it.
     const g = cat({ ingredients: [["Desc_Coal_C", 15], ["Desc_Water_C", 45]] });
-    expect(powerOptions(g, new Set(["Desc_Coal_C", "Desc_Water_C"]))).toEqual([]);
+    const opts = powerOptions(g, new Set(["Desc_Coal_C"]));
+    expect(opts).toHaveLength(1);
+    expect(opts[0].fuel).toBe("Desc_Coal_C");
+    expect(opts[0].fuelPer).toBe(15);
+    expect(opts[0].coolant).toEqual({ item: "Desc_Water_C", perMin: 45 });
+  });
+
+  it("excludes a burn with two solid ingredients (only one solid fuel allowed)", () => {
+    const g = cat(
+      { ingredients: [["Desc_Coal_C", 15], ["Desc_Compacted_C", 5]] },
+      { Desc_Compacted_C: { className: "Desc_Compacted_C", displayName: "Compacted Coal", form: "RF_SOLID", stackSize: "" } },
+    );
+    expect(powerOptions(g, new Set(["Desc_Coal_C", "Desc_Compacted_C"]))).toEqual([]);
   });
 
   it("excludes multi-product burns (waste output not modeled)", () => {
@@ -332,7 +347,7 @@ describe("powerOptions exclusions + clock floor (review hardening)", () => {
 
   it("clock floors at the game's 1% minimum; fuel follows the real clock", () => {
     // 1 MW on a 150 MW nameplate would be 0.67% — impossible in game.
-    const s = sizePowerBank({ recipe: "r", machine: "m", fuel: "f", mwPer: 150, fuelPer: 30 }, 1);
+    const s = sizePowerBank({ mwPer: 150, fuelPer: 30 }, 1);
     expect(s.count).toBe(1);
     expect(s.clock).toBeCloseTo(0.01);
     expect(s.fuelNeed).toBeCloseTo(0.3); // 1 gen × 1% × 30/min

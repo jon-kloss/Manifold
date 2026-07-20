@@ -1597,6 +1597,7 @@ fn mk_recipe(
         produced_in: vec!["Build_ConstructorMk1_C".into()],
         alternate: false,
         variable_power_mw: None,
+        supplemental: None,
     }
 }
 

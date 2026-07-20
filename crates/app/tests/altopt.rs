@@ -41,6 +41,7 @@ fn recipe(
         // recipe_power reads this override when present, so power is independent
         // of the (empty) synthetic machine table.
         variable_power_mw: Some(power_mw),
+        supplemental: None,
     }
 }
 
@@ -339,6 +340,7 @@ fn inject_ingot_alt(s: &mut Session) -> String {
         produced_in: std.produced_in.clone(),
         alternate: true,
         variable_power_mw: None,
+        supplemental: None,
     };
     s.gamedata.recipes.insert(class.into(), alt);
     s.unlocked.insert(class.into());
@@ -608,6 +610,7 @@ fn inject_ingot_alt_worse(s: &mut Session) -> String {
         produced_in: std.produced_in.clone(),
         alternate: true,
         variable_power_mw: None,
+        supplemental: None,
     };
     s.gamedata.recipes.insert(class.into(), alt);
     s.unlocked.insert(class.into());

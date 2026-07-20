@@ -29,6 +29,7 @@ fn group(id: &str, r: RecipeSpec) -> GroupSpec {
         count: 1,
         clock: 1.0,
         driven_cycles: None,
+        soft_inputs: Default::default(),
     }
 }
 
@@ -933,6 +934,59 @@ fn driven_generator_scales_down_when_fuel_capped() {
     assert!(
         r.shortfalls.is_empty(),
         "fuel-limited generator is not a shortfall"
+    );
+}
+
+#[test]
+fn supplemental_water_is_soft_never_throttles_power() {
+    // A coal generator burns coal AND water (water marked soft). Fully fueled
+    // but with NO water piped, it must still run at nameplate — the water is a
+    // reported demand, never a throttle. This is the fix that keeps modelling
+    // pipes from zeroing every existing coal/nuclear grid.
+    let mut gen = group(
+        "gen",
+        recipe(
+            "Recipe_Power_Coal",
+            "coalgen",
+            60.0,
+            &[("coal", 15.0), ("water", 45.0)],
+            &[("power", 75.0)],
+            0.0,
+        ),
+    );
+    gen.count = 4;
+    gen.driven_cycles = Some(4.0);
+    gen.soft_inputs = ["water".to_string()].into_iter().collect();
+    let snap = FactorySnapshot {
+        groups: vec![gen],
+        edges: vec![edge(
+            "e-coal",
+            NodeRef::Input("in-coal".into()),
+            g("gen"),
+            "coal",
+            780.0,
+        )],
+        inputs: vec![InputPortSpec {
+            id: "in-coal".into(),
+            item: "coal".into(),
+            ceiling: None,
+        }],
+        junctions: vec![],
+        outputs: vec![],
+    };
+    let r = solver::t1::solve(&snap, &T0Edit::Recompute).unwrap();
+    // Full nameplate despite zero water supply — water never caps the cycles.
+    assert_close(
+        r.groups["gen"].out_rates["power"],
+        300.0,
+        "power unthrottled by missing water",
+    );
+    // Water is still a real demand on the plant (4 machines × 45 = 180/min),
+    // so a deficit surfaces until it's piped in.
+    assert_close(
+        r.groups["gen"].in_rates["water"],
+        180.0,
+        "water demand reported",
     );
 }
 

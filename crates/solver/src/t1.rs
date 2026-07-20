@@ -40,6 +40,15 @@ const SHORTFALL_PENALTY: f64 = 1e6;
 /// cannot cannibalize the edited target's achievable ceiling.
 const GEN_PENALTY: f64 = 1e3;
 
+/// Penalty per unit of unmet SOFT input (generator cooling water). Small on
+/// purpose: enough to pull real inflow when the resource is piped (idle water
+/// costs nothing to draw), but FAR below GEN_PENALTY so a driven generator
+/// never throttles itself to shrink the water gap — an unwatered plant keeps
+/// its fuel-limited nameplate and simply reports the shortfall. (Per unit of
+/// water/min; GEN_PENALTY is per machine-equivalent, so with real water rates
+/// ~tens/min per machine this stays orders below the nameplate pull.)
+const SUPP_PENALTY: f64 = 1.0;
+
 /// Piecewise-linear CONCAVE fairness reward on each parallel-class member's
 /// per-count utilization: `(segment length, marginal reward)`, low
 /// utilization first, marginals strictly decreasing (that concavity is what
@@ -127,6 +136,18 @@ fn run_lp(
         .iter()
         .map(|g| g.driven_cycles.map(|_| vars.add(variable().min(0.0))))
         .collect();
+    // One shortfall slack per SOFT input (a generator's cooling water): the
+    // unmet demand. Its tiny penalty pulls real inflow when the resource is
+    // piped, but is far below GEN_PENALTY so a driven generator still runs at
+    // nameplate rather than throttling itself down to shrink the water gap.
+    let mut soft_shortfalls: Vec<(usize, ItemId, Variable)> = Vec::new();
+    for (gi, g) in snapshot.groups.iter().enumerate() {
+        for (item, _) in &g.recipe.inputs {
+            if g.soft_inputs.contains(item) {
+                soft_shortfalls.push((gi, item.clone(), vars.add(variable().min(0.0))));
+            }
+        }
+    }
 
     // Parallel-split fairness: a demand several IDENTICAL groups (same recipe
     // id + machine) can serve costs the same machines however it is split, so
@@ -206,6 +227,10 @@ fn run_lp(
         .flatten()
         .map(|&v| v * GEN_PENALTY)
         .sum();
+    let soft_penalty: Expression = soft_shortfalls
+        .iter()
+        .map(|(_, _, v)| *v * SUPP_PENALTY)
+        .sum();
     let fairness: Expression = fairness_vars
         .iter()
         .flat_map(|(_, segs)| {
@@ -222,8 +247,12 @@ fn run_lp(
         // generator simply yields all contested fuel to the port being measured.
         Some(t) => {
             shortfall_penalty - 1000.0 * t + machines.clone() + power_tiebreak - fairness.clone()
+                + soft_penalty.clone()
         }
-        None => shortfall_penalty + gen_penalty + machines.clone() + power_tiebreak - fairness,
+        None => {
+            shortfall_penalty + gen_penalty + machines.clone() + power_tiebreak - fairness
+                + soft_penalty.clone()
+        }
     };
 
     let mut model = vars.minimise(objective).using(microlp);
@@ -243,7 +272,17 @@ fn run_lp(
             let inflow: Expression = edges_into(snapshot, &node, Some(item))
                 .map(|ei| lp.edge_vars[ei])
                 .sum();
-            model = model.with(constraint!(inflow == m * g.recipe.in_rate(item)));
+            if let Some((_, _, s)) = soft_shortfalls
+                .iter()
+                .find(|(sgi, sitem, _)| *sgi == gi && sitem == item)
+            {
+                // Soft input (cooling water): elastic, so it never caps `m`. The
+                // shortfall `s` absorbs any unmet demand — the plant runs at its
+                // fuel/driven rate and the gap is reported, not forced to zero.
+                model = model.with(constraint!(inflow + *s == m * g.recipe.in_rate(item)));
+            } else {
+                model = model.with(constraint!(inflow == m * g.recipe.in_rate(item)));
+            }
         }
         for (item, _) in &g.recipe.outputs {
             let outflow: Expression = edges_out_of(snapshot, &node, Some(item))

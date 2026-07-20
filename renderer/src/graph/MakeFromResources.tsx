@@ -663,6 +663,7 @@ export default function MakeFromResources({
                 </span>
                 <span className="mfr-power-sub mono">
                   ⚡ {opt.mwPer} MW · {fmtRate(opt.fuelPer)}/min {name(opt.fuel)} each
+                  {opt.coolant ? ` · +${fmtRate(opt.coolant.perMin)}/min ${name(opt.coolant.item)}` : ""}
                   {maxMw !== Infinity ? ` · your nodes feed up to ${maxMw} MW` : ""}
                 </span>
               </div>
@@ -690,8 +691,8 @@ export default function MakeFromResources({
           );
         })}
         <div className="mfr-power-note">
-          In-game coal/fuel plants also need piped water — pipes aren't modeled here, so plan
-          extractors separately.
+          Water-cooled plants (coal, nuclear) also demand water — it's built as a required input on the
+          generators, so pipe it in (from a Water Extractor) or they'll read as short on water.
         </div>
       </div>
     ) : null;

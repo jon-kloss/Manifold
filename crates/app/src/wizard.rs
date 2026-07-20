@@ -1576,6 +1576,7 @@ mod tests {
             produced_in: vec!["Build_ConstructorMk1_C".into()],
             alternate,
             variable_power_mw: None,
+            supplemental: None,
         }
     }
 
@@ -1631,6 +1632,7 @@ mod tests {
             produced_in: vec![machine.into()],
             alternate: false,
             variable_power_mw: None,
+            supplemental: None,
         };
         // honest: raws → alumina (+ silica), refinery
         gd.recipes.insert(
@@ -1746,6 +1748,7 @@ mod tests {
                 produced_in: vec!["Build_ConstructorMk1_C".into()],
                 alternate: false,
                 variable_power_mw: None,
+                supplemental: None,
             };
         // honest W: raw-only, slow (1/min)
         gd.recipes.insert(
@@ -1811,6 +1814,7 @@ mod tests {
                 produced_in: vec!["Build_ConstructorMk1_C".into()],
                 alternate: false,
                 variable_power_mw: None,
+                supplemental: None,
             };
         // fast X: Y → T at 100/min
         gd.recipes.insert(
