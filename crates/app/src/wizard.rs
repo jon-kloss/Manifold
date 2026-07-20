@@ -576,7 +576,17 @@ pub fn global_solve(
         .first()
         .map(|(i, _)| item_name(i))
         .unwrap_or_default();
-    let site_name = format!("{} WORKS", goal_name.to_uppercase());
+    // Multi-output goals (◆ replacements) name the site after EVERYTHING it
+    // ships — a single-item goal reads exactly as before.
+    let site_name = format!(
+        "{} WORKS",
+        goal.items
+            .iter()
+            .map(|(i, _)| item_name(i))
+            .collect::<Vec<_>>()
+            .join(" + ")
+            .to_uppercase()
+    );
     log(
         phase,
         &format!(
@@ -1030,11 +1040,25 @@ pub fn global_solve(
     }
     log(phase, "done");
 
-    let title = format!(
-        "PRODUCE {} AT {:.1}/MIN",
-        goal_name.to_uppercase(),
-        goal_rate
-    );
+    // A single-item goal keeps the long-standing "PRODUCE X AT N/MIN" form; a
+    // multi-output goal names every shipped item so the review surface matches
+    // what the proposal actually does.
+    let title = if goal.items.len() > 1 {
+        format!(
+            "PRODUCE {}",
+            goal.items
+                .iter()
+                .map(|(i, _)| item_name(i).to_uppercase())
+                .collect::<Vec<_>>()
+                .join(" + ")
+        )
+    } else {
+        format!(
+            "PRODUCE {} AT {:.1}/MIN",
+            goal_name.to_uppercase(),
+            goal_rate
+        )
+    };
     WizardOutcome::Proposal {
         proposal: Proposal {
             id: String::new(), // assigned by CreateProposal

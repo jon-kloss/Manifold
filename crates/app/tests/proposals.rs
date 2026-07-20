@@ -2149,3 +2149,76 @@ fn replacement_ships_every_output_of_a_multi_output_factory() {
         .count();
     assert_eq!(rate_sets, out_items.len(), "one target per shipped output");
 }
+
+/// Audit #129 (3) review pin: the CREATE impact's MW is clock-scaled like the
+/// solver (power ∝ clock^1.321928), pinned directly at the Rust layer so the
+/// guard doesn't ride on one underclocked e2e sample. 25/min Iron Plate solves
+/// to two stages of 2 machines @ 62.5%: 4 MW nameplate each, so scaled draw is
+/// 16 × 0.625^1.321928 ≈ 8.6 MW → "+9 MW", while an unscaled revert reads
+/// "+16 MW".
+#[test]
+fn create_impact_mw_is_clock_scaled() {
+    let s = Session::in_memory(None).unwrap();
+    let goal = app::wizard::WizardGoal {
+        items: vec![("Desc_IronPlate_C".into(), 25.0)],
+        constraints: Default::default(),
+        milestone: None,
+        pinned_recipes: Default::default(),
+    };
+    let outcome = app::wizard::global_solve(
+        &s.state,
+        &s.gamedata,
+        &s.world,
+        &goal,
+        &s.unlocked,
+        String::new(),
+        String::new(),
+        |_, _| {},
+        &std::sync::atomic::AtomicBool::new(false),
+    );
+    let app::wizard::WizardOutcome::Proposal { proposal } = outcome else {
+        panic!("expected a proposal");
+    };
+    let create = proposal
+        .items
+        .iter()
+        .find(|i| matches!(i.kind, planner_core::proposals::ProposalItemKind::Create))
+        .expect("CREATE item");
+
+    // Recompute the expected scaled draw from the CREATE's own AddGroup
+    // commands (2×@62.5% plate + 2×@62.5% smelter, 4 MW nameplate each).
+    let mut scaled = 0.0f64;
+    let mut nameplate = 0.0f64;
+    for c in &create.commands {
+        if let Command::AddGroup {
+            machine,
+            count,
+            clock,
+            ..
+        } = c
+        {
+            let mw = s.gamedata.machines[machine].power_mw;
+            nameplate += mw * *count as f64;
+            scaled += mw * *count as f64 * clock.powf(solver::model::POWER_EXPONENT);
+        }
+    }
+    assert!(
+        (8.0..10.0).contains(&scaled) && nameplate > 15.0,
+        "fixture sanity: scaled {scaled:.2} vs nameplate {nameplate:.0}"
+    );
+    let impact_mw: f64 = create
+        .impact
+        .trim_start_matches('+')
+        .trim_end_matches(" MW")
+        .parse()
+        .expect("impact parses");
+    assert!(
+        (impact_mw - scaled.round()).abs() < 1e-9,
+        "impact {} is the clock-scaled draw (≈{scaled:.2}), not nameplate {nameplate:.0}",
+        create.impact
+    );
+    assert!(
+        (impact_mw - nameplate).abs() > 1.0,
+        "impact must not read the unscaled nameplate total"
+    );
+}
