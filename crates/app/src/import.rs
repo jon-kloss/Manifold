@@ -1164,8 +1164,9 @@ fn conflict_item(label: String, op: SyncOp, mine: String, theirs: String) -> Pro
 /// `planned_delta` doesn't participate), then:
 ///
 ///   - refreshes each Built boundary port's rate to the new net flow,
-///   - removes Built ports whose flow dried up (cascading their belts and
-///     any bound inter-factory route),
+///   - removes Built ports whose flow dried up (cascading their belts) —
+///     except a port anchoring a user-drawn inter-factory route, which is
+///     kept at rate 0 so the route survives and its deadness is visible,
 ///   - creates ports + belts for items that newly cross the boundary,
 ///   - ensures every Built producer→consumer pair is belted (wires groups
 ///     added in game), and
@@ -1291,7 +1292,24 @@ fn resync_built_wiring(
                 .collect();
             if !flows {
                 for pid in built {
-                    planner_core::commands::remove_port_cascading(state, tx, &pid);
+                    // A bound route is user-drawn wiring (only AddRoute ever
+                    // binds one): cascading it away with the dried-up port
+                    // would silently destroy planned intent. Keep the port as
+                    // the route's anchor at rate 0 — the dead route surfaces
+                    // honestly in audits — and cascade only routeless ports.
+                    let routed = state
+                        .ports
+                        .get(&pid)
+                        .is_some_and(|p| p.bound_route.is_some());
+                    if routed {
+                        let mut p = state.ports[&pid].clone();
+                        if p.rate.abs() > 1e-9 {
+                            p.rate = 0.0;
+                            tx.record(state.upsert(Entity::Port(p)));
+                        }
+                    } else {
+                        planner_core::commands::remove_port_cascading(state, tx, &pid);
+                    }
                 }
                 continue;
             }

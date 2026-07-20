@@ -1635,3 +1635,231 @@ fn added_group_sync_auto_wires_into_the_factory() {
         ingot_out.rate
     );
 }
+
+/// Review fix (PR #56): a dried-up ◆ Built boundary port anchoring a
+/// user-drawn inter-factory route is SPARED by the resync — kept at rate 0 so
+/// the route survives — instead of cascading the planned route away with it.
+#[test]
+fn dried_up_port_with_user_route_keeps_the_route() {
+    use planner_core::commands::Command;
+    use planner_core::entities::{GraphPos, MapPos, RouteKind};
+
+    let mut s = Session::in_memory(None).unwrap();
+    // 2 smelters, no consumer → Built factory exporting 60 ingot/min.
+    s.import_save(snapshot(vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+    ]))
+    .unwrap();
+    let out_port = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_IronIngot_C" && p.direction == PortDirection::Out)
+        .expect("ingot export")
+        .id
+        .clone();
+
+    // The user plans a downstream factory and draws a belt route from the
+    // Built export to it.
+    s.edit(vec![Command::CreateFactory {
+        name: "DOWNSTREAM".into(),
+        position: MapPos {
+            x: 2000.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        region: String::new(),
+    }])
+    .unwrap();
+    let downstream = s
+        .state
+        .factories
+        .values()
+        .find(|f| f.name == "DOWNSTREAM")
+        .unwrap()
+        .id
+        .clone();
+    s.edit(vec![Command::AddPort {
+        factory: downstream,
+        direction: PortDirection::In,
+        item: "Desc_IronIngot_C".into(),
+        rate: 60.0,
+        rate_ceiling: None,
+        graph_pos: GraphPos { x: 0.0, y: 100.0 },
+    }])
+    .unwrap();
+    let in_port = s
+        .state
+        .ports
+        .values()
+        .find(|p| {
+            p.direction == PortDirection::In
+                && p.item == "Desc_IronIngot_C"
+                && p.status == Status::Planned
+        })
+        .unwrap()
+        .id
+        .clone();
+    s.edit(vec![Command::AddRoute {
+        kind: RouteKind::Belt { tier: 3 },
+        from: out_port.clone(),
+        to: in_port,
+        path: vec![],
+    }])
+    .unwrap();
+    let route = s.state.ports[&out_port]
+        .bound_route
+        .clone()
+        .expect("route bound");
+
+    // In game the player adds 4 constructors that eat the whole 60/min → the
+    // ingot export dries up on drift accept.
+    let ImportOutcome::Drift { proposal, .. } = s
+        .import_save(snapshot(vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 100.0, 0.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 150.0, 0.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 100.0, 50.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 150.0, 50.0),
+        ]))
+        .unwrap()
+    else {
+        panic!("expected drift");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    // The routed port survives at rate 0; the user's route is untouched.
+    let p = s.state.ports.get(&out_port).expect("routed port spared");
+    assert!(
+        p.rate.abs() < 1e-9,
+        "spared port reads 0/min, got {}",
+        p.rate
+    );
+    assert_eq!(p.bound_route.as_ref(), Some(&route));
+    assert!(
+        s.state.routes.contains_key(&route),
+        "user-drawn route survives the drift accept"
+    );
+}
+
+/// Review fix (PR #56): the planned-port coexistence guard — resync must NOT
+/// create a Built boundary port for an item the user already models with a
+/// planned port of the same direction.
+#[test]
+fn resync_skips_port_creation_when_user_planned_port_exists() {
+    use planner_core::commands::Command;
+    use planner_core::entities::GraphPos;
+
+    let mut s = Session::in_memory(None).unwrap();
+    s.import_save(snapshot(vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+    ]))
+    .unwrap();
+    let fid = s.state.factories.keys().next().unwrap().clone();
+
+    // The user already plans a rod export on the Built factory.
+    s.edit(vec![Command::AddPort {
+        factory: fid.clone(),
+        direction: PortDirection::Out,
+        item: "Desc_IronRod_C".into(),
+        rate: 15.0,
+        rate_ceiling: None,
+        graph_pos: GraphPos { x: 900.0, y: 100.0 },
+    }])
+    .unwrap();
+
+    // The game adds a rod constructor → drift accept nets rods out.
+    let ImportOutcome::Drift { proposal, .. } = s
+        .import_save(snapshot(vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 100.0, 0.0),
+        ]))
+        .unwrap()
+    else {
+        panic!("expected drift");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    // Exactly ONE rod Out port — the user's planned one; no Built double.
+    let rod_ports: Vec<_> = s
+        .state
+        .ports
+        .values()
+        .filter(|p| {
+            p.factory == fid && p.item == "Desc_IronRod_C" && p.direction == PortDirection::Out
+        })
+        .collect();
+    assert_eq!(
+        rod_ports.len(),
+        1,
+        "no Built double for a user-planned boundary"
+    );
+    assert_eq!(rod_ports[0].status, Status::Planned);
+}
+
+/// Review fix (PR #56): raise_built_tier never LOWERS — after a count-down
+/// drift the export belt keeps the higher tier the player may have overbuilt,
+/// while the port rate honestly shrinks.
+#[test]
+fn count_down_sync_shrinks_rate_but_never_lowers_tier() {
+    let mut s = Session::in_memory(None).unwrap();
+    let smelters = |n: usize| -> Vec<ImportMachine> {
+        (0..n)
+            .map(|i| {
+                m(
+                    "Build_SmelterMk1_C",
+                    "Recipe_IngotIron_C",
+                    50.0 * i as f64,
+                    0.0,
+                )
+            })
+            .collect()
+    };
+    // 6 smelters → 180/min export over a MK.3 belt.
+    s.import_save(snapshot(smelters(6))).unwrap();
+    let out_port = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_IronIngot_C" && p.direction == PortDirection::Out)
+        .expect("ingot export")
+        .id
+        .clone();
+    let belt_before = s
+        .state
+        .edges
+        .values()
+        .find(|e| e.to == EdgeEnd::Port(out_port.clone()))
+        .expect("export belt")
+        .tier;
+    assert!(belt_before >= 3);
+
+    // The player tears down half the bank → 3 smelters.
+    let ImportOutcome::Drift { proposal, .. } = s.import_save(snapshot(smelters(3))).unwrap()
+    else {
+        panic!("expected drift");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    let p = &s.state.ports[&out_port];
+    assert!(
+        (p.rate - 90.0).abs() < 1e-6,
+        "export rate shrinks to 90/min, got {}",
+        p.rate
+    );
+    let belt_after = s
+        .state
+        .edges
+        .values()
+        .find(|e| e.to == EdgeEnd::Port(out_port.clone()))
+        .expect("export belt survives")
+        .tier;
+    assert_eq!(
+        belt_after, belt_before,
+        "tier is never lowered — the player may have overbuilt"
+    );
+}

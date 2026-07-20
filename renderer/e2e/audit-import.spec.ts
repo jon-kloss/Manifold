@@ -125,6 +125,7 @@ test("demolished-group drift accept cascades — no orphaned edges/ports/output"
       (p) => p.factory === fid && p.direction === "out" && p.item === "Desc_IronRod_C",
     );
     expect(rodPortBefore).toHaveLength(1);
+    const rodPortId = rodPortBefore[0].id;
 
     // An internal edge runs smelter group → constructor group (ingot feed).
     const smelterToConstructor = vals(h.plan.edges).filter(
@@ -169,14 +170,11 @@ test("demolished-group drift accept cascades — no orphaned edges/ports/output"
     );
     expect(rodPortsAfter).toEqual([]);
 
-    // (4) the derived factory output does not list Desc_IronRod_C — no derived
-    // OUT port keyed for a surviving rod port.
+    // (4) the derived factory reports nothing for the REMOVED rod port —
+    // keyed by the id captured before accept, so this can't go vacuous by
+    // re-reading the (now empty) port list.
     const df = h.derived.factories[fid];
-    const rodOutPortIds = vals(h.plan.ports)
-      .filter((p) => p.factory === fid && p.direction === "out" && p.item === "Desc_IronRod_C")
-      .map((p) => p.id);
-    const derivedRodOutputs = rodOutPortIds.filter((pid) => df.ports[pid] !== undefined);
-    expect(derivedRodOutputs).toEqual([]);
+    expect(df.ports[rodPortId]).toBeUndefined();
 
     // (5) the surviving ingot export absorbs the freed feed: 45 → 60/min.
     const ingotOut = vals(h.plan.ports).filter(
