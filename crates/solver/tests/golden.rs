@@ -1502,3 +1502,41 @@ fn t1_split_recovers_a_previously_idled_sibling() {
         "recovered even share c2",
     );
 }
+
+#[test]
+fn t1_throttled_sibling_does_not_disable_fairness() {
+    // Review finding on the first fairness cut (single per-class max-min u):
+    // one belt-throttled sibling pinned the class floor and the two healthy
+    // branches above it were degenerate again — concentration recurred among
+    // them. The concave water-filling reward equalizes the REMAINING pair
+    // after the capped branch saturates.
+    let mut snap = parallel_concrete_snapshot(&[1, 1, 1]);
+    for e in &mut snap.edges {
+        if e.id == "e-s1" {
+            e.capacity = 9.0; // stone feed cap → ≤3/min concrete on c1
+        }
+    }
+    let r = solver::t1::solve(
+        &snap,
+        &T0Edit::SetTarget {
+            port: "out-concrete".into(),
+            rate: 33.0,
+        },
+    )
+    .unwrap();
+    assert_close(
+        r.groups["c1"].out_rates["concrete"],
+        3.0,
+        "capped branch saturates",
+    );
+    assert_close(
+        r.groups["c2"].out_rates["concrete"],
+        15.0,
+        "healthy pair splits evenly (c2)",
+    );
+    assert_close(
+        r.groups["c3"].out_rates["concrete"],
+        15.0,
+        "healthy pair splits evenly (c3)",
+    );
+}
