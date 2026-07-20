@@ -51,17 +51,21 @@ export default function SearchBox({ onJump }: { onJump: (pos: { x: number; y: nu
     }
     for (const n of world.nodes) {
       const item = itemLabel(gamedata.items, n.item);
-      if (item.toLowerCase().includes(q) || n.id.includes(q))
+      if (item.toLowerCase().includes(q) || n.id.includes(q)) {
+        // Jump to the node's RESOLVED position — a corrected (override)
+        // location, not the stale catalog coordinates.
+        const ov = plan.nodeOverrides[n.id]?.pos;
         out.push({
           key: `n-${n.id}`,
           label: `${item.toUpperCase()} · ${n.purity.toUpperCase()}`,
           sub: "NODE",
-          pos: { x: n.x, y: n.y },
+          pos: ov ? { x: ov.x, y: ov.y } : { x: n.x, y: n.y },
           select: () => setSelection({ kind: "node", id: n.id }),
         });
+      }
     }
     return out.slice(0, 8);
-  }, [query, plan.factories, world.nodes, gamedata.items, setSelection]);
+  }, [query, plan.factories, plan.nodeOverrides, world.nodes, gamedata.items, setSelection]);
 
   // Clearing the box lifts the map filter — never leave the resource field
   // narrowed after the search is gone (also on unmount, e.g. opening a factory).

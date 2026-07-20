@@ -228,6 +228,9 @@ export default function MapView() {
       const node = nodeById[c.node];
       const f = plan.factories[c.factory];
       if (!node || !f) continue;
+      // A search-hidden node draws no marker — its tether would point at
+      // empty ground, so it hides with it.
+      if (nodeFilter?.active && !nodeFilter.visible.has(c.node)) continue;
       links.push({
         node,
         factory: f.position,
@@ -241,7 +244,7 @@ export default function MapView() {
       });
     }
     return links;
-  }, [plan.nodeClaims, plan.factories, resolvedNodes, derived.nodes, selection, hoveredNode]);
+  }, [plan.nodeClaims, plan.factories, resolvedNodes, derived.nodes, selection, hoveredNode, nodeFilter]);
 
   // Refactor tethers (W2a): old ◆ → new ◇ links from every `replaces`. Highlight
   // when either endpoint is the selected factory ("orange is a verb").
@@ -1003,7 +1006,12 @@ export default function MapView() {
   }, [placing, overlays, plan.factories, selection, setOverlay, setPlacing, setSelection, setView, setWizard]);
 
   const panTo = useCallback((pos: { x: number; y: number }) => {
-    mapRef.current?.panTo(toLatLng(pos));
+    const map = mapRef.current;
+    if (!map) return;
+    // At the boot zoom the whole world fits the viewport and a plain panTo is
+    // a no-op (the center is pinned by maxBounds) — a search jump must also
+    // come DOWN to a zoom where centering on the target is possible.
+    map.flyTo(toLatLng(pos), Math.max(map.getZoom(), 4));
   }, []);
 
   // PR 9 flyTo: consume-and-clear, mirroring the auditRequest idiom. Runs on

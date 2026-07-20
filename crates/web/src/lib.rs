@@ -107,8 +107,19 @@ impl WebSession {
         } else {
             "fixture"
         };
+        let uploaded = docs_json.is_some();
         let inner = Session::with_store(Box::new(store), docs_json, build)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        // A wrong-but-valid JSON upload (an empty array, a different game's
+        // export) parses "successfully" into an empty catalog and strands the
+        // whole plan behind unresolvable recipes. Reject it before it replaces
+        // anything — the caller keeps the old session on error.
+        if uploaded && (inner.gamedata.recipes.is_empty() || inner.gamedata.items.is_empty()) {
+            return Err(JsValue::from_str(
+                "That file parsed as JSON but contains no recipes or items — it doesn't look \
+                 like a Satisfactory Docs.json. The previous catalog was kept.",
+            ));
+        }
         Ok(WebSession {
             inner,
             jobs: BTreeMap::new(),

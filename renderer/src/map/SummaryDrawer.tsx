@@ -94,7 +94,7 @@ export default function SummaryDrawer({ factory }: { factory: Factory }) {
             type="number"
             className="mono"
             style={{ width: 72, height: 24, textAlign: "right" }}
-            key={factory.id}
+            key={`${factory.id}:${Math.round(factory.position.z ?? 0)}`}
             defaultValue={Math.round(factory.position.z ?? 0)}
             disabled={factory.status !== "planned"}
             data-testid="factory-elevation"
