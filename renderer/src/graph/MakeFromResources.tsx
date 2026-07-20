@@ -137,13 +137,53 @@ export default function MakeFromResources({
     return h;
   }, [inPorts, derived.factories, factoryId]);
 
-  // Full raw demand of the target (from the fresh plan — the true extraction
-  // this build adds regardless of reuse).
+  // ADDED extraction demand of this build — what the capacity guard checks.
+  // Fresh build: every raw feed of the fresh chain. With reuse ON, the fresh
+  // total over-blocks: a reused line's feed comes from machines that ALREADY
+  // draw their raws (counted in headroom), and redirecting its world exports
+  // adds zero new extraction. So under reuse, count (a) the new groups' real
+  // raw draw, plus (b) for each reused feed, only the remainder its
+  // redirectable exports can't cover — expanded to raws via a sub-chain,
+  // since scaling the reused line up pulls that much more from its inputs.
   const rawDemand = useMemo(() => {
     const d = new Map<string, number>();
-    if (freshCp) for (const b of freshCp.belts) if (b.fromRaw) d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
+    const cp = reuseItems.size ? buildCp : freshCp;
+    if (!cp) return d;
+    for (const b of cp.belts) {
+      if (!b.fromRaw || reuseItems.has(b.fromItem)) continue;
+      d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
+    }
+    for (const item of reuseItems) {
+      const prod = existingProducers.get(item);
+      if (!prod) continue;
+      const newDemand = cp.belts
+        .filter((b) => b.fromRaw && b.fromItem === item)
+        .reduce((s, b) => s + b.rate, 0);
+      if (newDemand <= 1e-6) continue;
+      // Mirrors the build path's redirect: world exports THIS group feeds are
+      // trimmable into the new chain without any new extraction.
+      const fedByGroup = (pid: Id) =>
+        Object.values(plan.edges).some(
+          (e) => e.from.kind === "group" && e.from.id === prod.id && e.to.kind === "port" && e.to.id === pid,
+        );
+      const redirectable = Object.values(plan.ports)
+        .filter(
+          (p) =>
+            p.factory === factoryId &&
+            p.direction === "out" &&
+            p.item === item &&
+            p.boundRoute === null &&
+            p.rate > 0 &&
+            fedByGroup(p.id),
+        )
+        .reduce((s, p) => s + p.rate, 0);
+      const extra = newDemand - redirectable;
+      if (extra <= 1e-6) continue;
+      const sub = planChain(gamedata, unlocked, available, item, extra);
+      if (sub) for (const b of sub.belts) if (b.fromRaw) d.set(b.fromItem, (d.get(b.fromItem) ?? 0) + b.rate);
+    }
     return d;
-  }, [freshCp]);
+  }, [freshCp, buildCp, reuseItems, existingProducers, plan.edges, plan.ports, factoryId, gamedata, unlocked, available]);
 
   const shortfalls = useMemo(() => {
     const out: { item: string; need: number; have: number }[] = [];
@@ -161,18 +201,30 @@ export default function MakeFromResources({
     return Math.floor(rate * ratio);
   }, [shortfalls, rawDemand, headroom, rate]);
 
-  // Free-up: existing groups in THIS factory that consume a short raw. Removing
-  // them returns that extraction to the pool so this build can use it.
+  // Free-up: existing groups in THIS factory that consume a short raw.
+  // Smallest draw first, and only as many as the gap needs — deleting every
+  // consumer would over-free far beyond the shortfall.
   const freeable = useMemo(() => {
-    const shortItems = new Set(shortfalls.map((s) => s.item));
-    if (!shortItems.size) return [] as { id: Id; makes: string }[];
-    const out: { id: Id; makes: string }[] = [];
-    for (const g of factoryGroups) {
-      const r = gamedata.recipes[g.recipe];
-      if (r && r.ingredients.some(([ing]) => shortItems.has(ing)))
-        out.push({ id: g.id, makes: name(r.products[0]?.[0] ?? g.recipe) });
+    if (!shortfalls.length) return [] as { id: Id; makes: string }[];
+    const out = new Map<Id, string>();
+    for (const s of shortfalls) {
+      let remaining = s.need - s.have;
+      const consumers = factoryGroups
+        .flatMap((g) => {
+          const r = gamedata.recipes[g.recipe];
+          const ing = r?.ingredients.find(([i]) => i === s.item);
+          if (!r || !ing || r.durationS <= 0) return [];
+          const draw = ((ing[1] * 60) / r.durationS) * effCount(g) * effClock(g);
+          return draw > 1e-6 ? [{ g, r, draw }] : [];
+        })
+        .sort((a, b) => a.draw - b.draw);
+      for (const c of consumers) {
+        if (remaining <= 1e-6) break;
+        if (!out.has(c.g.id)) out.set(c.g.id, name(c.r.products[0]?.[0] ?? c.g.recipe));
+        remaining -= c.draw;
+      }
     }
-    return out;
+    return [...out].map(([id, makes]) => ({ id, makes }));
   }, [shortfalls, factoryGroups, gamedata]);
 
   const blocked = shortfalls.length > 0;
