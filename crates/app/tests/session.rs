@@ -1433,6 +1433,7 @@ fn imported_generator_counts_nameplate_without_fuel() {
     assert_eq!(gens.status, Status::Built, "imported as ◆ built");
     assert_eq!(gens.recipe, "", "no recipe was read from the save");
     assert_eq!(gens.count, 4, "4 generators clustered into one group");
+    let (gen_factory, gen_id) = (gens.factory.clone(), gens.id.clone());
     // The empire power balance (the summary's source) must reflect nameplate
     // generation — 4 × 75 MW = 300 MW — not the solver's fuel-starved 0.
     let d = s.solve_all_readonly();
@@ -1441,6 +1442,27 @@ fn imported_generator_counts_nameplate_without_fuel() {
         "empire generation honest without a fuel recipe: {}",
         d.total_generation_mw
     );
+    // ...and the PER-GROUP derived output must carry that same nameplate as its
+    // POWER_ITEM out-rate, so the factory-graph generator card agrees with the
+    // empire instead of reading a false 0 MW. The material solve skips
+    // recipe-less generators; the derive re-injects their nameplate here.
+    let dg = d
+        .factories
+        .get(&gen_factory)
+        .and_then(|df| df.groups.get(&gen_id))
+        .expect("recipe-less generator gets a derived group with its nameplate");
+    assert!(
+        (dg.out_rates
+            .get(gamedata::docs::POWER_ITEM)
+            .copied()
+            .unwrap_or(0.0)
+            - 300.0)
+            .abs()
+            < 1e-4,
+        "generator card reads nameplate MW, not 0: {:?}",
+        dg.out_rates
+    );
+    assert_eq!(dg.power_mw, 0.0, "a generator draws no power");
 }
 
 #[test]

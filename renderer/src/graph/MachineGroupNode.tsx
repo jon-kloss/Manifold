@@ -98,7 +98,24 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
   // Generators produce the POWER pseudo-item and consume fuel — they don't read
   // like a production machine. isGen re-skins the card to say what it does:
   // GENERATES <MW> and burns <fuel>/min, dropping the always-0 "draw" footer.
-  const isGen = (recipe?.products ?? []).some((pr) => pr[0] === POWER_ITEM);
+  // Detect by MACHINE KIND, not just the recipe: an imported ◆ built generator
+  // carries an empty recipe (no burn recipe assigned), so a recipe-only test
+  // would render it as a dead 0/min production machine. The derive credits such
+  // generators their nameplate as a POWER_ITEM out-rate (session.rs), which the
+  // GENERATES line reads below.
+  const isGen =
+    gamedata.machines[group.machine]?.kind === "generator" ||
+    (recipe?.products ?? []).some((pr) => pr[0] === POWER_ITEM);
+  // A material output-target PROJECTION (t0 preview) never changes a
+  // generator's power, but its buildSnapshot drops recipe-less generators (as
+  // the Rust snapshot does), so the projected group has no POWER_ITEM out-rate
+  // and the card would flip to a false 0 MW mid-drag. Fall back to the stable
+  // derived nameplate (session.rs inject_generator_nameplates) when the
+  // projection lacks it. `?? ` keeps 0 present, so a FUELED generator projecting
+  // to an honest fuel-limited 0 stays 0 — only the missing (undefined) case
+  // falls back.
+  const genMw =
+    dg?.outRates[POWER_ITEM] ?? derived.factories[group.factory]?.groups[group.id]?.outRates[POWER_ITEM] ?? 0;
   const fuelItem = recipe?.ingredients?.[0]?.[0] ?? null;
   const fuelRate = fuelItem ? dg?.inRates[fuelItem] ?? 0 : 0;
   const fuelName = fuelItem ? itemLabel(gamedata.items, fuelItem) : "";
@@ -137,8 +154,11 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
         </span>
       </header>
       {isGen ? (
-        // Generator: "⚡ GENERATES <MW>" + the fuel it burns. MW is the solved,
-        // fuel-limited generation (0 when unfueled — never a false promise).
+        // Generator: "⚡ GENERATES <MW>" + the fuel it burns. MW is the POWER_ITEM
+        // out-rate: a planned/wired generator reads its solved, fuel-limited
+        // output (0 when unfueled — never a false promise); an imported ◆ built
+        // generator reads its nameplate (it is running in-game and the empire
+        // total already counts it), so the card and the empire agree.
         <div
           className="group-card-recipe gen-recipe"
           title="Generation assumes a steady fuel supply. In-game a biomass burner is often hand-fed, so real output can be bursty."
@@ -148,7 +168,7 @@ export default function MachineGroupNode({ data, selected }: { data: GroupNodeDa
           </span>
           <span>GENERATES</span>
           <span className={`t-data-12 gen-mw ${numCls}`} style={{ marginLeft: "auto", ...settleAt(2) }}>
-            {fmtPower(outRate)}
+            {fmtPower(genMw)}
           </span>
         </div>
       ) : (
