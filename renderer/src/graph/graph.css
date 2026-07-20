@@ -858,6 +858,12 @@
   border-radius: 0;
   background: var(--steel-800);
 }
+/* The results list scrolls within the menu — without a bounded height the full
+   catalog would grow past the menu and get clipped by its overflow:hidden. */
+.addgroup-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
 .addgroup-item {
   display: flex;
   align-items: center;
@@ -1023,6 +1029,10 @@
   gap: 8px;
   padding: 14px;
   overflow-y: auto;
+  /* A flex child defaults to min-height:auto and refuses to shrink below its
+     content, so overflow-y:auto never engages — the makeable-item grid gets
+     clipped by the modal instead of scrolling. min-height:0 lets it scroll. */
+  min-height: 0;
 }
 .mfr-item {
   display: flex;

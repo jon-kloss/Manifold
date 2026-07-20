@@ -42,8 +42,10 @@ export default function AddGroupMenu({
     return Object.values(gamedata.recipes)
       .filter((r) => !r.alternate && r.producedIn.some((m) => placeable.has(m)))
       .filter((r) => !q || r.displayName.toLowerCase().includes(q))
-      .sort((a, b) => rank(a.displayName) - rank(b.displayName) || a.displayName.length - b.displayName.length)
-      .slice(0, 10);
+      .sort((a, b) => rank(a.displayName) - rank(b.displayName) || a.displayName.length - b.displayName.length);
+    // No cap: the whole recipe catalog is offered so you can SCROLL the
+    // bounded list to find a machine you can't name. (A .slice left the list
+    // too short to overflow, so .addgroup-list never scrolled.)
   }, [gamedata, query]);
 
   const add = (recipeClass: string) => {

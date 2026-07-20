@@ -23,9 +23,10 @@ export default function AddPortMenu({
 
   const items = useMemo(() => {
     const q = query.toLowerCase();
-    return Object.values(gamedata.items)
-      .filter((i) => !q || i.displayName.toLowerCase().includes(q))
-      .slice(0, 10);
+    // No cap: offer the whole item catalog so the bounded .addgroup-list can be
+    // scrolled to find an item you can't name (a .slice left it too short to
+    // ever overflow).
+    return Object.values(gamedata.items).filter((i) => !q || i.displayName.toLowerCase().includes(q));
   }, [gamedata.items, query]);
 
   const add = (item: string) => {
