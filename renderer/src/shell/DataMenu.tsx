@@ -13,14 +13,16 @@ import { useStore } from "../state/store";
 import Glyph from "../lib/glyphs";
 import ImportModal from "../import/ImportModal";
 import {
-  fsAccessSupported,
+  syncAutoCapable,
+  retainsSource,
+  needsClassicPicker,
   pickSaveForSync,
-  readStoredHandleSilently,
+  readStoredSilently,
   getSyncMeta,
-  setSyncMeta,
+  recordSyncMeta,
   relTime,
   type SyncMeta,
-} from "../import/saveHandle";
+} from "../import/syncSource";
 import "./shell.css";
 
 export default function DataMenu() {
@@ -100,14 +102,21 @@ export default function DataMenu() {
   const [syncing, setSyncing] = useState(false);
   useEffect(() => {
     // A missing/blocked handle store just means no "last synced" affordance —
-    // never a dead end.
-    if (__WASM_BACKEND__) void getSyncMeta().then(setSyncMetaState).catch(() => {});
+    // never a dead end. Runs on both builds now (desktop reads the meta KV).
+    void getSyncMeta().then(setSyncMetaState).catch(() => {});
   }, []);
-  const syncReady = catalogLoaded && (hasImportedSave || !!syncMeta);
+  // The catalog gate is WEB-only: web enforces "upload Docs.json first" (a
+  // fixture catalog quarantines recipes → junk diffs), and there IS an upload
+  // remedy. Desktop's catalog is host-provided (FICSIT_DOCS_JSON) with no
+  // in-app upload, and import itself isn't catalog-gated there — so sync isn't
+  // either.
+  const catalogReady = !__WASM_BACKEND__ || catalogLoaded;
+  const syncReady = catalogReady && (hasImportedSave || !!syncMeta);
   const onSync = useCallback(async () => {
     if (!syncReady || syncing) return; // defensive; the button is disabled too
-    if (!fsAccessSupported()) {
-      // No File System Access here — reuse the classic picker + ImportModal.
+    if (needsClassicPicker()) {
+      // No File System Access (non-Chrome/Edge web) — reuse the classic picker
+      // + ImportModal. Desktop always retains a native path, so it never lands here.
       fileRef.current?.click();
       return;
     }
@@ -116,11 +125,7 @@ export default function DataMenu() {
       const file = await pickSaveForSync();
       if (!file) return; // user cancelled the picker / denied permission
       const outcome = await syncImport(file);
-      if (outcome) {
-        const meta = { name: file.name, lastSyncedAt: Date.now() };
-        await setSyncMeta(meta);
-        setSyncMetaState(meta);
-      }
+      if (outcome) setSyncMetaState(await recordSyncMeta(file.name));
     } catch (e) {
       // IDB/permission-layer failure (syncImport itself never rejects) — toast
       // instead of leaking an unhandled rejection.
@@ -135,12 +140,10 @@ export default function DataMenu() {
   // is Chrome/Edge-only). Option B (in store.autoPull): conflict-free drift
   // applies silently; real conflicts open review. Mounted at titlebar level,
   // the timer now keeps running inside factory views too.
-  const autoSyncReady = syncReady && fsAccessSupported();
+  const autoSyncReady = syncReady && syncAutoCapable();
   const autoPullBusy = useRef(false);
   const recordSync = useCallback(async (name: string) => {
-    const meta = { name, lastSyncedAt: Date.now() };
-    await setSyncMeta(meta);
-    setSyncMetaState(meta);
+    setSyncMetaState(await recordSyncMeta(name));
   }, []);
   const onToggleAutoSync = useCallback(async () => {
     if (!autoSyncReady) return; // defensive; the row is aria-disabled too
@@ -151,14 +154,16 @@ export default function DataMenu() {
     if (syncing) return; // a pick/sync is already in flight — no double picker
     setSyncing(true);
     try {
-      // Establish a granted handle up front (this click is the user gesture the
+      // Establish the source up front (this click is the user gesture the
       // silent timer can't provide later); bail if the user cancels the pick.
-      let file = await readStoredHandleSilently();
+      let file = await readStoredSilently();
       if (!file) file = await pickSaveForSync();
       if (!file) return;
       setAutoSync(true);
       pushToast(
-        `Auto-sync on — every ${autoSync.intervalMin} min while this tab is open (Chrome/Edge)`,
+        __WASM_BACKEND__
+          ? `Auto-sync on — every ${autoSync.intervalMin} min while this tab is open (Chrome/Edge)`
+          : `Auto-sync on — re-reads your save every ${autoSync.intervalMin} min while the app is open`,
         "info",
       );
       const outcome = await autoPull(file); // one immediate pull so it visibly works
@@ -170,7 +175,7 @@ export default function DataMenu() {
     }
   }, [autoSyncReady, autoSync, setAutoSync, pushToast, autoPull, recordSync, syncing]);
   useEffect(() => {
-    if (!__WASM_BACKEND__ || !autoSync.enabled || !autoSyncReady) return;
+    if (!autoSync.enabled || !autoSyncReady) return;
     let cancelled = false;
     const tick = async () => {
       // Skip a tick that would collide: another pull running, or an open review
@@ -178,8 +183,8 @@ export default function DataMenu() {
       if (cancelled || autoPullBusy.current || useStore.getState().reviewing) return;
       autoPullBusy.current = true;
       try {
-        const file = await readStoredHandleSilently();
-        if (!file) return; // permission lapsed / no handle — skip quietly
+        const file = await readStoredSilently();
+        if (!file) return; // permission lapsed / no handle / path gone — skip quietly
         const outcome = await autoPull(file);
         if (outcome && !cancelled) await recordSync(file.name);
       } catch {
@@ -268,11 +273,12 @@ export default function DataMenu() {
                   : ".sav — your factories as a Built layer"}
               </span>
             </button>
-            {__WASM_BACKEND__ && (
-              // One "Sync from save" control with an Auto toggle. aria-disabled
-              // (not the native attribute) keeps the how-to-enable tooltip on
-              // hover — browsers suppress title on a natively-disabled button.
-              // Turning Auto on disables the manual click (the timer owns it).
+            {(
+              // One "Sync from save" control with an Auto toggle, on BOTH builds
+              // (desktop re-reads a native path; web a retained handle).
+              // aria-disabled (not the native attribute) keeps the how-to-enable
+              // tooltip on hover — browsers suppress title on a natively-disabled
+              // button. Turning Auto on disables the manual click (the timer owns it).
               <div className="data-menu-block sync-block">
                 <div className="sync-row">
                   <button
@@ -284,7 +290,7 @@ export default function DataMenu() {
                     }}
                     aria-disabled={!syncReady || syncing || autoSync.enabled}
                     title={
-                      !catalogLoaded
+                      !catalogReady
                         ? "Upload your Docs.json first (step ① above) to enable save sync"
                         : !syncReady
                           ? "Import your save first — sync re-reads it to reconcile changes"
@@ -298,7 +304,7 @@ export default function DataMenu() {
                       {autoSync.enabled ? "Auto-syncing" : syncing ? "Syncing…" : "Sync from save"}
                     </span>
                     <span className="data-menu-item-sub">
-                      {!catalogLoaded
+                      {!catalogReady
                         ? "needs your Docs.json — upload it above to enable"
                         : !syncReady
                           ? "needs an imported save — import yours above to enable"
@@ -306,7 +312,7 @@ export default function DataMenu() {
                             ? `every ${autoSync.intervalMin} min · applies safe changes, asks on conflicts`
                             : syncMeta
                               ? `re-read ${syncMeta.name} · synced ${relTime(syncMeta.lastSyncedAt)}`
-                              : fsAccessSupported()
+                              : retainsSource()
                                 ? "re-read your save & reconcile — no re-pick next time"
                                 : "re-read your save & reconcile"}
                     </span>
@@ -322,8 +328,10 @@ export default function DataMenu() {
                       autoSyncReady
                         ? autoSync.enabled
                           ? "Auto-sync on — click to turn off"
-                          : "Auto-sync: re-read on a timer (Chrome/Edge, this tab open)"
-                        : !catalogLoaded
+                          : __WASM_BACKEND__
+                            ? "Auto-sync: re-read on a timer (Chrome/Edge, this tab open)"
+                            : "Auto-sync: re-read your save on a timer while the app is open"
+                        : !catalogReady
                           ? "Upload your Docs.json first (step ① above) to enable save sync"
                           : !syncReady
                             ? "Import your save first — sync re-reads it to reconcile changes"

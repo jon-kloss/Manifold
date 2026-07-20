@@ -158,7 +158,10 @@ impl PlanStore for MemoryPlanStore {
     fn reset(&mut self) -> Result<(), PersistError> {
         self.entities.borrow_mut().clear();
         self.journal.borrow_mut().clear();
-        self.meta.borrow_mut().clear();
+        // Keep sync_meta (the remembered save-sync target) — a device setting,
+        // not plan data; new_empire must not forget it. Everything else in the
+        // meta KV store goes.
+        self.meta.borrow_mut().retain(|k, _| k == "sync_meta");
         self.cards.borrow_mut().clear();
         self.mutes.borrow_mut().clear();
         Ok(())
@@ -246,6 +249,15 @@ impl PlanStore for MemoryPlanStore {
 
     fn last_import(&self) -> Option<String> {
         self.get_meta("last_import")
+    }
+
+    fn set_sync_meta(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("sync_meta", json);
+        Ok(())
+    }
+
+    fn sync_meta(&self) -> Option<String> {
+        self.get_meta("sync_meta")
     }
 
     fn set_unlocked(&self, json: &str) -> Result<(), PersistError> {

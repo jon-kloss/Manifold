@@ -69,6 +69,15 @@ pub trait PlanStore {
     fn save_advisor_gate(&self, json: &str) -> Result<(), PersistError>;
     fn advisor_gate(&self) -> Option<String>;
 
+    /// Remembered save-sync target (desktop save-sync): the native path of the
+    /// last-synced save, its name, and lastSyncedAt, as a JSON blob. Like
+    /// view_state it is a device/capability choice, NOT plan data — it must
+    /// SURVIVE `new_empire` (Session re-writes it after `reset`), so wiping the
+    /// plan never forgets the remembered save. The web build keeps its
+    /// equivalent in a separate IndexedDB for the same reason.
+    fn set_sync_meta(&self, json: &str) -> Result<(), PersistError>;
+    fn sync_meta(&self) -> Option<String>;
+
     /// Persist the plan meta blob directly (a preference toggle is not an
     /// undoable command, so it writes the `plan_meta` KV row on its own).
     fn save_meta(&self, meta: &PlanMeta) -> Result<(), PersistError>;

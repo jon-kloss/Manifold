@@ -1535,6 +1535,24 @@ fn water_pump_group_produces_water_from_nothing() {
 }
 
 #[test]
+fn sync_meta_round_trips_and_survives_new_empire() {
+    // Desktop save-sync remembers the picked save (path/name/time). It's a
+    // device choice, not plan data, so it must SURVIVE a new empire — otherwise
+    // wiping the plan silently forgets the auto-sync target.
+    let mut s = Session::in_memory(None).unwrap();
+    assert_eq!(s.sync_meta(), None, "no remembered save initially");
+    s.set_sync_meta(r#"{"path":"/saves/factory.sav","name":"factory.sav","lastSyncedAt":42}"#)
+        .unwrap();
+    assert!(s.sync_meta().unwrap().contains("factory.sav"));
+
+    s.new_empire().unwrap();
+    assert!(
+        s.sync_meta().unwrap().contains("factory.sav"),
+        "the remembered save survives new_empire"
+    );
+}
+
+#[test]
 fn starved_fueled_plant_reports_solved_generation_not_nameplate() {
     // The other side of #58's honesty: a plant whose fuel recipe DOES solve
     // must report the solved (starved) output, not nameplate — the empire

@@ -112,6 +112,47 @@ fn main() -> anyhow::Result<()> {
                     Ok(()) => ok(&serde_json::json!({ "ok": true })),
                     Err(e) => err(500, e),
                 },
+                // ---- desktop save-sync mirror (Tauri IPC isn't scriptable by
+                // Playwright, so the bridge exposes the same ops for e2e) ----
+                (Method::Get, "/api/sync/meta") => {
+                    ok(&serde_json::json!({ "meta": s.sync_meta() }))
+                }
+                (Method::Post, "/api/sync/meta") => match s.set_sync_meta(&body) {
+                    Ok(()) => ok(&serde_json::json!({ "ok": true })),
+                    Err(e) => err(500, e),
+                },
+                // Native picker stand-in: return the fixture path the harness
+                // wired via FICSIT_SYNC_SAVE (no OS dialog headless).
+                (Method::Post, "/api/sync/pick") => match std::env::var("FICSIT_SYNC_SAVE") {
+                    Ok(path) if !path.is_empty() => {
+                        let name = std::path::Path::new(&path)
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        ok(&serde_json::json!({ "path": path, "name": name }))
+                    }
+                    _ => ok(&serde_json::json!({ "path": null })),
+                },
+                // Read raw save bytes at a path → the renderer worker parses them.
+                (Method::Post, "/api/sync/read") => {
+                    let req: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+                    let path = req["path"].as_str().unwrap_or_default();
+                    match std::fs::read(path) {
+                        Ok(bytes) => {
+                            let mut r = Response::from_data(bytes).with_status_code(200);
+                            for (k, v) in [
+                                ("Content-Type", "application/octet-stream"),
+                                ("Access-Control-Allow-Origin", "*"),
+                            ] {
+                                r.add_header(
+                                    Header::from_bytes(k.as_bytes(), v.as_bytes()).unwrap(),
+                                );
+                            }
+                            r
+                        }
+                        Err(e) => err(404, e),
+                    }
+                }
                 // ---- wizard jobs (SDD §5.5): solve off-thread, poll the log ----
                 (Method::Post, "/api/wizard/solve") => {
                     match serde_json::from_str::<WizardGoal>(&body) {

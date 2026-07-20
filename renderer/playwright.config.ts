@@ -1,5 +1,11 @@
 import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
+import path from "node:path";
+
+// Desktop save-sync e2e: the dev-bridge's /api/sync/pick returns this path in
+// place of a native OS picker (unscriptable headless), so the sync flow can be
+// driven end-to-end. Absolute so it resolves regardless of the bridge's cwd.
+const syncSave = path.resolve("../fixtures/saves/Dunarr-076.sav");
 
 // The e2e suite drives the real Rust core through the dev-bridge — the same
 // command surface the Tauri shell uses. A fresh plan file per run.
@@ -42,7 +48,7 @@ export default defineConfig({
       cwd: "..",
       port: 8791,
       reuseExistingServer: false,
-      env: { FICSIT_PLAN: planFile },
+      env: { FICSIT_PLAN: planFile, FICSIT_SYNC_SAVE: syncSave },
       timeout: 180_000,
     },
     {

@@ -10,6 +10,7 @@ use app::session::{EditResponse, ProposalConsequence, Session, SessionError};
 use app::wizard::WizardGoal;
 use planner_core::commands::Command;
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 struct AppState(Mutex<Session>);
 struct Jobs(JobRegistry);
@@ -64,6 +65,43 @@ fn plan_redo(
 #[tauri::command]
 fn set_view_state(state: State<AppState>, json: String) -> Result<(), SessionError> {
     state.0.lock().unwrap().set_view_state(&json)
+}
+
+// --- desktop save-sync: remembered save path + native re-read (web parity) ---
+
+#[tauri::command]
+fn set_sync_meta(state: State<AppState>, json: String) -> Result<(), SessionError> {
+    state.0.lock().unwrap().set_sync_meta(&json)
+}
+
+#[tauri::command]
+fn sync_meta(state: State<AppState>) -> Option<String> {
+    state.0.lock().unwrap().sync_meta()
+}
+
+/// Read the raw bytes of a save at a native path. The renderer's worker parses
+/// them into an ImportSnapshot exactly as for a picked file — we only fetch
+/// bytes, so auto-sync's silent timer re-read needs no OS gesture.
+#[tauri::command]
+fn read_save(path: String) -> Result<tauri::ipc::Response, String> {
+    std::fs::read(&path)
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| format!("read {path}: {e}"))
+}
+
+/// Open the native file picker for a `.sav` and return the chosen absolute path
+/// (None on cancel). MUST be `(async)`: a plain `#[tauri::command]` runs on the
+/// MAIN thread (see next_rank), and `blocking_pick_file` parks the caller on the
+/// dialog result while the dialog itself needs the main event loop — a deadlock.
+/// `(async)` runs it off-thread so the loop stays free to pump the picker.
+#[tauri::command(async)]
+fn pick_save(app: tauri::AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .add_filter("Satisfactory save", &["sav"])
+        .blocking_pick_file()
+        .and_then(|f| f.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -282,6 +320,7 @@ fn route_calc(
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = app.path().app_data_dir().expect("app data dir");
             std::fs::create_dir_all(&dir)?;
@@ -304,6 +343,10 @@ fn main() {
             plan_redo,
             new_empire,
             set_view_state,
+            set_sync_meta,
+            sync_meta,
+            read_save,
+            pick_save,
             wizard_solve,
             wizard_progress,
             wizard_cancel,

@@ -39,6 +39,15 @@ export interface PlanReplacementResult {
   proposal: Id;
 }
 
+/** A remembered save-sync target. On desktop `path` is the native save path we
+ *  re-read silently; on web the path is absent (the browser keeps a retained
+ *  file handle instead). `name`/`lastSyncedAt` drive the "last synced" line. */
+export interface SyncTarget {
+  path?: string;
+  name: string;
+  lastSyncedAt?: number;
+}
+
 export interface Backend {
   hydrate(): Promise<InitPayload>;
   edit(cmds: Command[]): Promise<EditResponse>;
@@ -102,6 +111,15 @@ export interface Backend {
    *  — the desktop shell and dev bridge read the catalog from the host
    *  (FICSIT_DOCS_JSON), so their implementations reject. */
   uploadDocs(bytes: Uint8Array): Promise<void>;
+  /** Desktop save-sync (web parity). The native shell remembers the picked
+   *  save's PATH so the timer can re-read it with no OS gesture; the dev bridge
+   *  mirrors these for e2e. Absent on web (`__WASM_BACKEND__`), which keeps a
+   *  browser File System Access handle instead (see saveHandle.ts) — DataMenu
+   *  branches on the build, so these are never called on web. */
+  syncPick?(): Promise<SyncTarget | null>;
+  syncRead?(path?: string): Promise<Uint8Array | null>;
+  syncMetaGet?(): Promise<SyncTarget | null>;
+  syncMetaSet?(meta: SyncTarget): Promise<void>;
   /** Clear the whole plan + undo journal (KEEPING the gamedata catalog) and
    *  project the empty plan — "start a new empire" for importing an unrelated
    *  save. A `Session::new_empire` op on every transport: SQLite wipe (desktop /
@@ -211,6 +229,30 @@ class TauriBackend implements Backend {
   }
   uploadDocs() {
     return docsUploadUnsupported();
+  }
+  async syncPick() {
+    const path = await this.invoke<string | null>("pick_save");
+    if (!path) return null;
+    return { path, name: path.split(/[\\/]/).pop() || path };
+  }
+  async syncRead(path?: string) {
+    const p = path ?? (await this.syncMetaGet())?.path;
+    if (!p) return null;
+    try {
+      const buf = await this.invoke<ArrayBuffer>("read_save", { path: p });
+      return new Uint8Array(buf);
+    } catch {
+      // File moved/deleted/permission — return null so the caller re-picks or
+      // skips (matches the web handle path + the dev bridge). Never throw here.
+      return null;
+    }
+  }
+  async syncMetaGet() {
+    const json = await this.invoke<string | null>("sync_meta");
+    return json ? (JSON.parse(json) as SyncTarget) : null;
+  }
+  async syncMetaSet(meta: SyncTarget) {
+    await this.invoke("set_sync_meta", { json: JSON.stringify(meta) });
   }
   async newEmpire() {
     await this.invoke("new_empire");
@@ -324,6 +366,27 @@ class BridgeBackend implements Backend {
   }
   uploadDocs() {
     return docsUploadUnsupported();
+  }
+  async syncPick() {
+    const r = await this.call<{ path: string | null; name?: string }>("sync/pick", { method: "POST" });
+    return r.path ? { path: r.path, name: r.name || r.path } : null;
+  }
+  async syncRead(path?: string) {
+    const p = path ?? (await this.syncMetaGet())?.path;
+    if (!p) return null;
+    const res = await fetch("/api/sync/read", {
+      method: "POST",
+      body: JSON.stringify({ path: p }),
+    });
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  async syncMetaGet() {
+    const r = await this.call<{ meta: string | null }>("sync/meta");
+    return r.meta ? (JSON.parse(r.meta) as SyncTarget) : null;
+  }
+  async syncMetaSet(meta: SyncTarget) {
+    await this.call("sync/meta", { method: "POST", body: JSON.stringify(meta) });
   }
   async newEmpire() {
     await this.call("new_empire", { method: "POST" });

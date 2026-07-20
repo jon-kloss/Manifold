@@ -249,8 +249,12 @@ impl PlanStore for SqlitePlanStore {
 
     fn reset(&mut self) -> Result<(), PersistError> {
         let tx = self.conn.unchecked_transaction()?;
-        // Truncate every plan-bearing table + the whole meta KV store in one
-        // transaction, so a reset either lands whole or not at all.
+        // Truncate every plan-bearing table + the meta KV store in one
+        // transaction, so a reset either lands whole or not at all. sync_meta is
+        // KEPT: it's a device setting (the remembered save-sync target), not plan
+        // data — new_empire must not forget it. Preserving it in the same atomic
+        // wipe removes the fragile read-reset-rewrite dance (and its silent
+        // data-loss window) new_empire would otherwise need.
         self.conn.execute_batch(
             "DELETE FROM entities;
              DELETE FROM routes;
@@ -260,7 +264,7 @@ impl PlanStore for SqlitePlanStore {
              DELETE FROM advisor_cards;
              DELETE FROM mutes;
              DELETE FROM style_guides;
-             DELETE FROM meta;",
+             DELETE FROM meta WHERE key <> 'sync_meta';",
         )?;
         tx.commit()?;
         Ok(())
@@ -358,6 +362,15 @@ impl PlanStore for SqlitePlanStore {
 
     fn last_import(&self) -> Option<String> {
         self.get_meta("last_import").ok()
+    }
+
+    fn set_sync_meta(&self, json: &str) -> Result<(), PersistError> {
+        self.set_meta("sync_meta", json)?;
+        Ok(())
+    }
+
+    fn sync_meta(&self) -> Option<String> {
+        self.get_meta("sync_meta").ok()
     }
 
     /// Unlocked recipe set (W2b) — the recipe classes the imported save has
@@ -487,6 +500,7 @@ mod tests {
             file.commit(&entry, &state.meta, log.entries().len())
                 .unwrap();
             file.set_view_state("{\"zoom\":3}").unwrap();
+            file.set_sync_meta("{\"path\":\"/x.sav\"}").unwrap();
             file.reset().unwrap();
         }
         // Reopen from disk: the wipe must be durable — empty state, no journal.
@@ -496,5 +510,11 @@ mod tests {
         assert!(entries.is_empty(), "undo journal truncated on disk");
         assert_eq!(cursor, 0);
         assert!(file2.view_state().is_none(), "meta KV cleared");
+        // ...except the remembered save-sync target (a device setting).
+        assert_eq!(
+            file2.sync_meta().as_deref(),
+            Some("{\"path\":\"/x.sav\"}"),
+            "sync target survives reset"
+        );
     }
 }
