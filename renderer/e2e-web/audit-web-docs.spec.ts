@@ -35,8 +35,9 @@ const DOCS_FIXTURE = fileURLToPath(
 );
 
 // NOTE: no serial mode — the runner uses --workers=1, and per-test isolation
-// (each test seeds + deletes its own factories) means a failure must NOT
-// cascade-skip sibling probes: every probe needs a verdict.
+// comes from Playwright's fresh BrowserContext per test (each context gets its
+// own empty IndexedDB partition; no cleanup dance needed), so a failure must
+// NOT cascade-skip sibling probes: every probe needs a verdict.
 
 /** The in-page store handle store.ts exposes in the web build (__WASM_BACKEND__
  *  guard). Only the members these probes touch are typed. */
