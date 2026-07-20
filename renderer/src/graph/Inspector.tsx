@@ -8,6 +8,7 @@ import { buildSnapshot, ensureT0, t0SetTarget } from "../solver/t0";
 import { footprintFor, footprintArea } from "./footprints";
 import { fmtClock, fmtPower, fmtRate, flowBand, bottleneckEdges, itemLabel } from "../lib/format";
 import {
+  clampEdgeTier,
   effClock,
   effCount,
   isFluidItem,
@@ -157,8 +158,12 @@ export default function Inspector({
   const selectedEdge = selection?.kind === "edge" ? plan.edges[selection.id] : null;
   const selectedPort = selection?.kind === "port" ? plan.ports[selection.id] : null;
   // Tier label for an edge option/row: "PIPE Mk.n" for fluids, "MK.n" for belts.
-  const edgeTierLabel = (item: string, tier: number) =>
-    isFluidItem(gamedata, item) ? `PIPE Mk.${tier}` : `MK.${tier}`;
+  // Clamps a stale belt tier (a legacy fluid edge) into range so the row/select
+  // value matches an offered option — pipes reach Mk.2.
+  const edgeTierLabel = (item: string, tier: number) => {
+    const t = clampEdgeTier(gamedata, item, tier);
+    return isFluidItem(gamedata, item) ? `PIPE Mk.${t}` : `MK.${t}`;
+  };
   // The factory-level OUTPUT TARGET (+ its binding-constraint warning) is the
   // overview control. When a specific belt / group / junction — or a non-output
   // port — is selected, that entity's own sections own the panel; showing the
@@ -540,7 +545,7 @@ export default function Inspector({
                     <select
                       className="mono"
                       style={{ height: 24 }}
-                      value={e.tier}
+                      value={clampEdgeTier(gamedata, e.item, e.tier)}
                       onChange={(ev) => void dispatch([{ type: "set_edge_tier", id: e.id, tier: Number(ev.target.value) }])}
                     >
                       {transportTiers(gamedata, e.item).map((t) => (
@@ -632,7 +637,7 @@ export default function Inspector({
               <select
                 className="mono"
                 style={{ height: 24 }}
-                value={selectedEdge.tier}
+                value={clampEdgeTier(gamedata, selectedEdge.item, selectedEdge.tier)}
                 onChange={(ev) => void dispatch([{ type: "set_edge_tier", id: selectedEdge.id, tier: Number(ev.target.value) }])}
                 data-testid="edge-tier-select"
               >

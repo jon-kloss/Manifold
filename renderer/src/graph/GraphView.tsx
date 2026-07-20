@@ -51,7 +51,7 @@ import {
 import FloorPlates from "./FloorPlates";
 import { fmtRate, fmtPercent, bottleneckEdges, itemLabel } from "../lib/format";
 import GraphSearch from "./GraphSearch";
-import { isFluidItem, transportCapacity } from "../state/types";
+import { clampEdgeTier, isFluidItem, transportCapacity } from "../state/types";
 import "./graph.css";
 
 const nodeTypes = { group: MachineGroupNode, boundaryPort: BoundaryPortNode, junction: JunctionNode };
@@ -589,7 +589,8 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
     const labelSizes: Record<string, LabelSize> = {};
     for (const e of beltEdges) {
       const d = df?.edges[e.id];
-      const tierLabel = isFluidItem(gamedata, e.item) ? `PIPE Mk.${e.tier}` : `MK.${e.tier}`;
+      const t = clampEdgeTier(gamedata, e.item, e.tier);
+      const tierLabel = isFluidItem(gamedata, e.item) ? `PIPE Mk.${t}` : `MK.${t}`;
       const text = `${fmtRate(d?.flow ?? 0)}/${fmtRate(transportCapacity(gamedata, e.item, e.tier))} · ${fmtPercent(d?.saturation ?? 0)} ${tierLabel}`;
       labelSizes[e.id] = { w: text.length * 6.4 + 16, h: 20 };
     }
@@ -934,7 +935,10 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         Object.values(p.edges)
           .filter((e) => (e.from.id === id || e.to.id === id) && isFluidItem(gd, e.item) === fluid)
           .map((e) => e.tier);
-      const tier = Math.max(1, ...touching(conn.source), ...touching(conn.target));
+      // Clamp into the medium's range: a same-medium neighbour may itself carry
+      // a stale belt tier (a legacy fluid edge), so Math.max alone could seed a
+      // brand-new pipe at Mk.5 — invalid (pipes reach Mk.2).
+      const tier = clampEdgeTier(gd, item, Math.max(1, ...touching(conn.source), ...touching(conn.target)));
       void dispatch([{ type: "add_edge", factory: factoryId, from: endOf(conn.source), to: endOf(conn.target), item, tier }]);
     },
     [dispatch, factoryId],

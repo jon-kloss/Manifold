@@ -89,14 +89,17 @@ export default function BeltEdgeView(props: EdgeProps) {
   }
 
   const band = flowBand(data.saturation, data.flow, data.bottleneck);
-  const capacity = data.fluid ? pipeCapacity(data.edge.tier) : beltCapacity(data.edge.tier);
+  // Clamp a stale belt tier (a legacy fluid edge saved before pipes) into the
+  // medium's real range so the label and capacity agree — pipes reach Mk.2.
+  const tier = data.fluid ? Math.max(1, Math.min(2, data.edge.tier)) : data.edge.tier;
+  const capacity = data.fluid ? pipeCapacity(tier) : beltCapacity(tier);
   // Pipes carry the same flow-health grammar (green/amber/red), but their
   // neutral (no-overlay) state tints blue so a fluid run reads as a PIPE at a
   // glance, never a belt.
   const neutral = data.fluid ? "var(--bp-400)" : "var(--steel-500)";
   const s = data.flowOverlay ? STROKE[band] : { width: 2, dash: undefined, color: neutral };
   // Tier label reads "PIPE Mk.n" for fluids, "MK.n" for belts.
-  const tierLabel = data.fluid ? `PIPE Mk.${data.edge.tier}` : `MK.${data.edge.tier}`;
+  const tierLabel = data.fluid ? `PIPE Mk.${tier}` : `MK.${tier}`;
   const isBottleneck = data.flowOverlay && band === "bottleneck";
   // MOTION = FLOW (gate: flow > 0); speed = utilization: only edges with
   // derived flow > 0 animate; idle belts stay static — independent of the

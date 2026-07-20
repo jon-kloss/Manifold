@@ -900,10 +900,24 @@ export const isFluidItem = (gd: GameData, item: string): boolean =>
 export const transportCapacity = (gd: GameData, item: string, tier: number): number =>
   isFluidItem(gd, item) ? pipeCapacity(tier) : beltCapacity(tier);
 
+/** Highest tier for an item's medium: 2 for pipes, 6 for belts. */
+export const maxTransportTier = (gd: GameData, item: string): number =>
+  isFluidItem(gd, item) ? 2 : 6;
+
 /** Selectable tiers for an edge/route carrying `item`: pipes have two, belts
  *  six. Drives the tier <select>s so a fluid edge never offers Mk.3–6. */
 export const transportTiers = (gd: GameData, item: string): number[] =>
   isFluidItem(gd, item) ? [1, 2] : [1, 2, 3, 4, 5, 6];
+
+/** Clamp a stored edge tier into its medium's real range. A fluid edge saved
+ *  before pipes were modelled — or one drawn touching a Mk.3–6 belt neighbour —
+ *  can carry a belt tier (3–6), but pipes only reach Mk.2. Every label, tier
+ *  <select> value, and capacity read goes through this so the edge stays
+ *  self-consistent (matching option, honest "PIPE Mk.2", 600 m³/min) regardless
+ *  of the stored value. New edges are written in range (onConnect/import clamp
+ *  on write); editing a planned edge's tier persists the clamped value. */
+export const clampEdgeTier = (gd: GameData, item: string, tier: number): number =>
+  Math.max(1, Math.min(maxTransportTier(gd, item), tier));
 
 /** Pseudo-item for generator output: 1 "item/min" = 1 MW (Addendum A2). */
 export const POWER_ITEM = "__PowerMW";
