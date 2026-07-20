@@ -184,10 +184,12 @@ export default function App() {
   }, [undo, redo]);
 
   // Early screens (error / hydrating) still get the titlebar: the frameless
-  // window must never lose its drag region and min/max/close.
+  // window must never lose its drag region and min/max/close. At the phone
+  // breakpoint (web build — Tauri's minWidth 800 can't get here) the window
+  // controls are inert browser chrome, so the card stands alone.
   const screen = (body: ReactNode) => (
-    <div className="app-frame" data-layout="overlay">
-      <Titlebar overlayMode={false} />
+    <div className="app-frame" data-layout={mode === "phone" ? "phone" : "overlay"}>
+      {mode !== "phone" && <Titlebar overlayMode={false} />}
       <main className="app-canvas">
         <div className="refuse-wrap">{body}</div>
       </main>

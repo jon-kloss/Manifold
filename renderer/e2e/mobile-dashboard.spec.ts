@@ -3,7 +3,8 @@
 // status bar) for a full-screen glanceable status board: power balance,
 // alerts, and the resource make/use/net ledger with per-item factory
 // drill-down. Desktop viewports are untouched — every other spec in this
-// suite runs at the default 1280×720 (overlay mode) and never sees it.
+// suite runs at the config default 1920×1080 (reference mode), far above the
+// 640px phone gate, and never sees it.
 
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { resetView } from "./helpers";

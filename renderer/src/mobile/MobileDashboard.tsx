@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useStore } from "../state/store";
-import { circuitHeadroom, fmtPower, fmtRate, powerLevel } from "../lib/format";
+import { circuitHeadroom, fmtPower, fmtRate, itemLabel, powerLevel } from "../lib/format";
 import { buildLedgerRows } from "../lib/ledger";
 import ItemIcon from "../lib/ItemIcon";
 import "./mobile.css";
@@ -126,7 +126,7 @@ export default function MobileDashboard() {
             })}
             {derived.deficits.map((d) => (
               <div className="md-alert mono" key={`${d.factory}:${d.port}`}>
-                ▲ SHORT {fmtRate(d.needed - d.supplied)}/MIN {d.item ? gamedata.items[d.item]?.displayName ?? d.item : ""} AT{" "}
+                ▲ SHORT {fmtRate(d.needed - d.supplied)}/MIN {itemLabel(gamedata.items, d.item)} AT{" "}
                 {plan.factories[d.factory]?.name ?? "?"}
               </div>
             ))}
