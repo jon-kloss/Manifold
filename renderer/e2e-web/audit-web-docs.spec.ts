@@ -94,8 +94,9 @@ const buildVersion = (page: Page): Promise<string> =>
   );
 
 // catalogLoaded is derived in DataMenu.tsx as `bv !== "" && bv !== "fixture"`
-// (the gate that turns the "① Upload Docs.json" first-run step off). Replicated
-// here from buildVersion — the single source it reads.
+// (the gate that unlocks "② Import save" and flips step ① to its loaded ✓
+// state — the ordered menu itself never reshuffles). Replicated here from
+// buildVersion — the single source it reads.
 const catalogLoaded = async (page: Page): Promise<boolean> => {
   const bv = await buildVersion(page);
   return bv !== "" && bv !== "fixture";

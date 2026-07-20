@@ -328,12 +328,25 @@ test("Phase 4a: uploading a Docs.json swaps the catalog and persists across relo
   );
   expect(recipeCount, "the uploaded catalog has recipes").toBeGreaterThan(0);
 
-  // The DOCS gate lifts — step ② unlocks — but sync stays gated on an
-  // IMPORTED SAVE: "Sync from save" re-reads a save you already imported, so
-  // with no import in the plan its gate holds with the how-to title. (The
-  // first-time flow is ② Import save, never sync.)
+  // The DOCS gate lifts — step ② unlocks — but the menu keeps its ONE
+  // ordered layout: the label stays "② Import save" (the menu never
+  // reshuffles after step ① lands) and step ① flips to its loaded ✓ state.
+  // Sync stays gated on an IMPORTED SAVE: "Sync from save" re-reads a save
+  // you already imported, so with no import in the plan its gate holds with
+  // the how-to title. (The first-time flow is ② Import save, never sync.)
   await expect(importBtn).toHaveAttribute("aria-disabled", "false");
-  await expect(importBtn).not.toContainText("②");
+  await expect(importBtn).toContainText("② Import save");
+  const stepOne = page.getByTestId("btn-upload-docs-first");
+  await expect(stepOne).toContainText("① Upload Docs.json ✓");
+  await expect(stepOne).toContainText("upload again to swap game versions");
+  // The order banner survives the upload — the single ordered layout is the
+  // point; a re-gate on !catalogLoaded would hide it here.
+  await expect(page.getByTestId("data-menu-order")).toBeVisible();
+  // ...as do the numbered drag-drop hints, and the old separate "Update
+  // Docs.json" entry stays gone (step ① owns the swap action now).
+  await expect(page.locator(".data-menu-hint-key").first()).toContainText("① Docs (Steam)");
+  await expect(page.locator(".data-menu-hint-key").last()).toContainText("② Save");
+  await expect(page.getByTestId("btn-upload-docs")).toHaveCount(0);
   await expect(syncBtn).toHaveAttribute("aria-disabled", "true");
   await expect(syncBtn).toHaveAttribute("title", /[Ii]mport your save/);
   await expect(autoBtn).toHaveAttribute("title", /[Ii]mport your save/);

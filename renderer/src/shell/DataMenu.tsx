@@ -209,15 +209,17 @@ export default function DataMenu() {
         <>
           <div className="data-menu-backdrop" onClick={closeDataMenu} />
           <div className="data-menu" data-testid="data-menu">
-            {/* Web + still-on-fixture: the catalog must load BEFORE a save
-                so classes resolve, so state the order loudly and float the
-                Docs.json action to the top as step ①. */}
-            {__WASM_BACKEND__ && !catalogLoaded && (
+            {/* Web: the catalog must load BEFORE a save so classes resolve.
+                ONE menu layout, always — the ordered one. It never reshuffles
+                after step ① lands (a menu that rearranges itself mid-flow
+                reads as broken); the step-① row just flips to its loaded ✓
+                state and keeps working as the swap-game-version action. */}
+            {__WASM_BACKEND__ && (
               <div className="data-menu-order" data-testid="data-menu-order">
                 Load in order: <b>① Upload Docs.json</b> → <b>② Import save</b>
               </div>
             )}
-            {__WASM_BACKEND__ && !catalogLoaded && (
+            {__WASM_BACKEND__ && (
               <button
                 className="data-menu-item data-menu-step"
                 onClick={() => {
@@ -227,8 +229,14 @@ export default function DataMenu() {
                 disabled={uploadingDocs}
                 data-testid="btn-upload-docs-first"
               >
-                <span className="data-menu-item-label">① Upload Docs.json</span>
-                <span className="data-menu-item-sub">start here — the recipe catalog for your game version</span>
+                <span className="data-menu-item-label">
+                  ① Upload Docs.json{catalogLoaded ? " ✓" : ""}
+                </span>
+                <span className="data-menu-item-sub">
+                  {catalogLoaded
+                    ? "loaded — upload again to swap game versions"
+                    : "start here — the recipe catalog for your game version"}
+                </span>
               </button>
             )}
             {/* The order is ENFORCED on web, not suggested: without a real
@@ -251,7 +259,8 @@ export default function DataMenu() {
               data-testid="btn-import"
             >
               <span className="data-menu-item-label">
-                <Glyph name="import" size={14} /> {__WASM_BACKEND__ && !catalogLoaded ? "② Import save" : "Import save"}
+                <Glyph name="import" size={14} />{" "}
+                {__WASM_BACKEND__ ? `② Import save${hasImportedSave ? " ✓" : ""}` : "Import save"}
               </span>
               <span className="data-menu-item-sub">
                 {__WASM_BACKEND__ && !catalogLoaded
@@ -346,22 +355,6 @@ export default function DataMenu() {
                 )}
               </div>
             )}
-            {/* Once a real catalog is loaded the step-① button up top is
-                gone, so keep an "update" entry here to swap game versions. */}
-            {__WASM_BACKEND__ && catalogLoaded && (
-              <button
-                className="data-menu-item"
-                onClick={() => {
-                  setDataMenu(false);
-                  docsRef.current?.click();
-                }}
-                disabled={uploadingDocs}
-                data-testid="btn-upload-docs"
-              >
-                <span className="data-menu-item-label">Update Docs.json</span>
-                <span className="data-menu-item-sub">swap in a different game version's catalog</span>
-              </button>
-            )}
             {/* Start over: a cross-platform Session::new_empire (SQLite
                 wipe on desktop, store reset → IndexedDB on web), shown only
                 when there's something to clear. Two-click confirm guards the
@@ -390,23 +383,25 @@ export default function DataMenu() {
               </button>
             )}
             {/* Path hints mirror the enforced load order on web: Docs.json
-                rows lead, the save row follows (desktop shows save only). */}
+                rows lead, the save row follows (desktop shows save only) —
+                numbered the SAME whether or not a catalog is loaded, so the
+                menu never reshuffles mid-flow. */}
             <div className="data-menu-hint">
               <div className="data-menu-hint-head">Or drag &amp; drop a file anywhere</div>
               {__WASM_BACKEND__ && (
                 <>
                   <div className="data-menu-hint-row">
-                    <span className="data-menu-hint-key">{catalogLoaded ? "Docs (Steam)" : "① Docs (Steam)"}</span>
+                    <span className="data-menu-hint-key">① Docs (Steam)</span>
                     <code>…\steamapps\common\Satisfactory\CommunityResources\Docs\en-US.json</code>
                   </div>
                   <div className="data-menu-hint-row">
-                    <span className="data-menu-hint-key">{catalogLoaded ? "Docs (Epic)" : "① Docs (Epic)"}</span>
+                    <span className="data-menu-hint-key">① Docs (Epic)</span>
                     <code>…\Epic Games\SatisfactoryEarlyAccess\CommunityResources\Docs\en-US.json</code>
                   </div>
                 </>
               )}
               <div className="data-menu-hint-row">
-                <span className="data-menu-hint-key">{__WASM_BACKEND__ && !catalogLoaded ? "② Save" : "Save"}</span>
+                <span className="data-menu-hint-key">{__WASM_BACKEND__ ? "② Save" : "Save"}</span>
                 <code>%LOCALAPPDATA%\FactoryGame\Saved\SaveGames\</code>
               </div>
             </div>

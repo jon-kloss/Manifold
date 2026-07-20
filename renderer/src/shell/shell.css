@@ -443,7 +443,8 @@
   z-index: 40;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-/* Order banner (web, pre-catalog): states the required upload sequence. */
+/* Order banner (web, BOTH catalog states — the menu never reshuffles):
+   states the required upload sequence. */
 .data-menu-order {
   padding: 8px 12px;
   font-size: 11px;
@@ -456,8 +457,8 @@
   color: var(--signal-400);
   font-weight: 700;
 }
-/* The step-① Docs.json action floated to the top gets a left accent so it
-   reads as the starting point. */
+/* The permanent step-① Docs.json row gets a left accent so it reads as the
+   starting point; once a catalog loads it doubles as the swap-version action. */
 .data-menu-step {
   border-left: 2px solid var(--signal-500);
 }
