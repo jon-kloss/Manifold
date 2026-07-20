@@ -882,7 +882,16 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
           : p.junctions[id]
             ? { kind: "junction" as const, id }
             : { kind: "port" as const, id };
-      void dispatch([{ type: "add_edge", factory: factoryId, from: endOf(conn.source), to: endOf(conn.target), item, tier: 1 }]);
+      // A hand-drawn belt inherits the highest tier already touching either
+      // endpoint — the MK.1 default silently capped a splitter/merger web's
+      // output at 60/min while its feeds ran MK.3 (the red-bottleneck bug).
+      // No neighbors → MK.1 stays the honest floor; tier is editable after.
+      const touching = (id: string) =>
+        Object.values(p.edges)
+          .filter((e) => e.from.id === id || e.to.id === id)
+          .map((e) => e.tier);
+      const tier = Math.max(1, ...touching(conn.source), ...touching(conn.target));
+      void dispatch([{ type: "add_edge", factory: factoryId, from: endOf(conn.source), to: endOf(conn.target), item, tier }]);
     },
     [dispatch, factoryId],
   );

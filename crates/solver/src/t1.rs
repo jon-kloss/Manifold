@@ -40,6 +40,12 @@ const SHORTFALL_PENALTY: f64 = 1e6;
 /// cannot cannibalize the edited target's achievable ceiling.
 const GEN_PENALTY: f64 = 1e3;
 
+/// Reward per unit of a parallel-class spread variable (see `run_lp`): far
+/// below the machines cost (1.0 per machine-equivalent) so equalizing a
+/// split can NEVER buy an extra machine or trade a target — it only breaks
+/// exact ties — and above the power tiebreak's per-class-identical noise.
+const FAIRNESS_REWARD: f64 = 1e-3;
+
 struct Lp {
     group_vars: Vec<Variable>,
     edge_vars: Vec<Variable>,
@@ -118,6 +124,40 @@ fn run_lp(
         .map(|g| g.driven_cycles.map(|_| vars.add(variable().min(0.0))))
         .collect();
 
+    // Parallel-split fairness: a demand several IDENTICAL groups (same recipe
+    // id + machine) can serve costs the same machines however it is split, so
+    // the objective below is degenerate across those splits and the simplex
+    // vertex was free to load ONE branch and idle its siblings — while the T0
+    // drag preview splits proportionally ("T1 settles the exact split"). Each
+    // class of ≥2 identical groups gets a spread variable u with
+    //     cycles_i ≥ u · count_i · clock_i
+    // and the objective rewards u at tie-break scale: maximizing the worst
+    // per-capacity utilization equalizes the split like a real splitter,
+    // count-weighted, while belt caps still bend it — the LP lands on the
+    // best FEASIBLE balance. Driven generators keep their own law; zero-
+    // capacity members are skipped (a u no constraint touches would make the
+    // reward unbounded).
+    // Weight by COUNT, never count·clock: a planned group's clock is itself
+    // an OUTPUT of the previous solve (the idle write-back sets it to 0), so
+    // weighting by it is circular — one concentrated solve would eject the
+    // starved sibling from its class and every later settle would re-conc-
+    // entrate. Count is the built/planned capacity share and stays honest.
+    let mut classes: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    for (gi, g) in snapshot.groups.iter().enumerate() {
+        if g.driven_cycles.is_some() || g.count == 0 {
+            continue;
+        }
+        classes
+            .entry((g.recipe.id.clone(), g.recipe.machine.clone()))
+            .or_default()
+            .push(gi);
+    }
+    let spread_vars: Vec<(Variable, Vec<usize>)> = classes
+        .into_values()
+        .filter(|members| members.len() >= 2)
+        .map(|members| (vars.add(variable().min(0.0)), members))
+        .collect();
+
     let lp = Lp {
         group_vars,
         edge_vars,
@@ -144,17 +184,29 @@ fn run_lp(
         .flatten()
         .map(|&v| v * GEN_PENALTY)
         .sum();
+    let fairness: Expression = spread_vars.iter().map(|(u, _)| *u * FAIRNESS_REWARD).sum();
     let objective: Expression = match target_var {
         // Ceiling pass: maximize the edited port WITHOUT gen_penalty. Including it
         // let a driven generator sharing capped fuel outbid the -1000·t maximize
         // term (GEN_PENALTY ≫ 1000), starving the edited port so its ceiling read
         // ~0. The driven constraint (m + s == n) still holds, but with s free the
         // generator simply yields all contested fuel to the port being measured.
-        Some(t) => shortfall_penalty - 1000.0 * t + machines.clone() + power_tiebreak,
-        None => shortfall_penalty + gen_penalty + machines.clone() + power_tiebreak,
+        Some(t) => {
+            shortfall_penalty - 1000.0 * t + machines.clone() + power_tiebreak - fairness.clone()
+        }
+        None => shortfall_penalty + gen_penalty + machines.clone() + power_tiebreak - fairness,
     };
 
     let mut model = vars.minimise(objective).using(microlp);
+
+    // Fairness spread constraints (see spread_vars above): every member of a
+    // parallel class must run at least u × its capacity share.
+    for (u, members) in &spread_vars {
+        for &gi in members {
+            let cap = snapshot.groups[gi].count as f64;
+            model = model.with(constraint!(lp.group_vars[gi] - *u * cap >= 0.0));
+        }
+    }
 
     for (gi, g) in snapshot.groups.iter().enumerate() {
         let node = NodeRef::Group(g.id.clone());

@@ -1338,3 +1338,167 @@ fn t0_own_ceiling_unchanged_when_siblings_healthy() {
         c.binding
     );
 }
+
+/// A splitter fanning one feed across IDENTICAL parallel groups must share
+/// the demand like the real building does — evenly — instead of the
+/// degenerate LP vertex loading one branch and idling its siblings (the
+/// observed 60/0/0/0 concentration). Pinned at T1: T0's preview already
+/// split proportionally, and the two must agree.
+fn parallel_concrete_snapshot(counts: &[u32]) -> FactorySnapshot {
+    let j = |id: &str| NodeRef::Junction(id.to_string());
+    let mut groups = Vec::new();
+    let mut edges = vec![edge(
+        "e-in",
+        NodeRef::Input("in-stone".into()),
+        j("split"),
+        "stone",
+        780.0,
+    )];
+    for (i, &count) in counts.iter().enumerate() {
+        let id = format!("c{}", i + 1);
+        let mut gr = group(
+            &id,
+            recipe(
+                "Recipe_Concrete_C",
+                "constructor",
+                4.0,
+                &[("stone", 3.0)],
+                &[("concrete", 1.0)],
+                4.0,
+            ),
+        );
+        gr.count = count;
+        groups.push(gr);
+        edges.push(edge(
+            &format!("e-s{}", i + 1),
+            j("split"),
+            g(&id),
+            "stone",
+            780.0,
+        ));
+        edges.push(edge(
+            &format!("e-m{}", i + 1),
+            g(&id),
+            j("merge"),
+            "concrete",
+            780.0,
+        ));
+    }
+    edges.push(edge(
+        "e-out",
+        j("merge"),
+        NodeRef::Output("out-concrete".into()),
+        "concrete",
+        780.0,
+    ));
+    FactorySnapshot {
+        groups,
+        edges,
+        inputs: vec![InputPortSpec {
+            id: "in-stone".into(),
+            item: "stone".into(),
+            ceiling: None,
+        }],
+        junctions: vec!["split".into(), "merge".into()],
+        outputs: vec![OutputPortSpec {
+            id: "out-concrete".into(),
+            item: "concrete".into(),
+            rate: 0.0,
+        }],
+    }
+}
+
+#[test]
+fn t1_parallel_identical_groups_split_evenly() {
+    let snap = parallel_concrete_snapshot(&[1, 1, 1]);
+    let r = solver::t1::solve(
+        &snap,
+        &T0Edit::SetTarget {
+            port: "out-concrete".into(),
+            rate: 45.0,
+        },
+    )
+    .unwrap();
+    // 1 concrete / 4s = 15/min per machine → one machine-equivalent each.
+    for c in ["c1", "c2", "c3"] {
+        assert_close(
+            r.groups[c].out_rates["concrete"],
+            15.0,
+            &format!("{c} even share"),
+        );
+    }
+    // Stone: 3 per concrete → each branch belt carries 45/min.
+    for e in ["e-s1", "e-s2", "e-s3"] {
+        assert_close(r.edges[e].flow, 45.0, &format!("{e} branch feed"));
+    }
+    assert_close(r.ports["out-concrete"], 45.0, "target met");
+}
+
+#[test]
+fn t1_parallel_split_weights_by_group_capacity() {
+    // A ×3 bank next to a ×1 sibling takes three shares — capacity-weighted
+    // fairness, matching what an even per-machine load means physically.
+    let snap = parallel_concrete_snapshot(&[1, 3]);
+    let r = solver::t1::solve(
+        &snap,
+        &T0Edit::SetTarget {
+            port: "out-concrete".into(),
+            rate: 60.0,
+        },
+    )
+    .unwrap();
+    assert_close(r.groups["c1"].out_rates["concrete"], 15.0, "×1 share");
+    assert_close(r.groups["c2"].out_rates["concrete"], 45.0, "×3 share");
+    assert_close(r.edges["e-s1"].flow, 45.0, "×1 branch stone");
+    assert_close(r.edges["e-s2"].flow, 135.0, "×3 branch stone");
+}
+
+#[test]
+fn t1_parallel_split_bends_to_belt_caps() {
+    // A capped branch takes what its belt allows; the surplus lands on the
+    // open sibling — fairness never overrides a real constraint.
+    let mut snap = parallel_concrete_snapshot(&[1, 1]);
+    for e in &mut snap.edges {
+        if e.id == "e-s1" {
+            e.capacity = 30.0; // stone feed cap → ≤10/min concrete on c1
+        }
+    }
+    let r = solver::t1::solve(
+        &snap,
+        &T0Edit::SetTarget {
+            port: "out-concrete".into(),
+            rate: 40.0,
+        },
+    )
+    .unwrap();
+    assert_close(r.groups["c1"].out_rates["concrete"], 10.0, "capped branch");
+    assert_close(r.groups["c2"].out_rates["concrete"], 30.0, "open branch");
+}
+
+#[test]
+fn t1_split_recovers_a_previously_idled_sibling() {
+    // Regression: the idle write-back sets a starved group's clock to 0 in
+    // the PLAN, and clock-weighted fairness then ejected it from its class —
+    // one concentrated solve poisoned every later settle. Weighting by count
+    // keeps the sibling in the class, so the next solve redistributes.
+    let mut snap = parallel_concrete_snapshot(&[1, 1]);
+    snap.groups[1].clock = 0.0; // poisoned by a previous concentrated solve
+    let r = solver::t1::solve(
+        &snap,
+        &T0Edit::SetTarget {
+            port: "out-concrete".into(),
+            rate: 30.0,
+        },
+    )
+    .unwrap();
+    assert_close(
+        r.groups["c1"].out_rates["concrete"],
+        15.0,
+        "recovered even share c1",
+    );
+    assert_close(
+        r.groups["c2"].out_rates["concrete"],
+        15.0,
+        "recovered even share c2",
+    );
+}
