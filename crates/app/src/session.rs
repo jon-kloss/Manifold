@@ -1668,15 +1668,11 @@ impl Session {
     /// the projection of the now-empty plan (same shape as undo/import); the
     /// renderer re-hydrates after it regardless.
     pub fn new_empire(&mut self) -> Result<EditResponse, SessionError> {
-        // The remembered save-sync target is a device choice, not plan data —
-        // carry it across the wipe so auto-sync survives a "new empire" (reset()
-        // clears the whole meta store; re-write it after). Web keeps its
+        // reset() atomically keeps the remembered save-sync target (a device
+        // choice, not plan data) so auto-sync survives a "new empire" — no
+        // fragile read-then-rewrite, no window to lose it. Web keeps its
         // equivalent in a separate store for the same reason.
-        let sync_meta = self.store.sync_meta();
         self.store.reset()?;
-        if let Some(json) = sync_meta {
-            let _ = self.store.set_sync_meta(&json);
-        }
         self.state = PlanState::default();
         self.undo = UndoLog::new();
         self.slow_solves.clear();

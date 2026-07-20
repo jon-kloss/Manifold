@@ -90,9 +90,11 @@ fn read_save(path: String) -> Result<tauri::ipc::Response, String> {
 }
 
 /// Open the native file picker for a `.sav` and return the chosen absolute path
-/// (None on cancel). Sync Tauri commands run off the main thread, so the
-/// blocking pick is safe here.
-#[tauri::command]
+/// (None on cancel). MUST be `(async)`: a plain `#[tauri::command]` runs on the
+/// MAIN thread (see next_rank), and `blocking_pick_file` parks the caller on the
+/// dialog result while the dialog itself needs the main event loop — a deadlock.
+/// `(async)` runs it off-thread so the loop stays free to pump the picker.
+#[tauri::command(async)]
 fn pick_save(app: tauri::AppHandle) -> Option<String> {
     app.dialog()
         .file()

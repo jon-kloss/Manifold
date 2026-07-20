@@ -238,8 +238,14 @@ class TauriBackend implements Backend {
   async syncRead(path?: string) {
     const p = path ?? (await this.syncMetaGet())?.path;
     if (!p) return null;
-    const buf = await this.invoke<ArrayBuffer>("read_save", { path: p });
-    return new Uint8Array(buf);
+    try {
+      const buf = await this.invoke<ArrayBuffer>("read_save", { path: p });
+      return new Uint8Array(buf);
+    } catch {
+      // File moved/deleted/permission — return null so the caller re-picks or
+      // skips (matches the web handle path + the dev bridge). Never throw here.
+      return null;
+    }
   }
   async syncMetaGet() {
     const json = await this.invoke<string | null>("sync_meta");
