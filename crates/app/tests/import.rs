@@ -4,7 +4,7 @@
 use app::import::{ImportMachine, ImportSnapshot};
 use app::session::ImportOutcome;
 use app::Session;
-use planner_core::entities::Status;
+use planner_core::entities::{EdgeEnd, PortDirection, Status};
 
 fn m(class: &str, recipe: &str, x: f64, y: f64) -> ImportMachine {
     ImportMachine {
@@ -1400,5 +1400,238 @@ fn geothermal_cluster_names_itself_and_counts_generation() {
     assert!(
         (gen - 400.0).abs() < 1e-6,
         "2 geothermal x 200 MW average counts as generation, got {gen}"
+    );
+}
+
+/// AUDIT #126 (1): a group demolished in game must cascade on drift accept
+/// like DeleteGroup — no orphaned belts referencing the removed group, no
+/// stale boundary port still exporting the item it made, and the surviving
+/// port rates refreshed to the new net flow.
+#[test]
+fn demolished_group_sync_cascades_edges_and_ports() {
+    let mut s = Session::in_memory(None).unwrap();
+    // 2 smelters (60 ingot/min) + 1 constructor (15 rod/min, eats 15 ingot).
+    s.import_save(snapshot(vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+        m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 100.0, 0.0),
+    ]))
+    .unwrap();
+    let fid = s.state.factories.keys().next().unwrap().clone();
+    let constructor_gid = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_ConstructorMk1_C")
+        .expect("constructor group imported")
+        .id
+        .clone();
+    assert!(
+        s.state
+            .ports
+            .values()
+            .any(|p| p.item == "Desc_IronRod_C" && p.direction == PortDirection::Out),
+        "rod export exists before demolition"
+    );
+
+    // Re-import without the constructor → drift → accept.
+    let ImportOutcome::Drift { proposal, .. } = s
+        .import_save(snapshot(vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+        ]))
+        .unwrap()
+    else {
+        panic!("expected drift");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    assert!(
+        !s.state.groups.contains_key(&constructor_gid),
+        "demolished group removed"
+    );
+    let orphans: Vec<_> = s
+        .state
+        .edges
+        .values()
+        .filter(|e| {
+            e.from == EdgeEnd::Group(constructor_gid.clone())
+                || e.to == EdgeEnd::Group(constructor_gid.clone())
+        })
+        .collect();
+    assert!(
+        orphans.is_empty(),
+        "no belt may reference the removed group"
+    );
+    assert!(
+        !s.state
+            .ports
+            .values()
+            .any(|p| p.factory == fid && p.item == "Desc_IronRod_C"),
+        "the rod export the constructor sourced is gone"
+    );
+    // The ingot export absorbs the freed 15/min: 60 - 15 → 60.
+    let ingot_out = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_IronIngot_C" && p.direction == PortDirection::Out)
+        .expect("ingot export survives");
+    assert!(
+        (ingot_out.rate - 60.0).abs() < 1e-6,
+        "ingot export refreshed to the full 60/min, got {}",
+        ingot_out.rate
+    );
+    // One undo restores the constructor with its wiring.
+    s.undo().unwrap().unwrap();
+    assert!(s.state.groups.contains_key(&constructor_gid));
+    assert!(s
+        .state
+        .ports
+        .values()
+        .any(|p| p.item == "Desc_IronRod_C" && p.direction == PortDirection::Out));
+}
+
+/// AUDIT #126 (2): a count-up drift accept must recompute the exported port
+/// rate and raise the export belt's tier — otherwise the expanded factory
+/// stays capped at its stale export (probe: 3→6 smelters kept reading 90).
+#[test]
+fn count_up_sync_recomputes_port_rate_and_belt_tier() {
+    let mut s = Session::in_memory(None).unwrap();
+    let three = || {
+        vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 100.0, 0.0),
+        ]
+    };
+    s.import_save(snapshot(three())).unwrap();
+    let out_port = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_IronIngot_C" && p.direction == PortDirection::Out)
+        .expect("ingot export")
+        .clone();
+    assert!((out_port.rate - 90.0).abs() < 1e-6);
+
+    let mut six = three();
+    six.extend(vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 150.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 200.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 250.0, 0.0),
+    ]);
+    let ImportOutcome::Drift { proposal, .. } = s.import_save(snapshot(six)).unwrap() else {
+        panic!("expected drift");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    let after = &s.state.ports[&out_port.id];
+    assert!(
+        (after.rate - 180.0).abs() < 1e-6,
+        "export rate follows the doubled bank, got {}",
+        after.rate
+    );
+    // 180/min outgrows MK.2 (120): the export belt must ride at least MK.3.
+    let export_belt = s
+        .state
+        .edges
+        .values()
+        .find(|e| e.to == EdgeEnd::Port(out_port.id.clone()))
+        .expect("export belt");
+    assert!(
+        export_belt.tier >= 3,
+        "export belt raised to carry 180/min, got MK.{}",
+        export_belt.tier
+    );
+    // The in-feed doubled too: 90 ore → 180 ore.
+    let ore_in = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_OreIron_C" && p.direction == PortDirection::In)
+        .expect("ore import");
+    assert!(
+        (ore_in.rate - 180.0).abs() < 1e-6,
+        "ore import refreshed, got {}",
+        ore_in.rate
+    );
+}
+
+/// AUDIT #126 (3): a group added in game arrives wired on drift accept — belts
+/// to/from its recipe partners and a refreshed boundary — not as an unwired
+/// card at a hardcoded position.
+#[test]
+fn added_group_sync_auto_wires_into_the_factory() {
+    let mut s = Session::in_memory(None).unwrap();
+    s.import_save(snapshot(vec![
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+        m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+    ]))
+    .unwrap();
+
+    let ImportOutcome::Drift { proposal, .. } = s
+        .import_save(snapshot(vec![
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 0.0, 0.0),
+            m("Build_SmelterMk1_C", "Recipe_IngotIron_C", 50.0, 0.0),
+            m("Build_ConstructorMk1_C", "Recipe_IronRod_C", 100.0, 0.0),
+        ]))
+        .unwrap()
+    else {
+        panic!("expected drift");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    let smelter = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_SmelterMk1_C")
+        .unwrap()
+        .id
+        .clone();
+    let constructor = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_ConstructorMk1_C")
+        .expect("added group materialized")
+        .id
+        .clone();
+    assert!(
+        s.state
+            .edges
+            .values()
+            .any(|e| e.from == EdgeEnd::Group(smelter.clone())
+                && e.to == EdgeEnd::Group(constructor.clone())
+                && e.item == "Desc_IronIngot_C"),
+        "ingot feed belted into the added constructor"
+    );
+    let rod_out = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_IronRod_C" && p.direction == PortDirection::Out)
+        .expect("rod export created for the new product");
+    assert!((rod_out.rate - 15.0).abs() < 1e-6);
+    assert!(
+        s.state
+            .edges
+            .values()
+            .any(|e| e.from == EdgeEnd::Group(constructor.clone())
+                && e.to == EdgeEnd::Port(rod_out.id.clone())),
+        "rod export belted from the constructor"
+    );
+    // The ingot export shrinks to what the constructor leaves over: 60 → 45.
+    let ingot_out = s
+        .state
+        .ports
+        .values()
+        .find(|p| p.item == "Desc_IronIngot_C" && p.direction == PortDirection::Out)
+        .expect("ingot export survives");
+    assert!(
+        (ingot_out.rate - 45.0).abs() < 1e-6,
+        "ingot export refreshed down to 45/min, got {}",
+        ingot_out.rate
     );
 }

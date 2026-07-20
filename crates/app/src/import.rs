@@ -1157,6 +1157,250 @@ fn conflict_item(label: String, op: SyncOp, mine: String, theirs: String) -> Pro
     }
 }
 
+/// Re-derive a ◆ Built factory's logical wiring after a drift-sync group
+/// change — the incremental twin of [`write_built_layer`]'s wiring pass.
+/// Recomputes per-item production/consumption over the surviving Built
+/// groups (baseline count × clock — the ◆ layer is game truth, so
+/// `planned_delta` doesn't participate), then:
+///
+///   - refreshes each Built boundary port's rate to the new net flow,
+///   - removes Built ports whose flow dried up (cascading their belts and
+///     any bound inter-factory route),
+///   - creates ports + belts for items that newly cross the boundary,
+///   - ensures every Built producer→consumer pair is belted (wires groups
+///     added in game), and
+///   - raises — never lowers, the player may have overbuilt — belt tiers
+///     the new rates outgrew, so a doubled bank isn't capped at its old
+///     export tier.
+///
+/// Only ◆ Built ports/edges are managed; planned (user) wiring in the same
+/// factory is left alone, and no port is created for an item the user
+/// already models with a planned port.
+fn resync_built_wiring(
+    state: &mut PlanState,
+    tx: &mut planner_core::commands::Transaction,
+    fid: &Id,
+    import_id: &str,
+    gd: &gamedata::docs::GameData,
+) {
+    let Some(f) = state.factories.get(fid).cloned() else {
+        return;
+    };
+    let mut producers: BTreeMap<String, Vec<(Id, f64)>> = BTreeMap::new();
+    let mut consumers: BTreeMap<String, Vec<(Id, f64)>> = BTreeMap::new();
+    for g in f.groups.iter().filter_map(|gid| state.groups.get(gid)) {
+        if g.status != Status::Built {
+            continue;
+        }
+        let Some(r) = gd.recipes.get(&g.recipe) else {
+            continue;
+        };
+        if r.duration_s <= 0.0 {
+            continue;
+        }
+        let cycles_per_min = 60.0 / r.duration_s * g.count as f64 * g.clock;
+        for (item, n) in &r.products {
+            producers
+                .entry(item.clone())
+                .or_default()
+                .push((g.id.clone(), n * cycles_per_min));
+        }
+        for (item, n) in &r.ingredients {
+            consumers
+                .entry(item.clone())
+                .or_default()
+                .push((g.id.clone(), n * cycles_per_min));
+        }
+    }
+
+    // Internal producer→consumer belts: ensure every pair is wired, raising
+    // Built tiers the new rates outgrew.
+    let all_items: std::collections::BTreeSet<String> =
+        producers.keys().chain(consumers.keys()).cloned().collect();
+    for item in &all_items {
+        let (Some(ps), Some(cs)) = (producers.get(item), consumers.get(item)) else {
+            continue;
+        };
+        for (pg, pr) in ps {
+            for (cg, cr) in cs {
+                let want = tier_for(pr.min(*cr));
+                let existing = state
+                    .edges
+                    .values()
+                    .find(|e| {
+                        e.from == EdgeEnd::Group(pg.clone())
+                            && e.to == EdgeEnd::Group(cg.clone())
+                            && &e.item == item
+                    })
+                    .map(|e| e.id.clone());
+                match existing {
+                    None => tx.record(state.upsert(Entity::Edge(BeltEdge {
+                        id: new_id(),
+                        factory: fid.clone(),
+                        from: EdgeEnd::Group(pg.clone()),
+                        to: EdgeEnd::Group(cg.clone()),
+                        item: item.clone(),
+                        tier: want,
+                        status: Status::Built,
+                        created_by: CreatedBy::Import(import_id.to_string()),
+                    }))),
+                    Some(eid) => raise_built_tier(state, tx, &eid, want),
+                }
+            }
+        }
+    }
+
+    // Boundary ports: every item the factory now nets in or out, plus every
+    // item an existing Built port still references (its flow may have dried
+    // up entirely).
+    let mut port_items = all_items;
+    for p in f.ports.iter().filter_map(|pid| state.ports.get(pid)) {
+        if p.status == Status::Built {
+            port_items.insert(p.item.clone());
+        }
+    }
+    for item in &port_items {
+        let prod: f64 = producers
+            .get(item)
+            .map_or(0.0, |v| v.iter().map(|p| p.1).sum());
+        let cons: f64 = consumers
+            .get(item)
+            .map_or(0.0, |v| v.iter().map(|p| p.1).sum());
+        let net = prod - cons;
+        let groups = if net > 1e-6 {
+            producers.get(item)
+        } else {
+            consumers.get(item)
+        };
+        let groups: Vec<Id> = groups
+            .into_iter()
+            .flatten()
+            .map(|(gid, _)| gid.clone())
+            .collect();
+        for dir in [PortDirection::Out, PortDirection::In] {
+            let flows = match dir {
+                PortDirection::Out => net > 1e-6,
+                PortDirection::In => net < -1e-6,
+            };
+            let built: Vec<Id> = f
+                .ports
+                .iter()
+                .filter_map(|pid| state.ports.get(pid))
+                .filter(|p| p.status == Status::Built && &p.item == item && p.direction == dir)
+                .map(|p| p.id.clone())
+                .collect();
+            if !flows {
+                for pid in built {
+                    planner_core::commands::remove_port_cascading(state, tx, &pid);
+                }
+                continue;
+            }
+            let rate = net.abs();
+            let pid = match built.first() {
+                Some(pid) => {
+                    let mut p = state.ports[pid].clone();
+                    if (p.rate - rate).abs() > 1e-9 {
+                        p.rate = rate;
+                        tx.record(state.upsert(Entity::Port(p)));
+                    }
+                    pid.clone()
+                }
+                None => {
+                    // The user already modeling this boundary with a planned
+                    // port means sync must not double it.
+                    let planned_exists =
+                        f.ports
+                            .iter()
+                            .filter_map(|pid| state.ports.get(pid))
+                            .any(|p| {
+                                p.status != Status::Built && &p.item == item && p.direction == dir
+                            });
+                    if planned_exists {
+                        continue;
+                    }
+                    // Place it beside the groups it serves: outputs to the
+                    // right, inputs to the left.
+                    let xs = groups.iter().filter_map(|gid| state.groups.get(gid));
+                    let graph_pos = match dir {
+                        PortDirection::Out => GraphPos {
+                            x: xs.map(|g| g.graph_pos.x).fold(0.0, f64::max) + 320.0,
+                            y: 100.0,
+                        },
+                        PortDirection::In => GraphPos {
+                            x: xs.map(|g| g.graph_pos.x).fold(320.0, f64::min) - 320.0,
+                            y: 100.0,
+                        },
+                    };
+                    let pid = new_id();
+                    tx.record(state.upsert(Entity::Port(Port {
+                        id: pid.clone(),
+                        factory: fid.clone(),
+                        direction: dir,
+                        item: item.clone(),
+                        rate,
+                        rate_ceiling: None,
+                        bound_route: None,
+                        graph_pos,
+                        status: Status::Built,
+                        created_by: CreatedBy::Import(import_id.to_string()),
+                    })));
+                    if let Some(mut f) = state.factories.get(fid).cloned() {
+                        f.ports.push(pid.clone());
+                        tx.record(state.upsert(Entity::Factory(f)));
+                    }
+                    pid
+                }
+            };
+            // Every serving group is belted to the port at a tier that
+            // covers the whole net flow (matching write_built_layer).
+            let want = tier_for(rate);
+            for gid in &groups {
+                let (from, to) = match dir {
+                    PortDirection::Out => (EdgeEnd::Group(gid.clone()), EdgeEnd::Port(pid.clone())),
+                    PortDirection::In => (EdgeEnd::Port(pid.clone()), EdgeEnd::Group(gid.clone())),
+                };
+                let existing = state
+                    .edges
+                    .values()
+                    .find(|e| e.from == from && e.to == to && &e.item == item)
+                    .map(|e| e.id.clone());
+                match existing {
+                    None => tx.record(state.upsert(Entity::Edge(BeltEdge {
+                        id: new_id(),
+                        factory: fid.clone(),
+                        from,
+                        to,
+                        item: item.clone(),
+                        tier: want,
+                        status: Status::Built,
+                        created_by: CreatedBy::Import(import_id.to_string()),
+                    }))),
+                    Some(eid) => raise_built_tier(state, tx, &eid, want),
+                }
+            }
+        }
+    }
+}
+
+/// Raise a Built belt to `want` if its current tier can't carry the resynced
+/// rate. Never lowers (the player may have overbuilt) and never touches
+/// planned belts (user wiring).
+fn raise_built_tier(
+    state: &mut PlanState,
+    tx: &mut planner_core::commands::Transaction,
+    eid: &Id,
+    want: u8,
+) {
+    let Some(e) = state.edges.get(eid) else {
+        return;
+    };
+    if e.status == Status::Built && e.tier < want {
+        let mut e = e.clone();
+        e.tier = want;
+        tx.record(state.upsert(Entity::Edge(e)));
+    }
+}
+
 /// Apply one sync op to the Built layer (accept path for SaveReimport items).
 /// `take_save` is only meaningful for a resolved CONFLICT item: `true` ("take
 /// save") drops the user's `planned_delta` so the effective value becomes the
@@ -1251,18 +1495,37 @@ pub fn apply_sync(
                         g.planned_delta = (!d.is_empty()).then_some(d);
                     }
                     tx.record(state.upsert(Entity::Group(g)));
+                    // The changed count/clock moves the factory's net flows:
+                    // refresh boundary port rates + belt tiers so an expanded
+                    // bank isn't capped at its stale export.
+                    resync_built_wiring(state, tx, factory, import_id, gd);
                 }
                 Some(g) => {
-                    // demolished in game
-                    let mut f = f;
-                    f.groups.retain(|gid| gid != &g.id);
-                    if let Some(ops) = state.remove("groups", &g.id) {
-                        tx.record(ops);
-                    }
-                    tx.record(state.upsert(Entity::Factory(f)));
+                    // Demolished in game: cascade like DeleteGroup (belts,
+                    // factory ref, build override), then resync the boundary
+                    // so ports the group fed/drained don't survive as orphans
+                    // reporting phantom flow.
+                    planner_core::commands::remove_group_cascading(state, tx, &g.id);
+                    resync_built_wiring(state, tx, factory, import_id, gd);
                 }
                 None if *count > 0 => {
                     let gid = new_id();
+                    // Land below the factory's existing cards instead of on
+                    // top of them.
+                    let below = f
+                        .groups
+                        .iter()
+                        .filter_map(|id| state.groups.get(id))
+                        .map(|g| g.graph_pos.y)
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let graph_pos = GraphPos {
+                        x: 280.0,
+                        y: if below.is_finite() {
+                            below + 260.0
+                        } else {
+                            80.0
+                        },
+                    };
                     tx.record(state.upsert(Entity::Group(MachineGroup {
                         id: gid.clone(),
                         factory: factory.clone(),
@@ -1272,7 +1535,7 @@ pub fn apply_sync(
                         clock: clock.clamp(0.01, 2.5),
                         somersloops: 0,
                         planned_delta: None,
-                        graph_pos: GraphPos { x: 280.0, y: 600.0 },
+                        graph_pos,
                         floor: 0,
                         status: Status::Built,
                         created_by: CreatedBy::Import(import_id.to_string()),
@@ -1280,6 +1543,10 @@ pub fn apply_sync(
                     let mut f = f;
                     f.groups.push(gid);
                     tx.record(state.upsert(Entity::Factory(f)));
+                    // Auto-wire the group added in game the way first import
+                    // would have: belts to/from its recipe partners and a
+                    // refreshed boundary.
+                    resync_built_wiring(state, tx, factory, import_id, gd);
                 }
                 None => {}
             }

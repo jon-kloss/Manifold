@@ -703,6 +703,71 @@ fn remove_route_cascading(state: &mut PlanState, tx: &mut Transaction, route_id:
     prune_build_override(state, tx, route_id);
 }
 
+/// Remove a group plus everything hanging off it — the belts touching it, its
+/// factory's reference, and any build-queue override tracking it — as one
+/// recorded cascade. Every group-removal path (DeleteGroup, re-import drift
+/// sync demolition) goes through here so no path can leave orphaned belts.
+/// Deliberately carries no status check — drift sync removes ◆ Built groups
+/// legally (the one documented exception); DeleteGroup checks
+/// `require_planned` first.
+pub fn remove_group_cascading(state: &mut PlanState, tx: &mut Transaction, id: &Id) {
+    let Some(g) = state.groups.get(id).cloned() else {
+        return;
+    };
+    let edge_ids: Vec<Id> = state
+        .edges
+        .values()
+        .filter(|e| e.from == EdgeEnd::Group(id.clone()) || e.to == EdgeEnd::Group(id.clone()))
+        .map(|e| e.id.clone())
+        .collect();
+    for eid in edge_ids {
+        if let Some(ops) = state.remove(COLL_EDGES, &eid) {
+            tx.record(ops);
+        }
+    }
+    if let Some(mut f) = state.factories.get(&g.factory).cloned() {
+        f.groups.retain(|gid| gid != id);
+        tx.record(state.upsert(Entity::Factory(f)));
+    }
+    if let Some(ops) = state.remove(COLL_GROUPS, id) {
+        tx.record(ops);
+    }
+    prune_build_override(state, tx, id);
+}
+
+/// Remove a port plus everything hanging off it — its bound route (via
+/// [`remove_route_cascading`]), the belts touching it, and its factory's
+/// reference — as one recorded cascade. Every port-removal path (DeletePort,
+/// re-import drift sync) goes through here so no path can leave a dangling
+/// route or belt. Deliberately carries no status check — drift sync removes
+/// ◆ Built ports legally; DeletePort checks `require_planned` first.
+pub fn remove_port_cascading(state: &mut PlanState, tx: &mut Transaction, id: &Id) {
+    let Some(p) = state.ports.get(id).cloned() else {
+        return;
+    };
+    if let Some(rid) = p.bound_route.clone() {
+        remove_route_cascading(state, tx, &rid);
+    }
+    let edge_ids: Vec<Id> = state
+        .edges
+        .values()
+        .filter(|e| e.from == EdgeEnd::Port(id.clone()) || e.to == EdgeEnd::Port(id.clone()))
+        .map(|e| e.id.clone())
+        .collect();
+    for eid in edge_ids {
+        if let Some(ops) = state.remove(COLL_EDGES, &eid) {
+            tx.record(ops);
+        }
+    }
+    if let Some(mut f) = state.factories.get(&p.factory).cloned() {
+        f.ports.retain(|pid| pid != id);
+        tx.record(state.upsert(Entity::Factory(f)));
+    }
+    if let Some(ops) = state.remove(COLL_PORTS, id) {
+        tx.record(ops);
+    }
+}
+
 /// Remove a factory and everything belonging to it, recording each op into
 /// `tx`: routes touching its ports (each via `remove_route_cascading`), then
 /// edges, groups, ports, node claims, junctions, and finally the factory
@@ -1089,27 +1154,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             require_planned(g.status, id, "delete")?;
-            let edge_ids: Vec<Id> = state
-                .edges
-                .values()
-                .filter(|e| {
-                    e.from == EdgeEnd::Group(id.clone()) || e.to == EdgeEnd::Group(id.clone())
-                })
-                .map(|e| e.id.clone())
-                .collect();
-            for eid in edge_ids {
-                if let Some(ops) = state.remove(COLL_EDGES, &eid) {
-                    tx.record(ops);
-                }
-            }
-            if let Some(mut f) = state.factories.get(&g.factory).cloned() {
-                f.groups.retain(|gid| gid != id);
-                tx.record(state.upsert(Entity::Factory(f)));
-            }
-            if let Some(ops) = state.remove(COLL_GROUPS, id) {
-                tx.record(ops);
-            }
-            prune_build_override(state, &mut tx, id);
+            remove_group_cascading(state, &mut tx, id);
         }
         Command::ExpandGroup { id } => {
             expand_group(state, &mut tx, id)?;
@@ -1185,29 +1230,7 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
                 .cloned()
                 .ok_or(DomainError::NotFound { id: id.clone() })?;
             require_planned(p.status, id, "delete")?;
-            if let Some(rid) = p.bound_route.clone() {
-                remove_route_cascading(state, &mut tx, &rid);
-            }
-            let edge_ids: Vec<Id> = state
-                .edges
-                .values()
-                .filter(|e| {
-                    e.from == EdgeEnd::Port(id.clone()) || e.to == EdgeEnd::Port(id.clone())
-                })
-                .map(|e| e.id.clone())
-                .collect();
-            for eid in edge_ids {
-                if let Some(ops) = state.remove(COLL_EDGES, &eid) {
-                    tx.record(ops);
-                }
-            }
-            if let Some(mut f) = state.factories.get(&p.factory).cloned() {
-                f.ports.retain(|pid| pid != id);
-                tx.record(state.upsert(Entity::Factory(f)));
-            }
-            if let Some(ops) = state.remove(COLL_PORTS, id) {
-                tx.record(ops);
-            }
+            remove_port_cascading(state, &mut tx, id);
         }
         Command::AddEdge {
             factory,
