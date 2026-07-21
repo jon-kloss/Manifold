@@ -620,6 +620,307 @@ fn imported_water_extractor_produces_routable_water() {
     );
 }
 
+fn extractor(class: &str, x: f64, y: f64, actor: &str) -> ImportMachine {
+    ImportMachine {
+        class: class.into(),
+        recipe: None,
+        clock: 1.0,
+        x,
+        y,
+        z: 0.0,
+        node_actor_id: Some(actor.into()),
+        ..Default::default()
+    }
+}
+
+/// Push a synthetic fracking satellite so a test controls resource + purity
+/// exactly, independent of catalog data ordering.
+fn push_sat(s: &mut Session, id: &str, item: &str, purity: &str, x: f64, y: f64) {
+    s.world.nodes.push(gamedata::worldnodes::WorldNode {
+        id: id.into(),
+        item: item.into(),
+        purity: purity.into(),
+        node_type: "fracking-satellite".into(),
+        well: Some("well-test".into()),
+        x,
+        y,
+        z: 0.0,
+        zone: "surface".into(),
+        entrance: None,
+        region: "grass-fields".into(),
+    });
+}
+
+/// Sum the solved out-rate of `item` across every group of `machine`.
+fn produced(s: &Session, d: &app::session::Derived, machine: &str, item: &str) -> f64 {
+    let ids: std::collections::BTreeSet<String> = s
+        .state
+        .groups
+        .values()
+        .filter(|g| g.machine == machine)
+        .map(|g| g.id.clone())
+        .collect();
+    d.factories
+        .values()
+        .flat_map(|f| f.groups.iter())
+        .filter(|(id, _)| ids.contains(*id))
+        .filter_map(|(_, g)| g.out_rates.get(item).copied())
+        .sum()
+}
+
+/// A Resource Well Extractor imports as a producing GROUP (like a water pump, not
+/// a claim), and its rate is the satellite's TRUE per-purity extraction — 30 / 60
+/// / 120 m³/min for impure / normal / pure. Purity lives in the recipe, so all
+/// three arms are exercised (the old test only ever hit `pure`).
+#[test]
+fn imported_fracking_extractor_produces_its_satellites_fluid_at_purity() {
+    for (purity, rate) in [("impure", 30.0), ("normal", 60.0), ("pure", 120.0)] {
+        let mut s = Session::in_memory(None).unwrap();
+        push_sat(
+            &mut s,
+            "n-sat",
+            "Desc_NitrogenGas_C",
+            purity,
+            90_000.0,
+            90_000.0,
+        );
+        s.import_save(ImportSnapshot {
+            save_name: "N-WELL".into(),
+            machines: vec![smelter(90_000.0, 90_000.0)],
+            extractors: vec![extractor(
+                "Build_FrackingExtractor_C",
+                90_000.0,
+                90_000.0,
+                "f",
+            )],
+            ..Default::default()
+        })
+        .unwrap();
+        let d = s.solve_all_readonly();
+        let nitro = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_NitrogenGas_C");
+        assert!(
+            (nitro - rate).abs() < 1e-3,
+            "{purity} nitrogen = {rate}, got {nitro}"
+        );
+    }
+}
+
+/// Purity is in the recipe, NOT a folded clock, so an OVERCLOCKED pure well is
+/// not silently clamped: a pure satellite (120 m³/min) at a 200% save clock
+/// extracts 240 m³/min — the old fold (120 × 2.0 × 2.0 → clamp 2.5) would report
+/// 300, and folding into the clamped clock would report only ~150.
+#[test]
+fn overclocked_pure_fracking_well_is_not_clamped() {
+    let mut s = Session::in_memory(None).unwrap();
+    push_sat(
+        &mut s,
+        "n-sat",
+        "Desc_NitrogenGas_C",
+        "pure",
+        90_000.0,
+        90_000.0,
+    );
+    let mut ext = extractor("Build_FrackingExtractor_C", 90_000.0, 90_000.0, "f");
+    ext.clock = 2.0;
+    s.import_save(ImportSnapshot {
+        save_name: "OC".into(),
+        machines: vec![smelter(90_000.0, 90_000.0)],
+        extractors: vec![ext],
+        ..Default::default()
+    })
+    .unwrap();
+    let d = s.solve_all_readonly();
+    let nitro = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_NitrogenGas_C");
+    assert!(
+        (nitro - 240.0).abs() < 1e-3,
+        "pure × 200% clock = 240, got {nitro}"
+    );
+}
+
+/// A full well — one Pressurizer + satellites of DIFFERENT purity — imports as
+/// ONE factory whose fluid is the SUM of the per-satellite rates (aggregation is
+/// linear), that draws the Pressurizer's 150 MW, and is named after the fluid
+/// (never the "WATER"/"RESOURCE WELL" fallback).
+#[test]
+fn imported_full_nitrogen_well_sums_purities_and_draws_150mw() {
+    let mut s = Session::in_memory(None).unwrap();
+    // one well: impure + pure nitrogen satellites, clustered with their Pressurizer
+    push_sat(
+        &mut s,
+        "n-impure",
+        "Desc_NitrogenGas_C",
+        "impure",
+        90_000.0,
+        90_000.0,
+    );
+    push_sat(
+        &mut s,
+        "n-pure",
+        "Desc_NitrogenGas_C",
+        "pure",
+        90_030.0,
+        90_000.0,
+    );
+    s.import_save(ImportSnapshot {
+        save_name: "FULL-WELL".into(),
+        machines: vec![],
+        extractors: vec![
+            extractor("Build_FrackingSmasher_C", 90_010.0, 90_000.0, "pz"),
+            extractor("Build_FrackingExtractor_C", 90_000.0, 90_000.0, "e-impure"),
+            extractor("Build_FrackingExtractor_C", 90_030.0, 90_000.0, "e-pure"),
+        ],
+        ..Default::default()
+    })
+    .unwrap();
+
+    // exactly one factory (the well), named after nitrogen
+    assert_eq!(s.state.factories.len(), 1, "the well is one factory");
+    let f = s.state.factories.values().next().unwrap();
+    assert!(
+        f.name.contains("NITROGEN"),
+        "well named after its fluid: {}",
+        f.name
+    );
+
+    let d = s.solve_all_readonly();
+    let nitro = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_NitrogenGas_C");
+    assert!(
+        (nitro - 150.0).abs() < 1e-3,
+        "impure 30 + pure 120 = 150, got {nitro}"
+    );
+    let power: f64 = d.factories.values().map(|f| f.total_power_mw).sum();
+    assert!(
+        (power - 150.0).abs() < 1e-3,
+        "the Pressurizer draws 150 MW, got {power}"
+    );
+}
+
+/// An OIL fracking satellite yields Crude Oil (not nitrogen/water), proving the
+/// per-resource recipe resolves by the satellite's item — and it produces via a
+/// GROUP, never a Build_OilPump_C node claim (no collision with the oil pump).
+#[test]
+fn imported_oil_fracking_satellite_produces_crude_oil() {
+    let mut s = Session::in_memory(None).unwrap();
+    push_sat(
+        &mut s,
+        "oil-sat",
+        "Desc_LiquidOil_C",
+        "normal",
+        90_000.0,
+        90_000.0,
+    );
+    s.import_save(ImportSnapshot {
+        save_name: "OIL-WELL".into(),
+        machines: vec![smelter(90_000.0, 90_000.0)],
+        extractors: vec![extractor(
+            "Build_FrackingExtractor_C",
+            90_000.0,
+            90_000.0,
+            "f",
+        )],
+        ..Default::default()
+    })
+    .unwrap();
+    let d = s.solve_all_readonly();
+    let oil = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_LiquidOil_C");
+    assert!(
+        (oil - 60.0).abs() < 1e-3,
+        "normal oil satellite = 60 m³/min, got {oil}"
+    );
+    assert!(
+        !s.state
+            .node_claims
+            .values()
+            .any(|c| c.extractor == "Build_OilPump_C"),
+        "a fracking oil satellite is a group, never an oil-pump claim"
+    );
+}
+
+/// Re-importing a well does not duplicate its groups (parity with the water-pump
+/// re-import test): the recipe-less Pressurizer group and the fracking extractor
+/// group each stay at one.
+#[test]
+fn reimporting_fracking_well_does_not_duplicate() {
+    let build = |s: &mut Session| {
+        s.import_save(ImportSnapshot {
+            save_name: "WELL".into(),
+            machines: vec![],
+            extractors: vec![
+                extractor("Build_FrackingSmasher_C", 90_010.0, 90_000.0, "pz"),
+                extractor("Build_FrackingExtractor_C", 90_000.0, 90_000.0, "e"),
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+    };
+    let mut s = Session::in_memory(None).unwrap();
+    push_sat(
+        &mut s,
+        "n-sat",
+        "Desc_NitrogenGas_C",
+        "pure",
+        90_000.0,
+        90_000.0,
+    );
+    build(&mut s);
+    let count = |s: &Session, m: &str| s.state.groups.values().filter(|g| g.machine == m).count();
+    assert_eq!(count(&s, "Build_FrackingExtractor_C"), 1);
+    assert_eq!(count(&s, "Build_FrackingSmasher_C"), 1);
+    build(&mut s); // re-import the same well
+    assert_eq!(
+        count(&s, "Build_FrackingExtractor_C"),
+        1,
+        "extractor not duplicated"
+    );
+    assert_eq!(
+        count(&s, "Build_FrackingSmasher_C"),
+        1,
+        "pressurizer not duplicated"
+    );
+}
+
+/// An imported Resource Well Pressurizer draws its 150 MW: it produces nothing
+/// (recipe-less, skipped by the material solve) so its nameplate is injected as a
+/// power DRAW on its group, and the well factory's power reads 150 MW, not 0.
+#[test]
+fn imported_pressurizer_draws_its_nameplate_power() {
+    let mut s = Session::in_memory(None).unwrap();
+    let sat = s
+        .world
+        .nodes
+        .iter()
+        .find(|n| n.node_type == "fracking-satellite")
+        .expect("bundled catalog has a fracking satellite")
+        .clone();
+    let snap = ImportSnapshot {
+        save_name: "PRESSURIZED".into(),
+        machines: vec![smelter(sat.x, sat.y)],
+        extractors: vec![extractor("Build_FrackingSmasher_C", sat.x, sat.y, "pz-1")],
+        ..Default::default()
+    };
+    s.import_save(snap).unwrap();
+
+    let pz_id = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_FrackingSmasher_C")
+        .expect("Pressurizer imports as a group, not a claim")
+        .id
+        .clone();
+    let d = s.solve_all_readonly();
+    let draw: f64 = d
+        .factories
+        .values()
+        .filter_map(|f| f.groups.get(&pz_id))
+        .map(|g| g.power_mw)
+        .sum();
+    assert!(
+        (draw - 150.0).abs() < 1e-3,
+        "the Pressurizer draws its 150 MW nameplate, got {draw}"
+    );
+}
+
 fn water_pump(x: f64, clock: f64, actor: &str) -> ImportMachine {
     ImportMachine {
         class: "Build_WaterPump_C".into(),

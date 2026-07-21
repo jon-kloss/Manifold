@@ -38,7 +38,10 @@ pub enum DbError {
 /// Accelerator 52×22 garbage vs 37×27) and must re-parse.
 /// v5: `GameData.pipes` (fluid transport tiers) joined the persisted shape —
 /// pre-v5 blobs carry no pipeline catalog and must re-parse to gain it.
-const SCHEMA_VERSION: &str = "5";
+/// v6: the Resource Well Pressurizer parses as a new `MachineKind::Activator`
+/// and the fracking extractor gains per-(resource, purity) synthesized recipes —
+/// pre-v6 blobs lack both machines/recipes and must re-parse.
+const SCHEMA_VERSION: &str = "6";
 
 #[cfg(feature = "sqlite")]
 const SCHEMA: &str = "
@@ -239,10 +242,9 @@ mod tests {
             "recipe average beats the machine estimate"
         );
         // Schema-version key: a matching build with a stale (or missing)
-        // schema_version must read as a cache miss. The literal is '3' — the
-        // immediate predecessor — so a "4"→"3" SCHEMA_VERSION revert (which
-        // would resurrect caches holding pre-transform footprints) cannot
-        // satisfy this assert.
+        // schema_version must read as a cache miss. '3' is just an arbitrary
+        // OLD version (≠ the current SCHEMA_VERSION) — any prior value must fail
+        // the match so a blob written under an older shape can never be served.
         conn.execute(
             "UPDATE meta SET value = '3' WHERE key = 'schema_version'",
             [],
