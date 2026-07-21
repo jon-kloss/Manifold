@@ -16,7 +16,7 @@ import { CLUSTER_CAP, CLUSTER_STEP_MS, CONVERGE_MS, scatter, tetherKey, type Map
 import { useStore } from "../state/store";
 import Glyph from "../lib/glyphs";
 import { isEditableTarget } from "../lib/keys";
-import { isPlainNode, type WorldNode } from "../state/types";
+import { isRenderableNode, type WorldNode } from "../state/types";
 import SummaryDrawer from "./SummaryDrawer";
 import NodeDrawer from "./NodeDrawer";
 import ResourceOverview from "./ResourceOverview";
@@ -179,10 +179,9 @@ export default function MapView() {
   // from their override alone. The bundled asset stays an ambient default —
   // this overlay never mutates `world.nodes`.
   const resolvedNodes = useMemo(() => {
-    // Only plain resource nodes render/claim today. Geysers and fracking
-    // satellites ship in the catalog but their map rendering + claim land with
-    // their placement features (game-parity arc), so filter them out here.
-    const plain = world.nodes.filter(isPlainNode);
+    // Plain nodes AND fracking satellites render/interact (a satellite opens the
+    // well drawer). Geysers stay hidden until geothermal placement lands.
+    const plain = world.nodes.filter(isRenderableNode);
     const catalog = new Set(plain.map((n) => n.id));
     const out = plain.map((n) => {
       const ov = plan.nodeOverrides[n.id];
@@ -315,7 +314,7 @@ export default function MapView() {
     const layer = new MapCanvasLayer({
       // plain nodes only on first paint too (geysers/wells aren't drawn yet);
       // the update effect below re-feeds resolvedWorld, also plain-filtered.
-      world: { ...initWorld, nodes: initWorld.nodes.filter(isPlainNode) },
+      world: { ...initWorld, nodes: initWorld.nodes.filter(isRenderableNode) },
       nodeStates: {},
       claimLinks: [],
       replacesLinks: [],

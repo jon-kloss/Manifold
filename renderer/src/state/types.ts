@@ -303,13 +303,20 @@ export interface WorldNode {
   region: string;
 }
 /**
- * The single gate for "is this a claimable/renderable resource node today".
- * Mirrors Rust `WorldNode::is_plain_node()`. Geysers and fracking satellites
- * are in the catalog but not yet wired to claim/placement, so every UI
- * consumer that acts on a node filters through this (map render, ⌘K search).
+ * The gate for "is this a plain miner/oil-pump node" — mirrors Rust
+ * `WorldNode::is_plain_node()`. Used by the miner-CLAIM path (NodeDrawer picks a
+ * miner/oil pump for these). Geysers and fracking satellites are NOT plain.
  */
 export const isPlainNode = (n: { nodeType: WorldNode["nodeType"] }): boolean =>
   n.nodeType === "node";
+
+/**
+ * The gate for "does this node RENDER + is it interactable on the map". Plain
+ * nodes and fracking satellites both render (a satellite opens the well drawer,
+ * not the miner claim). Geysers stay hidden until geothermal placement lands.
+ */
+export const isRenderableNode = (n: { nodeType: WorldNode["nodeType"] }): boolean =>
+  n.nodeType === "node" || n.nodeType === "fracking-satellite";
 export interface WorldRegion { id: string; name: string; labelX: number; labelY: number }
 export interface World {
   version: number;
@@ -877,6 +884,7 @@ export type Command =
   | { type: "set_edge_tier"; id: Id; tier: number }
   | { type: "delete_edge"; id: Id }
   | { type: "claim_node"; factory: Id; node: string; extractor: string; clock: number }
+  | { type: "claim_well"; well: string }
   | { type: "release_node"; id: Id }
   | { type: "set_claim"; id: Id; extractor: string; clock: number }
   | { type: "rename_plan"; name: string }

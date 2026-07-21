@@ -27,6 +27,56 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
   // pick when the node kind changes (a miner pick is illegal on oil).
   if (!options.includes(extractor)) setExtractor(options[0]);
 
+  // A fracking satellite opens the WELL drawer: claim the whole well (the
+  // Pressurizer + one Extractor per satellite) in ONE action — never the
+  // per-node miner claim below.
+  if (node.nodeType === "fracking-satellite" && node.well) {
+    const well = node.well;
+    const sats = world.nodes.filter((n) => n.nodeType === "fracking-satellite" && n.well === well);
+    const byPurity: Record<string, number> = { pure: 0, normal: 0, impure: 0 };
+    for (const sat of sats) byPurity[sat.purity] = (byPurity[sat.purity] ?? 0) + 1;
+    const fluid = itemLabel(gamedata.items, node.item) || "FLUID";
+    const regionName = world.regions.find((r) => r.id === node.region)?.name ?? node.region;
+    const claimWell = () => {
+      void dispatch([{ type: "claim_well", well }]);
+      setSelection(null);
+    };
+    return (
+      <aside className="drawer summary-drawer" data-testid="node-drawer">
+        <header className="drawer-header">
+          <ItemIcon item={node.item} displayName={fluid} size={40} />
+          <div className="drawer-title-block">
+            <div className="t-title">{fluid.toUpperCase()} WELL</div>
+            <div className="mono drawer-sub">
+              {regionName.toUpperCase()} · {sats.length} SATELLITES
+            </div>
+          </div>
+          <button className="drawer-close" onClick={() => setSelection(null)} aria-label="Close">
+            ×
+          </button>
+        </header>
+        <section className="drawer-section">
+          <h3 className="t-label">RESOURCE WELL</h3>
+          <div className="insp-note" data-testid="well-purity">
+            {byPurity.pure} pure · {byPurity.normal} normal · {byPurity.impure} impure
+          </div>
+          <p className="insp-note" style={{ marginTop: 8 }}>
+            Claims the Resource Well Pressurizer (150 MW) plus one Resource Well Extractor per
+            satellite, as a new {fluid} well factory with a routable pipe output.
+          </p>
+          <button
+            className="btn btn-primary"
+            style={{ width: "100%", marginTop: 8 }}
+            onClick={claimWell}
+            data-testid="btn-claim-well"
+          >
+            CLAIM WELL
+          </button>
+        </section>
+      </aside>
+    );
+  }
+
   // save-only nodes carry item:"" — degrade to a readable title, never blank.
   const item = itemLabel(gamedata.items, node.item) || "RESOURCE NODE";
   const region = world.regions.find((r) => r.id === node.region)?.name ?? node.region;

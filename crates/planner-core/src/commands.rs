@@ -199,6 +199,13 @@ pub enum Command {
         extractor: String,
         clock: f64,
     },
+    /// Claim a whole Resource Well: stamp a new factory with the Pressurizer +
+    /// one Extractor group per satellite (at its purity's rate). Resolved at the
+    /// SESSION layer (it needs the world catalog + gamedata recipes), never here —
+    /// the planner-core arm is a defensive error.
+    ClaimWell {
+        well: String,
+    },
     ReleaseNode {
         id: Id,
     },
@@ -333,6 +340,7 @@ impl Command {
             Command::SetEdgeTier { .. } => "set belt tier",
             Command::DeleteEdge { .. } => "delete belt",
             Command::ClaimNode { .. } => "claim node",
+            Command::ClaimWell { .. } => "claim well",
             Command::ReleaseNode { .. } => "release node",
             Command::RenamePlan { .. } => "rename plan",
             Command::CreateProposal { .. } => "draft proposal",
@@ -1604,6 +1612,13 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             f.node_claims.push(c.id.clone());
             tx.record(state.upsert(Entity::NodeClaim(c)));
             tx.record(state.upsert(Entity::Factory(f)));
+        }
+        Command::ClaimWell { .. } => {
+            // Resolved at the session layer (needs the world catalog + gamedata).
+            // Reaching planner-core means the interception was bypassed.
+            return Err(DomainError::Invalid {
+                message: "claim_well must be resolved at the session layer".into(),
+            });
         }
         Command::ReleaseNode { id } => {
             let c = state

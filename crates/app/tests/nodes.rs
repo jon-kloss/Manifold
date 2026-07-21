@@ -9,7 +9,7 @@ use app::import::{resolved_node_pos, ImportMachine, ImportSnapshot};
 use app::session::ImportOutcome;
 use app::Session;
 use planner_core::commands::Command;
-use planner_core::entities::{CreatedBy, EdgeEnd, MapPos, NodeOverride, Status};
+use planner_core::entities::{CreatedBy, EdgeEnd, MapPos, NodeOverride, PortDirection, Status};
 
 fn smelter(x: f64, y: f64) -> ImportMachine {
     ImportMachine {
@@ -876,6 +876,94 @@ fn reimporting_fracking_well_does_not_duplicate() {
         count(&s, "Build_FrackingSmasher_C"),
         1,
         "pressurizer not duplicated"
+    );
+}
+
+/// PLANNED placement: `ClaimWell` stamps a new factory for the whole well — one
+/// Extractor group per satellite purity (aggregated), one Pressurizer, and a
+/// routable fluid OUT port. The factory produces Σ per-satellite fluid and draws
+/// the Pressurizer's 150 MW.
+#[test]
+fn claim_well_stamps_a_planned_well_factory() {
+    let mut s = Session::in_memory(None).unwrap();
+    // one nitrogen well: 2 pure + 1 impure satellites
+    push_sat(
+        &mut s,
+        "w-p1",
+        "Desc_NitrogenGas_C",
+        "pure",
+        90_000.0,
+        90_000.0,
+    );
+    push_sat(
+        &mut s,
+        "w-p2",
+        "Desc_NitrogenGas_C",
+        "pure",
+        90_020.0,
+        90_000.0,
+    );
+    push_sat(
+        &mut s,
+        "w-i1",
+        "Desc_NitrogenGas_C",
+        "impure",
+        90_040.0,
+        90_000.0,
+    );
+    for n in s.world.nodes.iter_mut().filter(|n| n.id.starts_with("w-")) {
+        n.well = Some("well-n".into());
+    }
+
+    let before = s.state.factories.len();
+    s.edit(vec![Command::ClaimWell {
+        well: "well-n".into(),
+    }])
+    .unwrap();
+
+    // a new factory, named after the fluid
+    assert_eq!(s.state.factories.len(), before + 1, "one new well factory");
+    let f = s
+        .state
+        .factories
+        .values()
+        .find(|f| f.name.contains("NITROGEN"))
+        .expect("well factory named after nitrogen");
+    // groups: one extractor group per purity (pure + impure) + one pressurizer
+    let ext = s
+        .state
+        .groups
+        .values()
+        .filter(|g| g.factory == f.id && g.machine == "Build_FrackingExtractor_C")
+        .count();
+    assert_eq!(ext, 2, "one extractor group per purity (pure, impure)");
+    assert_eq!(
+        s.state
+            .groups
+            .values()
+            .filter(|g| g.factory == f.id && g.machine == "Build_FrackingSmasher_C")
+            .count(),
+        1,
+        "one Pressurizer"
+    );
+    // a routable nitrogen OUT port exists
+    assert!(
+        s.state.ports.values().any(|p| p.factory == f.id
+            && p.item == "Desc_NitrogenGas_C"
+            && p.direction == PortDirection::Out),
+        "well has a routable nitrogen OUT port"
+    );
+    // solve: 2 pure (120 each) + 1 impure (30) = 270 m³/min, 150 MW draw
+    let d = s.solve_all_readonly();
+    let nitro = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_NitrogenGas_C");
+    assert!(
+        (nitro - 270.0).abs() < 1e-3,
+        "Σ well output = 270, got {nitro}"
+    );
+    let power: f64 = d.factories.values().map(|f| f.total_power_mw).sum();
+    assert!(
+        (power - 150.0).abs() < 1e-3,
+        "Pressurizer draws 150 MW, got {power}"
     );
 }
 

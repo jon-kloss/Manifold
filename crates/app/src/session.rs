@@ -491,7 +491,13 @@ impl Session {
         }
         let mut tx = Transaction::new(cmds[0].label());
         for cmd in &cmds {
-            match commands::apply(&mut self.state, cmd) {
+            // ClaimWell needs the world catalog + gamedata recipes, which
+            // planner-core's pure apply can't see — resolve it here.
+            let applied = match cmd {
+                Command::ClaimWell { well } => self.apply_claim_well(well),
+                other => commands::apply(&mut self.state, other),
+            };
+            match applied {
                 Ok(t) => {
                     tx.forward.extend(t.forward);
                     tx.inverse.extend(t.inverse);
@@ -1952,6 +1958,149 @@ impl Session {
             outputs,
             junctions,
         })
+    }
+
+    /// Claim a whole Resource Well (planned placement): create a factory at the
+    /// well's centroid populated with the Pressurizer (recipe-less Activator) +
+    /// one Extractor group per satellite PURITY (its synthesized per-purity
+    /// recipe, count = satellites at that purity), plus a fluid OUT port sized to
+    /// total production so the well is routable by pipe. One transaction = one
+    /// undo step. Errors if the well id is unknown or the resource has no recipe.
+    fn apply_claim_well(&mut self, well: &str) -> Result<Transaction, DomainError> {
+        let sats: Vec<&gamedata::worldnodes::WorldNode> = self
+            .world
+            .nodes
+            .iter()
+            .filter(|n| n.well.as_deref() == Some(well))
+            .collect();
+        if sats.is_empty() {
+            return Err(DomainError::Invalid {
+                message: format!("no resource well {well}"),
+            });
+        }
+        let item = sats[0].item.clone();
+        let cx = sats.iter().map(|n| n.x).sum::<f64>() / sats.len() as f64;
+        let cy = sats.iter().map(|n| n.y).sum::<f64>() / sats.len() as f64;
+        // Satellites aggregate by purity → one Extractor group per purity.
+        let mut by_purity: BTreeMap<String, u32> = BTreeMap::new();
+        for n in &sats {
+            *by_purity.entry(n.purity.clone()).or_insert(0) += 1;
+        }
+
+        let mut tx = Transaction::new("claim well");
+        let fid = new_id();
+        let mut group_ids: Vec<Id> = Vec::new();
+        let mut ext_ids: Vec<Id> = Vec::new();
+        let mut total_rate = 0.0;
+        let mut gx = 0.0;
+        for (purity, count) in &by_purity {
+            let recipe = format!("Recipe_Extract_Build_FrackingExtractor_{purity}_{item}");
+            let Some(r) = self.gamedata.recipes.get(&recipe) else {
+                continue;
+            };
+            if let Some((_, amt)) = r.products.first() {
+                if r.duration_s > 0.0 {
+                    total_rate += amt * 60.0 / r.duration_s * *count as f64;
+                }
+            }
+            let g = MachineGroup {
+                id: new_id(),
+                factory: fid.clone(),
+                machine: "Build_FrackingExtractor_C".into(),
+                recipe,
+                count: *count,
+                clock: 1.0,
+                somersloops: 0,
+                planned_delta: None,
+                graph_pos: GraphPos { x: gx, y: 0.0 },
+                floor: 0,
+                status: Status::Planned,
+                created_by: CreatedBy::Manual,
+            };
+            group_ids.push(g.id.clone());
+            ext_ids.push(g.id.clone());
+            tx.record(self.state.upsert(Entity::Group(g)));
+            gx += 220.0;
+        }
+        if group_ids.is_empty() {
+            return Err(DomainError::Invalid {
+                message: format!("well {well} has no extraction recipe for {item}"),
+            });
+        }
+        // The Pressurizer: a recipe-less power-only Activator group (its 150 MW is
+        // credited by inject_activator_power).
+        let pz = MachineGroup {
+            id: new_id(),
+            factory: fid.clone(),
+            machine: "Build_FrackingSmasher_C".into(),
+            recipe: String::new(),
+            count: 1,
+            clock: 1.0,
+            somersloops: 0,
+            planned_delta: None,
+            graph_pos: GraphPos { x: gx, y: 0.0 },
+            floor: 0,
+            status: Status::Planned,
+            created_by: CreatedBy::Manual,
+        };
+        group_ids.push(pz.id.clone());
+        tx.record(self.state.upsert(Entity::Group(pz)));
+        // Routable fluid OUT port, sized to total production, and wire each
+        // extractor group into it (Group→Port edges) so the solve flows the
+        // fluid out — an unconnected port would leave the groups idling at 0.
+        let pid = new_id();
+        tx.record(self.state.upsert(Entity::Port(Port {
+            id: pid.clone(),
+            factory: fid.clone(),
+            direction: PortDirection::Out,
+            item: item.clone(),
+            rate: total_rate,
+            rate_ceiling: None,
+            bound_route: None,
+            graph_pos: GraphPos {
+                x: gx + 220.0,
+                y: 0.0,
+            },
+            status: Status::Planned,
+            created_by: CreatedBy::Manual,
+        })));
+        for eid in &ext_ids {
+            tx.record(self.state.upsert(Entity::Edge(BeltEdge {
+                id: new_id(),
+                factory: fid.clone(),
+                from: EdgeEnd::Group(eid.clone()),
+                to: EdgeEnd::Port(pid.clone()),
+                item: item.clone(),
+                tier: 1,
+                status: Status::Planned,
+                created_by: CreatedBy::Manual,
+            })));
+        }
+        let name = self
+            .gamedata
+            .items
+            .get(&item)
+            .map(|i| format!("{} WELL", i.display_name.to_uppercase()))
+            .unwrap_or_else(|| "RESOURCE WELL".into());
+        tx.created.push(fid.clone());
+        tx.record(self.state.upsert(Entity::Factory(Factory {
+            id: fid,
+            name,
+            position: MapPos {
+                x: cx,
+                y: cy,
+                z: 0.0,
+            },
+            region: String::new(),
+            node_claims: vec![],
+            groups: group_ids,
+            ports: vec![pid],
+            style_guide: None,
+            replaces: None,
+            status: Status::Planned,
+            created_by: CreatedBy::Manual,
+        })));
+        Ok(tx)
     }
 
     /// Extraction ceiling for a node claim, from gamedata (items/min).
