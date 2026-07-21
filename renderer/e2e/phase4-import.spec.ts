@@ -37,7 +37,9 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   // ---- first import writes the ◆ built layer ----
   await importSave(page, "Dunarr-076.sav");
   await expect(page.getByTestId("import-done")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByTestId("import-done")).toContainText("13 factories · 867 machines imported as ◆ BUILT");
+  // 14 (not 13): the save's Water Extractors now import as a producing water
+  // factory instead of vanishing into inert claims.
+  await expect(page.getByTestId("import-done")).toContainText("14 factories · 867 machines imported as ◆ BUILT");
   await expect(page.getByTestId("import-done")).toContainText("quarantined");
   // the header is snapshotted at open: a FIRST import must not relabel itself
   // "RE-IMPORT SAVE" the instant its own write lands

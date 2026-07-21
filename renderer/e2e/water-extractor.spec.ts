@@ -20,6 +20,9 @@ async function hydrate(request: APIRequestContext): Promise<any> {
 
 test("a Water Extractor can be placed in a factory from the add-machine picker", async ({ page, request }) => {
   await resetView(request);
+  // Clean plan first: a prior import spec can leave its own "WATER WORKS"
+  // factory (imported Water Extractors now build one) — avoid a name collision.
+  await request.post(`${API}/new_empire`, { data: "{}" });
   const f = (
     await edit(request, [
       { type: "create_factory", name: "WATER WORKS", position: { x: -2000, y: 2000 }, region: "GRASS FIELDS" },

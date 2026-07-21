@@ -34,6 +34,10 @@ async function rightDrag(page: Page, from: { x: number; y: number }, to: { x: nu
 }
 
 test("empire: a water OUT → IN pair draws a PIPE route", async ({ page, request }) => {
+  // Clean plan first: a prior import spec can leave its own "WATER WORKS"
+  // factory (imported Water Extractors now build one), which would collide with
+  // ours by name in the serial suite.
+  await request.post(`${API}/new_empire`, { data: "{}" });
   // WATER WORKS ships water; POWER PLANT wants it. Minimal ports are enough to
   // exercise the drawing UI (the popover enumerates unbound OUT ports on the
   // source and item-matches IN ports on the target).
