@@ -315,17 +315,20 @@
   border-color: var(--bp-600);
   background-image: var(--bp-hatch);
 }
-.junction-card.selected {
-  border: 2px solid var(--signal-500);
-}
 /* The Pipeline Junction Cross is a FLUID buildable — pipe-blue accent (the same
-   --bp blueprint blue the pipe belts/labels use), so it reads as "pipes here"
-   at a glance, independent of build status. Selected still wins (below in DOM). */
+   --bp blueprint blue the pipe belts/labels use), so it reads as "pipes here" at
+   a glance, independent of build status. Declared BEFORE `.selected` (equal
+   specificity) so selection's signal border still wins the cascade when picked;
+   `.pipe` only paints the border-color of an UNselected cross, composing with
+   `.frame-planned`'s dashed style property-by-property. */
 .junction-card.pipe {
   border-color: var(--bp-400);
 }
 .junction-card.pipe .junction-glyph {
   color: var(--bp-400);
+}
+.junction-card.selected {
+  border: 2px solid var(--signal-500);
 }
 .junction-sprite {
   width: 56px;

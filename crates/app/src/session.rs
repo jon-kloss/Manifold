@@ -529,14 +529,19 @@ impl Session {
                 // Fluids ride pipes, solids ride belts — the medium follows the
                 // item. A Pipeline Junction Cross carries fluids ONLY; a belt
                 // splitter/merger carries solids ONLY. planner-core's pure apply
-                // has no item catalog to tell them apart, so gate it here.
-                Command::AddEdge { from, to, item, .. }
-                    if self.junction_fluid_conflict(from, to, item).is_some() =>
-                {
-                    Err(DomainError::Invalid {
-                        message: self.junction_fluid_conflict(from, to, item).unwrap(),
-                    })
+                // has no item catalog to tell them apart, so gate it here — then
+                // hand the rest of the AddEdge validation to the pure apply.
+                Command::AddEdge { from, to, item, .. } => {
+                    match self.junction_fluid_conflict(from, to, item) {
+                        Some(message) => Err(DomainError::Invalid { message }),
+                        None => commands::apply(&mut self.state, cmd),
+                    }
                 }
+                // Bank expansion fans belts through junction trees — and a fluid
+                // bank (refinery/blender) must fan through PIPE junctions, not
+                // belt ones. planner-core's pure apply defaults to belt (no
+                // catalog); supply the real fluid predicate here.
+                Command::ExpandGroup { id } => self.apply_expand_group(id),
                 other => commands::apply(&mut self.state, other),
             };
             match applied {
@@ -591,16 +596,11 @@ impl Session {
     /// junction end's kind, else `None`. An unknown item is treated as solid
     /// (the belt default), matching `transport_capacity`.
     fn junction_fluid_conflict(&self, from: &EdgeEnd, to: &EdgeEnd, item: &str) -> Option<String> {
-        let is_fluid = self
-            .gamedata
-            .items
-            .get(item)
-            .map(|i| i.is_fluid())
-            .unwrap_or(false);
-        let name = self
-            .gamedata
-            .items
-            .get(item)
+        let cat = self.gamedata.items.get(item);
+        // An unknown item (absent from the catalog) defaults to solid, matching
+        // `transport_capacity`'s belt default.
+        let is_fluid = cat.map(|i| i.is_fluid()).unwrap_or(false);
+        let name = cat
             .map(|i| i.display_name.clone())
             .unwrap_or_else(|| item.to_string());
         for end in [from, to] {
@@ -616,13 +616,33 @@ impl Session {
                         "a Pipeline Junction carries fluids only — {name} is a solid"
                     ))
                 }
-                (false, true) => return Some(format!(
+                (false, true) => {
+                    return Some(format!(
                     "{name} is a fluid — route it through a Pipeline Junction, not a belt junction"
-                )),
+                ))
+                }
                 _ => {}
             }
         }
         None
+    }
+
+    /// Expand a ×N bank with fluid-aware fan trees: pipe junctions for fluid
+    /// lines, belt junctions for solids. The item catalog lives here (not in
+    /// planner-core's pure apply), so this intercepts `ExpandGroup` and hands
+    /// `expand_group` a real `is_fluid` predicate — the same session-layer split
+    /// as the AddEdge fluid guard.
+    fn apply_expand_group(&mut self, id: &Id) -> Result<Transaction, DomainError> {
+        let fluid: std::collections::BTreeSet<String> = self
+            .gamedata
+            .items
+            .iter()
+            .filter(|(_, it)| it.is_fluid())
+            .map(|(k, _)| k.clone())
+            .collect();
+        let mut tx = Transaction::new("expand bank");
+        commands::expand_group(&mut self.state, &mut tx, id, &|item| fluid.contains(item))?;
+        Ok(tx)
     }
 
     /// The ONLY path from an applied `Transaction` to a durable undo entry.

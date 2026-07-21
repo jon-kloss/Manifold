@@ -63,7 +63,15 @@ export default function JunctionNode({ data, selected }: { data: JunctionNodeDat
     <div
       className={`junction-card frame-${junction.status} ${isPipe ? "pipe" : ""} ${selected ? "selected" : ""} ${data.motionCls ?? ""}`}
       data-testid={`junction-${junction.kind}-${junction.id}`}
-      title={`${name} — in ${inUsed}/${inCap} · out ${outUsed}/${outCap}${item ? ` · ${item.toUpperCase()}` : ""}`}
+      // A pipe cross's real limit is a TOTAL of 4 ports in any in/out mix, so it
+      // reads "N/4 ports" — showing "in 2/4 · out 2/4" would imply 4 more are
+      // free when the next connection of either kind is refused. Belt junctions
+      // keep the per-direction budget (their in/out caps genuinely differ).
+      title={
+        isPipe
+          ? `${name} — ${inUsed + outUsed}/4 ports${item ? ` · ${item.toUpperCase()}` : ""}`
+          : `${name} — in ${inUsed}/${inCap} · out ${outUsed}/${outCap}${item ? ` · ${item.toUpperCase()}` : ""}`
+      }
     >
       {isStorage ? (
         <>

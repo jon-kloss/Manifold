@@ -472,7 +472,17 @@ const EXPAND_MAX: u32 = 24;
 /// needed): every wired input belt gets a splitter tree to the N machines, every
 /// wired output belt a merger tree from them. Every mutation is recorded, so the
 /// command's inverse (undo) restores the exact ×N bank + original belts.
-fn expand_group(state: &mut PlanState, tx: &mut Transaction, id: &Id) -> Result<(), DomainError> {
+/// Expand a ×N bank into N ×1 machines wired through fan-in/fan-out junction
+/// trees. `is_fluid` classifies each routed item so fluid lines fan through pipe
+/// junctions and solids through belt junctions; planner-core has no item catalog
+/// of its own, so `apply` passes a belt-only default and the session layer
+/// supplies the real predicate (same split as the AddEdge fluid guard).
+pub fn expand_group(
+    state: &mut PlanState,
+    tx: &mut Transaction,
+    id: &Id,
+    is_fluid: &dyn Fn(&str) -> bool,
+) -> Result<(), DomainError> {
     let g = state
         .groups
         .get(id)
@@ -550,6 +560,7 @@ fn expand_group(state: &mut PlanState, tx: &mut Transaction, id: &Id) -> Result<
             g.floor,
             anchor,
             &machines,
+            is_fluid,
         );
         let mut e2 = e.clone();
         e2.to = EdgeEnd::Junction(root);
@@ -579,6 +590,7 @@ fn expand_group(state: &mut PlanState, tx: &mut Transaction, id: &Id) -> Result<
             g.floor,
             anchor,
             &machines,
+            is_fluid,
         );
         let mut e2 = e.clone();
         e2.from = EdgeEnd::Junction(root);
@@ -611,8 +623,15 @@ fn fan_tree(
     floor: u32,
     anchor: GraphPos,
     machines: &[Id],
+    is_fluid: &dyn Fn(&str) -> bool,
 ) -> Id {
-    let kind = if is_split {
+    // A fluid line fans through Pipeline Junction Crosses, not belt junctions
+    // (fluids ride pipes) — a cross serves as a 1→3 or 3→1 fan node (1+3 = 4
+    // ports, within its 4-port total). `is_fluid` comes from the caller's item
+    // catalog; planner-core has none, so a raw apply defaults to belt.
+    let kind = if is_fluid(item) {
+        JunctionKind::PipeJunction
+    } else if is_split {
         JunctionKind::Splitter
     } else {
         JunctionKind::Merger
@@ -1183,7 +1202,10 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             remove_group_cascading(state, &mut tx, id);
         }
         Command::ExpandGroup { id } => {
-            expand_group(state, &mut tx, id)?;
+            // planner-core has no item catalog — default to belt fans. The
+            // session layer intercepts ExpandGroup and supplies the real
+            // is_fluid predicate so fluid banks fan through pipe junctions.
+            expand_group(state, &mut tx, id, &|_| false)?;
         }
         Command::AddPort {
             factory,

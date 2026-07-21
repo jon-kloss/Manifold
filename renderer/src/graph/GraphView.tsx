@@ -51,7 +51,7 @@ import {
 import FloorPlates from "./FloorPlates";
 import { fmtRate, fmtPercent, bottleneckEdges, itemLabel } from "../lib/format";
 import GraphSearch from "./GraphSearch";
-import { clampEdgeTier, isFluidItem, transportCapacity } from "../state/types";
+import { clampEdgeTier, isFluidItem, isPipeJunction, transportCapacity } from "../state/types";
 import "./graph.css";
 
 const nodeTypes = { group: MachineGroupNode, boundaryPort: BoundaryPortNode, junction: JunctionNode };
@@ -594,14 +594,15 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       const text = `${fmtRate(d?.flow ?? 0)}/${fmtRate(transportCapacity(gamedata, e.item, e.tier))} · ${fmtPercent(d?.saturation ?? 0)} ${tierLabel}`;
       labelSizes[e.id] = { w: text.length * 6.4 + 16, h: 20 };
     }
-    // Splitters/mergers route belts to distinct faces like the real building.
-    // The Pipeline Junction Cross both merges and splits (2-in/2-out faces), so
-    // it takes the default anchor routing like storage — not the splitter fan.
+    // Splitters/mergers route belts to distinct faces like the real building;
+    // the Pipeline Junction Cross fans BOTH sides (inputs left/top, outputs
+    // right/bottom) — the "cross" shape, matching its four handles.
     const shapes: Record<string, JunctionShape> = {};
     for (const j of Object.values(plan.junctions)) {
       if (j.factory !== factoryId) continue;
       if (j.kind === "merger") shapes[j.id] = "merger";
-      else if (j.kind !== "storage" && j.kind !== "pipe_junction") shapes[j.id] = "splitter";
+      else if (j.kind === "pipe_junction") shapes[j.id] = "cross";
+      else if (j.kind !== "storage") shapes[j.id] = "splitter";
     }
     const layout = computeEdgeLayout(
       geoms,
@@ -941,6 +942,15 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
       // a stale belt tier (a legacy fluid edge), so Math.max alone could seed a
       // brand-new pipe at Mk.5 — invalid (pipes reach Mk.2).
       const tier = clampEdgeTier(gd, item, Math.max(1, ...touching(conn.source), ...touching(conn.target)));
+      // Client mirror of the server's fluid-vs-junction guard: a pipe junction
+      // carries fluids only, a belt junction solids only. Refuse a mismatched
+      // drag silently here so the user gets instant feedback (no edge drawn)
+      // rather than a delayed server rejection.
+      const mediumMismatch = (id: string) => {
+        const j = p.junctions[id];
+        return j != null && isPipeJunction(j.kind) !== fluid;
+      };
+      if (mediumMismatch(conn.source) || mediumMismatch(conn.target)) return;
       void dispatch([{ type: "add_edge", factory: factoryId, from: endOf(conn.source), to: endOf(conn.target), item, tier }]);
     },
     [dispatch, factoryId],

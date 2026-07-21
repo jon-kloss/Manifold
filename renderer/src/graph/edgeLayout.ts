@@ -32,7 +32,7 @@ interface Anchor extends Pt {
 }
 /** Junction shapes that get game-accurate side orientation. Storage and any
  *  other kind fall through to the default right-out / left-in behaviour. */
-export type JunctionShape = "splitter" | "merger";
+export type JunctionShape = "splitter" | "merger" | "cross";
 
 interface Hop {
   /** index of the segment (between points[i] and points[i+1]) */
@@ -79,6 +79,12 @@ function faceAnchor(n: NodeGeom, dir: Dir, frac = 0.5): Anchor {
 // sides). Sorted by counterpart Y so the topmost belt takes the top face.
 const OUT_FACES: Record<number, Dir[]> = { 1: ["R"], 2: ["T", "B"], 3: ["T", "R", "B"] };
 const IN_FACES: Record<number, Dir[]> = { 1: ["L"], 2: ["T", "B"], 3: ["T", "L", "B"] };
+// The Pipeline Junction Cross both merges AND splits, so it fans BOTH sides: up
+// to 2 inputs on its left/top faces and up to 2 outputs on its right/bottom
+// faces — the 2-in/2-out orientation its four handles imply. (Beyond 2 on a
+// side, it falls through to the even spread, same as any junction.)
+const CROSS_IN_FACES: Record<number, Dir[]> = { 1: ["L"], 2: ["L", "T"] };
+const CROSS_OUT_FACES: Record<number, Dir[]> = { 1: ["R"], 2: ["R", "B"] };
 
 /** Deterministic anchors: edges sorted by counterpart center-Y (ties by id),
  *  spread evenly along the node face. Splitters/mergers instead fan their
@@ -102,7 +108,11 @@ function anchorPositions(
     const n = nodes[nodeId];
     const shape = shapes[nodeId];
     list.sort((a, b) => centerY(a.target) - centerY(b.target) || a.id.localeCompare(b.id));
-    if (shape === "splitter" && OUT_FACES[list.length]) {
+    if (shape === "cross" && CROSS_OUT_FACES[list.length]) {
+      // a pipe cross fans its outputs across the right/bottom faces
+      const faces = CROSS_OUT_FACES[list.length];
+      list.forEach((e, i) => (src[e.id] = faceAnchor(n, faces[i])));
+    } else if (shape === "splitter" && OUT_FACES[list.length]) {
       // outputs fan across distinct faces
       const faces = OUT_FACES[list.length];
       list.forEach((e, i) => (src[e.id] = faceAnchor(n, faces[i])));
@@ -119,7 +129,11 @@ function anchorPositions(
     const n = nodes[nodeId];
     const shape = shapes[nodeId];
     list.sort((a, b) => centerY(a.source) - centerY(b.source) || a.id.localeCompare(b.id));
-    if (shape === "merger" && IN_FACES[list.length]) {
+    if (shape === "cross" && CROSS_IN_FACES[list.length]) {
+      // a pipe cross fans its inputs across the left/top faces
+      const faces = CROSS_IN_FACES[list.length];
+      list.forEach((e, i) => (dst[e.id] = faceAnchor(n, faces[i])));
+    } else if (shape === "merger" && IN_FACES[list.length]) {
       // inputs fan across distinct faces
       const faces = IN_FACES[list.length];
       list.forEach((e, i) => (dst[e.id] = faceAnchor(n, faces[i])));
