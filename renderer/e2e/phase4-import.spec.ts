@@ -58,7 +58,7 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   await page.keyboard.press("Control+z");
   await expect.poll(factoryCount).toBe(before);
   await page.keyboard.press("Control+Shift+z");
-  await expect.poll(factoryCount).toBe(before + 13);
+  await expect.poll(factoryCount).toBe(before + 14); // +1: the imported water factory
 
   // ---- DIFF: plan-vs-built drift (◇ plan ahead of the game) ----
   await page.keyboard.press("Tab");
