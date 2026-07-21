@@ -145,6 +145,17 @@ const NODE_MATCH_M: f64 = REMATCH_M;
 /// community-extraction coordinate noise so normal binding stays silent.
 pub(crate) const NODE_DRIFT_M: f64 = 30.0;
 
+/// The synthesized zero-ingredient extraction recipe produced in `machine`, if
+/// one exists — i.e. the machine draws its resource from the environment with no
+/// world node to claim (a Water Extractor). Such an extractor imports as a
+/// producing ◆ GROUP, not a node claim.
+fn extract_recipe_for(gd: &gamedata::docs::GameData, machine: &str) -> Option<String> {
+    gd.recipes
+        .values()
+        .find(|r| r.ingredients.is_empty() && r.produced_in.iter().any(|m| m == machine))
+        .map(|r| r.class_name.clone())
+}
+
 /// The plan-local id a save-only node (no catalog match) claims under.
 fn save_node_key(e: &ClusterExtractor) -> String {
     match &e.node_actor_id {
@@ -417,6 +428,14 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
     // within the same generous radius the count used, so each miner claims one
     // node under exactly one factory.
     let mut attributed: Vec<Vec<ClusterExtractor>> = vec![Vec::new(); pre.len()];
+    // A water extractor has NO world node to claim (water is drawn from any
+    // surface) — it runs a synthesized zero-ingredient extraction recipe. So it's
+    // not a claim but a GROUP producing Desc_Water_C, aggregated per cluster like
+    // machine groups, so its water becomes a real routable ◆ built output (and
+    // auto-wires to any water consumer in the same cluster) instead of an inert
+    // save-only claim that produces nothing.
+    let mut water_groups: Vec<BTreeMap<(String, String), (u32, f64)>> =
+        vec![BTreeMap::new(); pre.len()];
     for e in &snapshot.extractors {
         let nearest = pre
             .iter()
@@ -425,6 +444,14 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
             .filter(|(_, d)| *d <= DBSCAN_EPS_M * 3.0)
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         if let Some((i, _)) = nearest {
+            if let Some(recipe) = extract_recipe_for(gd, &e.class) {
+                let ent = water_groups[i]
+                    .entry((e.class.clone(), recipe))
+                    .or_insert((0, 0.0));
+                ent.0 += 1;
+                ent.1 += e.clock;
+                continue;
+            }
             attributed[i].push(ClusterExtractor {
                 class: e.class.clone(),
                 position: MapPos {
@@ -435,6 +462,20 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
                 clock: e.clock,
                 node_actor_id: e.node_actor_id.clone(),
                 purity: e.purity.clone(),
+            });
+        }
+    }
+
+    // Fold the water-extractor groups into each cluster's machine groups so they
+    // build as ordinary ◆ producers (their water nets to a routable OUT port, or
+    // wires straight to a water consumer in the same cluster).
+    for (i, wg) in water_groups.into_iter().enumerate() {
+        for ((machine, recipe), (count, clock_sum)) in wg {
+            pre[i].groups.push(ClusterGroup {
+                machine,
+                recipe,
+                count,
+                clock: (clock_sum / count as f64 * 1000.0).round() / 1000.0,
             });
         }
     }

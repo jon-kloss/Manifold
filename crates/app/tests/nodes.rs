@@ -511,3 +511,71 @@ fn noop_edit_preserves_redo_tail() {
         r.patches
     );
 }
+
+/// A Water Extractor has no world node to claim (water is drawn from any
+/// surface), so on import it becomes a ◆ Built GROUP running the synthesized
+/// zero-ingredient extraction recipe (producing Desc_Water_C) — not an inert
+/// save-only claim. Its water is then a real, routable output the empire solves.
+#[test]
+fn imported_water_extractor_produces_routable_water() {
+    let mut s = Session::in_memory(None).unwrap();
+    let claims_before = s.state.node_claims.len();
+    // A generator seeds a cluster (extractors attach to the nearest machine
+    // cluster); the water pump sits in it. The pump's water nets to a surplus —
+    // a recipe-less imported generator carries no water demand to consume it.
+    let snap = ImportSnapshot {
+        save_name: "WATER-IMPORT".into(),
+        machines: vec![ImportMachine {
+            class: "Build_GeneratorCoal_C".into(),
+            recipe: None,
+            clock: 1.0,
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            ..Default::default()
+        }],
+        extractors: vec![ImportMachine {
+            class: "Build_WaterPump_C".into(),
+            recipe: None,
+            clock: 1.0,
+            x: 60.0,
+            y: 0.0,
+            z: 0.0,
+            node_actor_id: Some("watervol-1".into()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    s.import_save(snap).unwrap();
+
+    // The pump imported as a ◆ Built GROUP with the extraction recipe...
+    let (pump_id, pump_recipe, pump_status) = {
+        let pump = s
+            .state
+            .groups
+            .values()
+            .find(|g| g.machine == "Build_WaterPump_C")
+            .expect("water pump imports as a producing group, not a claim");
+        (pump.id.clone(), pump.recipe.clone(), pump.status)
+    };
+    assert_eq!(pump_recipe, "Recipe_Extract_Build_WaterPump");
+    assert_eq!(pump_status, Status::Built);
+    // ...and NOT as a node claim (there is no water node to claim).
+    assert_eq!(
+        s.state.node_claims.len(),
+        claims_before,
+        "a water pump is a group, not a claim"
+    );
+    // Its water is a real solved output (nets to a routable OUT port).
+    let d = s.solve_all_readonly();
+    let water: f64 = d
+        .factories
+        .values()
+        .filter_map(|f| f.groups.get(&pump_id))
+        .filter_map(|g| g.out_rates.get("Desc_Water_C").copied())
+        .sum();
+    assert!(
+        water > 0.0,
+        "the imported water extractor actually produces water, got {water}"
+    );
+}
