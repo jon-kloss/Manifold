@@ -153,31 +153,94 @@ const NODE_MATCH_M: f64 = REMATCH_M;
 /// community-extraction coordinate noise so normal binding stays silent.
 pub(crate) const NODE_DRIFT_M: f64 = 30.0;
 
-/// Map of extractor machine → its synthesized zero-ingredient extraction recipe
-/// (a Water Extractor draws its resource from the environment with no world node
-/// to claim, so `docs.rs` gives it a recipe that produces from nothing). Built
-/// ONCE per import (not rescanned per extractor — the clustering is near-linear
-/// by design). The `MachineKind::Extractor` gate is load-bearing: it pins the
-/// docs.rs invariant "only extractors get a zero-ingredient recipe" here, so a
-/// future/modded zero-ingredient recipe on a non-extractor can't misclassify it
-/// as a producing group. An extractor in this map imports as a ◆ GROUP; one
-/// absent from it (a node-bound miner/oil pump) imports as a node claim.
-fn water_extract_recipes(gd: &gamedata::docs::GameData) -> BTreeMap<&str, &str> {
-    let mut out = BTreeMap::new();
+/// Every synthesized zero-ingredient extraction recipe, grouped by its extractor
+/// machine → list of (produced item, recipe class). A Water Extractor draws its
+/// resource from the environment with no world node to claim, so `docs.rs` gives
+/// such extractors a recipe that produces from nothing; on import they build as ◆
+/// GROUPS, not node claims. The `MachineKind::Extractor` gate is load-bearing: it
+/// pins the docs.rs invariant "only extractors get a zero-ingredient recipe", so
+/// a future/modded zero-ingredient recipe on a non-extractor can't misclassify
+/// it. Built ONCE per import (the clustering is near-linear by design).
+fn extract_recipes(gd: &gamedata::docs::GameData) -> BTreeMap<&str, Vec<(&str, &str)>> {
+    let mut out: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
     for r in gd.recipes.values() {
         if !r.ingredients.is_empty() {
             continue;
         }
+        let Some((item, _)) = r.products.first() else {
+            continue;
+        };
         for m in &r.produced_in {
             if matches!(
                 gd.machines.get(m).map(|mc| &mc.kind),
                 Some(gamedata::docs::MachineKind::Extractor { .. })
             ) {
-                out.entry(m.as_str()).or_insert(r.class_name.as_str());
+                out.entry(m.as_str())
+                    .or_default()
+                    .push((item.as_str(), r.class_name.as_str()));
             }
         }
     }
     out
+}
+
+/// Water pumps: extractors with exactly ONE zero-ingredient recipe (always
+/// Water) → class → that recipe. A single-resource extractor imports as one
+/// producing group regardless of position.
+fn water_extract_recipes(gd: &gamedata::docs::GameData) -> BTreeMap<&str, &str> {
+    extract_recipes(gd)
+        .into_iter()
+        .filter(|(_, recipes)| recipes.len() == 1)
+        .map(|(class, recipes)| (class, recipes[0].1))
+        .collect()
+}
+
+/// Fracking extractors: extractors with MORE THAN ONE zero-ingredient recipe
+/// (oil / nitrogen / water) → class → (produced item → recipe). Which recipe a
+/// given extractor uses is resolved per-instance from the fracking satellite it
+/// sits on (see [`fracking_group_for`]).
+fn fracking_extract_recipes(gd: &gamedata::docs::GameData) -> BTreeMap<&str, BTreeMap<&str, &str>> {
+    extract_recipes(gd)
+        .into_iter()
+        .filter(|(_, recipes)| recipes.len() > 1)
+        .map(|(class, recipes)| (class, recipes.into_iter().collect()))
+        .collect()
+}
+
+/// Multiplier the game applies to a fracking satellite's extraction by purity.
+fn purity_factor(purity: &str) -> f64 {
+    match purity {
+        "impure" => 0.5,
+        "pure" => 2.0,
+        _ => 1.0,
+    }
+}
+
+/// Resolve an imported fracking extractor to its producing group: the fracking
+/// satellite it sits on gives the RESOURCE (which of oil/nitrogen/water) and the
+/// PURITY. Returns (recipe class, effective clock = save clock × purity), so the
+/// group's output = normal-rate recipe × purity — the game's per-satellite rate.
+/// `None` if no satellite is in range or the resource has no synthesized recipe
+/// (e.g. a modded resource absent from the catalog).
+fn fracking_group_for<'a>(
+    class: &str,
+    x: f64,
+    y: f64,
+    clock: f64,
+    world: &gamedata::worldnodes::WorldSnapshot,
+    recipes: &BTreeMap<&'a str, BTreeMap<&'a str, &'a str>>,
+) -> Option<(String, f64)> {
+    let by_item = recipes.get(class)?;
+    let sat = world
+        .nodes
+        .iter()
+        .filter(|n| n.node_type == "fracking-satellite")
+        .map(|n| (n, (n.x - x).hypot(n.y - y)))
+        .filter(|(_, d)| *d <= NODE_MATCH_M)
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?
+        .0;
+    let recipe = by_item.get(sat.item.as_str())?;
+    Some((recipe.to_string(), clock * purity_factor(&sat.purity)))
 }
 
 /// The plan-local id a save-only node (no catalog match) claims under.
@@ -336,7 +399,11 @@ pub fn resolved_node_pos(
 }
 
 /// DBSCAN (min_pts 1 ⇒ every machine belongs somewhere) over machine XY.
-pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<Cluster> {
+pub fn cluster(
+    snapshot: &ImportSnapshot,
+    gd: &gamedata::docs::GameData,
+    world: &gamedata::worldnodes::WorldSnapshot,
+) -> Vec<Cluster> {
     let pts: Vec<&ImportMachine> = snapshot.machines.iter().collect();
     let mut cluster_of: Vec<Option<usize>> = vec![None; pts.len()];
     let mut n_clusters = 0usize;
@@ -460,6 +527,7 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
     // within the same generous radius the count used, so each miner claims one
     // node under exactly one factory.
     let water_recipes = water_extract_recipes(gd);
+    let fracking_recipes = fracking_extract_recipes(gd);
     let mut attributed: Vec<Vec<ClusterExtractor>> = vec![Vec::new(); pre.len()];
     // A water extractor has NO world node to claim (water is drawn from any
     // surface) — it runs a synthesized zero-ingredient extraction recipe. So it's
@@ -479,21 +547,57 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
             .map(|(i, p)| (i, (p.centroid.x - e.x).hypot(p.centroid.y - e.y)))
             .filter(|(_, d)| *d <= DBSCAN_EPS_M * 3.0)
             .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        // A water extractor (has a zero-ingredient extraction recipe) → producing
-        // group; a node-bound extractor (miner/oil pump) → node claim.
-        if let Some(&recipe) = water_recipes.get(e.class.as_str()) {
+        // The Resource Well Pressurizer produces nothing but draws 150 MW — import
+        // it as a recipe-less power-only GROUP (its draw is credited by
+        // `inject_activator_power`) that joins its well's factory alongside the
+        // satellite extractors, rather than an inert save-local claim.
+        if matches!(
+            gd.machines.get(e.class.as_str()).map(|m| &m.kind),
+            Some(gamedata::docs::MachineKind::Activator)
+        ) {
             match nearest {
                 Some((i, _)) => {
                     let ent = water_groups[i]
-                        .entry((e.class.clone(), recipe.to_string()))
+                        .entry((e.class.clone(), String::new()))
                         .or_insert((0, 0.0));
                     ent.0 += 1;
                     ent.1 += e.clock;
                 }
                 None => orphan_pumps.push((
                     e.class.clone(),
-                    recipe.to_string(),
+                    String::new(),
                     e.clock,
+                    MapPos {
+                        x: e.x,
+                        y: e.y,
+                        z: e.z,
+                    },
+                )),
+            }
+            continue;
+        }
+        // A fluid extractor (has a zero-ingredient extraction recipe) → producing
+        // group; a node-bound extractor (miner/oil pump) → node claim. Water pumps
+        // use one fixed recipe; fracking extractors resolve theirs (resource +
+        // purity) from the satellite they sit on, folding purity into the clock so
+        // the group output equals the game's per-satellite rate.
+        let fluid = water_recipes
+            .get(e.class.as_str())
+            .map(|&r| (r.to_string(), e.clock))
+            .or_else(|| fracking_group_for(&e.class, e.x, e.y, e.clock, world, &fracking_recipes));
+        if let Some((recipe, clock)) = fluid {
+            match nearest {
+                Some((i, _)) => {
+                    let ent = water_groups[i]
+                        .entry((e.class.clone(), recipe))
+                        .or_insert((0, 0.0));
+                    ent.0 += 1;
+                    ent.1 += clock;
+                }
+                None => orphan_pumps.push((
+                    e.class.clone(),
+                    recipe,
+                    clock,
                     MapPos {
                         x: e.x,
                         y: e.y,
@@ -573,9 +677,12 @@ pub fn cluster(snapshot: &ImportSnapshot, gd: &gamedata::docs::GameData) -> Vec<
                 clock: (clock_sum / count as f64 * 1000.0).round() / 1000.0,
             })
             .collect();
+        // Name the well after the fluid it produces — skip the recipe-less
+        // Pressurizer group (it would resolve to nothing) and read the first
+        // group that has a product.
         let name = groups
-            .first()
-            .and_then(|g| gd.recipes.get(&g.recipe))
+            .iter()
+            .find_map(|g| gd.recipes.get(&g.recipe))
             .and_then(|r| r.products.first())
             .and_then(|(item, _)| gd.items.get(item))
             .map(|i| i.display_name.to_uppercase())

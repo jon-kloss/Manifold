@@ -620,6 +620,119 @@ fn imported_water_extractor_produces_routable_water() {
     );
 }
 
+fn extractor(class: &str, x: f64, y: f64, actor: &str) -> ImportMachine {
+    ImportMachine {
+        class: class.into(),
+        recipe: None,
+        clock: 1.0,
+        x,
+        y,
+        z: 0.0,
+        node_actor_id: Some(actor.into()),
+        ..Default::default()
+    }
+}
+
+/// An imported Resource Well Extractor sitting on a fracking satellite imports
+/// as a producing GROUP (like a water pump, not a claim): its resource comes
+/// from the satellite (nitrogen here) and its rate is the normal 60 m³/min scaled
+/// by the satellite's purity — folded into the group clock so the output matches
+/// the game.
+#[test]
+fn imported_fracking_extractor_produces_its_satellites_fluid_at_purity() {
+    let mut s = Session::in_memory(None).unwrap();
+    let sat = s
+        .world
+        .nodes
+        .iter()
+        .find(|n| n.node_type == "fracking-satellite" && n.item == "Desc_NitrogenGas_C")
+        .expect("bundled catalog has a nitrogen satellite")
+        .clone();
+    let expected = 60.0
+        * match sat.purity.as_str() {
+            "impure" => 0.5,
+            "pure" => 2.0,
+            _ => 1.0,
+        };
+    // A generator seeds a cluster the extractor attaches to (mirrors the water
+    // test); the fracking extractor sits ON the satellite.
+    let snap = ImportSnapshot {
+        save_name: "N-WELL".into(),
+        machines: vec![smelter(sat.x, sat.y)],
+        extractors: vec![extractor(
+            "Build_FrackingExtractor_C",
+            sat.x,
+            sat.y,
+            "frack-1",
+        )],
+        ..Default::default()
+    };
+    s.import_save(snap).unwrap();
+
+    let ext_id = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_FrackingExtractor_C")
+        .expect("fracking extractor imports as a producing group")
+        .id
+        .clone();
+    let d = s.solve_all_readonly();
+    let nitro: f64 = d
+        .factories
+        .values()
+        .filter_map(|f| f.groups.get(&ext_id))
+        .filter_map(|g| g.out_rates.get("Desc_NitrogenGas_C").copied())
+        .sum();
+    assert!(
+        (nitro - expected).abs() < 1e-3,
+        "nitrogen {nitro} != 60×purity({}) = {expected}",
+        sat.purity
+    );
+}
+
+/// An imported Resource Well Pressurizer draws its 150 MW: it produces nothing
+/// (recipe-less, skipped by the material solve) so its nameplate is injected as a
+/// power DRAW on its group, and the well factory's power reads 150 MW, not 0.
+#[test]
+fn imported_pressurizer_draws_its_nameplate_power() {
+    let mut s = Session::in_memory(None).unwrap();
+    let sat = s
+        .world
+        .nodes
+        .iter()
+        .find(|n| n.node_type == "fracking-satellite")
+        .expect("bundled catalog has a fracking satellite")
+        .clone();
+    let snap = ImportSnapshot {
+        save_name: "PRESSURIZED".into(),
+        machines: vec![smelter(sat.x, sat.y)],
+        extractors: vec![extractor("Build_FrackingSmasher_C", sat.x, sat.y, "pz-1")],
+        ..Default::default()
+    };
+    s.import_save(snap).unwrap();
+
+    let pz_id = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_FrackingSmasher_C")
+        .expect("Pressurizer imports as a group, not a claim")
+        .id
+        .clone();
+    let d = s.solve_all_readonly();
+    let draw: f64 = d
+        .factories
+        .values()
+        .filter_map(|f| f.groups.get(&pz_id))
+        .map(|g| g.power_mw)
+        .sum();
+    assert!(
+        (draw - 150.0).abs() < 1e-3,
+        "the Pressurizer draws its 150 MW nameplate, got {draw}"
+    );
+}
+
 fn water_pump(x: f64, clock: f64, actor: &str) -> ImportMachine {
     ImportMachine {
         class: "Build_WaterPump_C".into(),

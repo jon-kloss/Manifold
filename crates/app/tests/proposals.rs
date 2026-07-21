@@ -2005,15 +2005,16 @@ fn nodeless_resource_is_supply_assumed() {
     );
 }
 
-/// Inert-catalog gate (the mutation-killing twin of the test above): nitrogen
-/// exists in the bundled world ONLY as fracking satellites (45 of them, no plain
-/// node). Because those satellites aren't plain, the wizard must STILL treat
-/// nitrogen as supply-assumed — no claim, no port. If `is_plain_node()` were
-/// dropped from wizard's `no_node_resource`/siting filter, the satellites would
-/// match and the wizard would stamp a MINER claim on a nitrogen satellite; this
-/// test fails in exactly that case (the zero-node test above cannot catch it).
+/// Nitrogen is routed, and never claimed as a miner site. Nitrogen exists in the
+/// bundled world ONLY as fracking satellites (45, no plain node). Now that the
+/// Resource Well Extractor has a synthesized nitrogen recipe (a placeable
+/// source), the wizard treats nitrogen like water: REAL routable demand — an
+/// UNCAPPED nitrogen IN port to pipe in from a well, "route it in", never a
+/// claim. The `is_plain_node()` gate is still the mutation-killer: without it,
+/// `no_node_resource` would see the satellites, drop nitrogen into the siting
+/// path, and the wizard would stamp a MINER claim on a nitrogen satellite.
 #[test]
-fn nitrogen_satellites_do_not_make_nitrogen_claimable() {
+fn nitrogen_is_routed_never_claimed_as_a_miner_site() {
     let mut s = Session::in_memory(None).unwrap();
     // sanity: the catalog carries nitrogen ONLY as fracking satellites
     assert!(
@@ -2030,11 +2031,8 @@ fn nitrogen_satellites_do_not_make_nitrogen_claimable() {
             .any(|n| n.item == "Desc_NitrogenGas_C" && n.node_type == "node"),
         "and no plain nitrogen node"
     );
-    // real Desc_NitrogenGas_C as a resource + a recipe that consumes it
-    s.gamedata.items.insert(
-        "Desc_NitrogenGas_C".into(),
-        mk_item("Desc_NitrogenGas_C", true),
-    );
+    // a recipe that consumes nitrogen (nitrogen + its fracking recipe are already
+    // in the fixture catalog now, which is exactly why it's routable)
     s.gamedata.recipes.insert(
         "Recipe_NitroWidget_C".into(),
         mk_recipe(
@@ -2050,13 +2048,15 @@ fn nitrogen_satellites_do_not_make_nitrogen_claimable() {
 
     let (outcome, log_lines) = solve_with_log(&s, goal_for("Desc_NitroWidget_C", 30.0));
     let WizardOutcome::Proposal { proposal } = outcome else {
-        panic!("expected a proposal (nitrogen supply-assumed), got {outcome:?}");
+        panic!("expected a proposal, got {outcome:?}");
     };
+    // routable, not assumed: the SITING log says "route it in", not "supply assumed"
     assert!(
-        log_lines.iter().any(|l| l.contains("supply assumed")),
-        "nitrogen is supply-assumed despite the satellites: {log_lines:?}"
+        log_lines.iter().any(|l| l.contains("route it in")),
+        "nitrogen is routed now that a well can produce it: {log_lines:?}"
     );
-    // no claim references any nitrogen satellite, and no nitrogen in port
+    // an UNCAPPED nitrogen IN port is emitted (pipe from a well), and NO claim
+    // references any nitrogen satellite.
     let nitro_node_ids: std::collections::BTreeSet<&str> = s
         .world
         .nodes
@@ -2064,6 +2064,7 @@ fn nitrogen_satellites_do_not_make_nitrogen_claimable() {
         .filter(|n| n.item == "Desc_NitrogenGas_C")
         .map(|n| n.id.as_str())
         .collect();
+    let mut nitrogen_in_port = false;
     for i in &proposal.items {
         for c in &i.commands {
             match c {
@@ -2071,13 +2072,23 @@ fn nitrogen_satellites_do_not_make_nitrogen_claimable() {
                     !nitro_node_ids.contains(node.as_str()),
                     "no claim on a nitrogen satellite: {node}"
                 ),
-                Command::AddPort { item, .. } => {
-                    assert_ne!(item, "Desc_NitrogenGas_C", "no nitrogen in port")
+                Command::AddPort {
+                    item,
+                    direction,
+                    rate_ceiling,
+                    ..
+                } if item == "Desc_NitrogenGas_C" && *direction == PortDirection::In => {
+                    nitrogen_in_port = true;
+                    assert!(rate_ceiling.is_none(), "the nitrogen IN port is uncapped");
                 }
                 _ => {}
             }
         }
     }
+    assert!(
+        nitrogen_in_port,
+        "nitrogen gets an uncapped routable IN port"
+    );
 }
 
 /// A nodeless resource WITH a placeable extractor (like water: a Water

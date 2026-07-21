@@ -1419,7 +1419,7 @@ impl Session {
                 &serde_json::to_string(&self.purchased_schematics).unwrap_or_else(|_| "[]".into()),
             );
         }
-        let clusters = crate::import::cluster(&snapshot, &self.gamedata);
+        let clusters = crate::import::cluster(&snapshot, &self.gamedata, &self.world);
         let has_built = self
             .state
             .factories
@@ -1762,6 +1762,40 @@ impl Session {
         }
     }
 
+    /// Resource Well Pressurizers (`MachineKind::Activator`) produce nothing, so
+    /// they import recipe-less and the material solve skips them — but they DRAW
+    /// their nameplate power (150 MW × count × clock). Credit that draw as the
+    /// group's `power_mw` and add it to the factory total, mirroring the generator
+    /// injection above so a well factory's power reads its Pressurizer, not 0.
+    fn inject_activator_power(&self, fid: &Id, df: &mut DerivedFactory) {
+        let Some(factory) = self.state.factories.get(fid) else {
+            return;
+        };
+        for gid in &factory.groups {
+            if df.groups.contains_key(gid) {
+                continue;
+            }
+            let Some(g) = self.state.groups.get(gid) else {
+                continue;
+            };
+            let Some(machine) = self.gamedata.machines.get(&g.machine) else {
+                continue;
+            };
+            if matches!(machine.kind, gamedata::docs::MachineKind::Activator) {
+                let draw = machine.power_mw * g.effective_count() as f64 * g.effective_clock();
+                df.groups.insert(
+                    gid.clone(),
+                    DerivedGroup {
+                        in_rates: BTreeMap::new(),
+                        out_rates: BTreeMap::new(),
+                        power_mw: draw,
+                    },
+                );
+                df.total_power_mw += draw;
+            }
+        }
+    }
+
     pub fn snapshot(&self, fid: &Id) -> Option<FactorySnapshot> {
         let factory = self.state.factories.get(fid)?;
         let mut groups = Vec::new();
@@ -2079,6 +2113,7 @@ impl Session {
                 // skips it.
                 let mut ef = Self::error_factory("missing recipe or machine data");
                 self.inject_generator_nameplates(fid, &mut ef);
+                self.inject_activator_power(fid, &mut ef);
                 derived.factories.insert(fid.clone(), ef);
                 self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                 continue;
@@ -2128,6 +2163,7 @@ impl Session {
                 // as recipe-less. Still credit each generator its nameplate so
                 // the graph cards show their MW, matching the empire total.
                 self.inject_generator_nameplates(fid, &mut ef);
+                self.inject_activator_power(fid, &mut ef);
                 derived.factories.insert(fid.clone(), ef);
                 self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                 continue;
@@ -2141,6 +2177,7 @@ impl Session {
                     // their nameplate so the cards agree with the empire total.
                     let mut ef = Self::error_factory(&e.to_string());
                     self.inject_generator_nameplates(fid, &mut ef);
+                    self.inject_activator_power(fid, &mut ef);
                     derived.factories.insert(fid.clone(), ef);
                     self.feed_downstream(fid, &BTreeMap::new(), &mut supplies, &mut route_supply);
                     continue;
@@ -2233,6 +2270,7 @@ impl Session {
             let mut df = to_derived(&result, solve_on_release);
             df.warnings = self.unknown_recipe_warnings(fid);
             self.inject_generator_nameplates(fid, &mut df);
+            self.inject_activator_power(fid, &mut df);
             derived.factories.insert(fid.clone(), df);
         }
 

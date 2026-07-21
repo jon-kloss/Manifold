@@ -6,6 +6,23 @@ use app::session::ImportOutcome;
 use app::Session;
 use planner_core::entities::{EdgeEnd, PortDirection, Status};
 
+/// An empty world for cluster() tests that carry no fracking extractors (the
+/// world is only consulted to resolve a fracking satellite's resource/purity).
+fn wn() -> gamedata::worldnodes::WorldSnapshot {
+    gamedata::worldnodes::WorldSnapshot {
+        version: 3,
+        source: String::new(),
+        bounds: gamedata::worldnodes::Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 0.0,
+            max_y: 0.0,
+        },
+        regions: Vec::new(),
+        nodes: Vec::new(),
+    }
+}
+
 fn m(class: &str, recipe: &str, x: f64, y: f64) -> ImportMachine {
     ImportMachine {
         class: class.into(),
@@ -808,7 +825,7 @@ fn run_case(points: Vec<(f64, f64)>) {
         .map(|(i, (x, y))| m(&format!("C{i}"), "", *x, *y))
         .collect();
     let gd = gamedata::docs::GameData::default();
-    let got = member_sets(&cluster(&snapshot(machines), &gd));
+    let got = member_sets(&cluster(&snapshot(machines), &gd, &wn()));
     let want = reference_clusters(&points);
     assert_eq!(
         got,
@@ -895,10 +912,14 @@ fn cluster_degenerate_inputs() {
     let gd = gamedata::docs::GameData::default();
 
     // empty snapshot → no clusters
-    assert!(cluster(&snapshot(vec![]), &gd).is_empty());
+    assert!(cluster(&snapshot(vec![]), &gd, &wn()).is_empty());
 
     // single machine → one cluster
-    let c = cluster(&snapshot(vec![m("Build_SmelterMk1_C", "", 3.0, 4.0)]), &gd);
+    let c = cluster(
+        &snapshot(vec![m("Build_SmelterMk1_C", "", 3.0, 4.0)]),
+        &gd,
+        &wn(),
+    );
     assert_eq!(c.len(), 1);
 
     // all-coincident points → one cluster, one group of 60
@@ -909,6 +930,7 @@ fn cluster_degenerate_inputs() {
                 .collect(),
         ),
         &gd,
+        &wn(),
     );
     assert_eq!(c.len(), 1);
     assert_eq!(c[0].groups.len(), 1);
@@ -924,6 +946,7 @@ fn cluster_degenerate_inputs() {
             m("InfBox", "", f64::INFINITY, f64::NEG_INFINITY),
         ]),
         &gd,
+        &wn(),
     );
     assert_eq!(c.len(), 3, "pair + NaN singleton + inf singleton");
     assert_eq!(c[0].groups.len(), 2);
@@ -948,7 +971,7 @@ fn perf_smoke_20k_chained_grid() {
     let snap = snapshot(machines);
     let gd = gamedata::docs::GameData::default();
     let t = std::time::Instant::now();
-    let clusters = cluster(&snap, &gd);
+    let clusters = cluster(&snap, &gd, &wn());
     let dt = t.elapsed();
     eprintln!("20k chained grid clustered in {dt:?}");
     assert_eq!(clusters.len(), 1, "one connected component");
@@ -974,7 +997,7 @@ fn perf_smoke_10k_clique() {
     let snap = snapshot(machines);
     let gd = gamedata::docs::GameData::default();
     let t = std::time::Instant::now();
-    let clusters = cluster(&snap, &gd);
+    let clusters = cluster(&snap, &gd, &wn());
     let dt = t.elapsed();
     eprintln!("10k clique clustered in {dt:?}");
     assert_eq!(clusters.len(), 1);
@@ -998,7 +1021,7 @@ fn perf_strict_20k_chained_grid() {
     let snap = snapshot(machines);
     let gd = gamedata::docs::GameData::default();
     let t = std::time::Instant::now();
-    let clusters = cluster(&snap, &gd);
+    let clusters = cluster(&snap, &gd, &wn());
     let dt = t.elapsed();
     assert_eq!(clusters.len(), 1);
     assert!(dt < std::time::Duration::from_millis(250), "took {dt:?}");

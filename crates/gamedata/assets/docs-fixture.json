@@ -39,6 +39,12 @@
     "mDisplayName": "Water",
     "mForm": "RF_LIQUID",
     "mStackSize": "SS_FLUID"
+   },
+   {
+    "ClassName": "Desc_NitrogenGas_C",
+    "mDisplayName": "Nitrogen Gas",
+    "mForm": "RF_GAS",
+    "mStackSize": "SS_FLUID"
    }
   ]
  },
@@ -351,8 +357,9 @@
     "ClassName": "Build_FrackingExtractor_C",
     "mDisplayName": "Resource Well Extractor",
     "mPowerConsumption": "0.000000",
-    "mItemsPerCycle": "1000.000000",
-    "mExtractCycleTime": "1.000000"
+    "mItemsPerCycle": "1.000000",
+    "mExtractCycleTime": "1.000000",
+    "mAllowedResources": "(\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/CrudeOil/Desc_LiquidOil.Desc_LiquidOil_C'\",\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/NitrogenGas/Desc_NitrogenGas.Desc_NitrogenGas_C'\",\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/Water/Desc_Water.Desc_Water_C'\")"
    }
   ]
  },
