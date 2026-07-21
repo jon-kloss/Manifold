@@ -41,6 +41,10 @@ test("a fracking satellite claims the whole well from its drawer", async ({ page
     // A satellite must NOT offer the per-node miner claim.
     await expect(page.getByTestId("btn-claim")).toHaveCount(0);
 
+    // Baseline node-claim count — the serial suite's shared plan may already hold
+    // claims from earlier specs, so a well claim must add NONE (not "== 0").
+    const claimsBefore = Object.keys((await hydrate(request)).plan.nodeClaims).length;
+
     // Await the /edit round-trip so hydrate reads the landed claim (the dispatch
     // is fire-and-forget, so the click alone doesn't guarantee it committed).
     await Promise.all([
@@ -49,7 +53,7 @@ test("a fracking satellite claims the whole well from its drawer", async ({ page
     ]);
 
     // The well stamped one factory: a Pressurizer + ≥1 fracking extractor group,
-    // and a routable nitrogen OUT port. NO satellite got a node claim.
+    // and a routable nitrogen OUT port. NO new node claim.
     const h = await hydrate(request);
     const wellFactory = Object.values<any>(h.plan.factories).find((f) => f.name.includes("NITROGEN"));
     expect(wellFactory, "a NITROGEN … WELL factory was created").toBeTruthy();
@@ -61,7 +65,9 @@ test("a fracking satellite claims the whole well from its drawer", async ({ page
         (p) => p.factory === wellFactory.id && p.item === "Desc_NitrogenGas_C" && p.direction === "out",
       ),
     ).toBe(true);
-    expect(Object.values<any>(h.plan.nodeClaims).length, "no per-satellite node claim").toBe(0);
+    expect(Object.keys(h.plan.nodeClaims).length, "well claim adds no node claim").toBe(
+      claimsBefore,
+    );
   } finally {
     // Unconditional cleanup: delete ANY leaked well factory (this or a prior
     // failed run) by name so the serial suite's shared plan is restored.
