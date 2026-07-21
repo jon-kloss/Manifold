@@ -651,6 +651,183 @@ fn push_sat(s: &mut Session, id: &str, item: &str, purity: &str, x: f64, y: f64)
     });
 }
 
+fn push_geyser(s: &mut Session, id: &str, purity: &str, x: f64, y: f64) {
+    s.world.nodes.push(gamedata::worldnodes::WorldNode {
+        id: id.into(),
+        item: "Desc_Geyser_C".into(),
+        purity: purity.into(),
+        node_type: "geyser".into(),
+        well: None,
+        x,
+        y,
+        z: 0.0,
+        zone: "surface".into(),
+        entrance: None,
+        region: "grass-fields".into(),
+    });
+}
+
+/// PLANNED placement: `ClaimGeyser` stamps a factory with a single Geothermal
+/// Generator whose power scales with the geyser's purity (pure = 200 × 2 = 400
+/// MW). A second claim of the same geyser is refused; undo removes it.
+#[test]
+fn claim_geyser_places_a_purity_scaled_geothermal_generator() {
+    for (purity, mw) in [("impure", 100.0), ("normal", 200.0), ("pure", 400.0)] {
+        let mut s = Session::in_memory(None).unwrap();
+        push_geyser(&mut s, "gy", purity, 80_000.0, 80_000.0);
+        s.edit(vec![Command::ClaimGeyser {
+            geyser: "gy".into(),
+        }])
+        .unwrap();
+
+        let f = s
+            .state
+            .factories
+            .values()
+            .find(|f| f.name.contains("GEYSER"))
+            .expect("geyser factory");
+        assert_eq!(
+            s.state
+                .groups
+                .values()
+                .filter(|g| g.factory == f.id && g.machine == "Build_GeneratorGeoThermal_C")
+                .count(),
+            1,
+            "one geothermal generator"
+        );
+        // the factory pins ON the geyser, with NO material OUT port (generated
+        // power feeds the grid, not a routable port).
+        assert_eq!(
+            (f.position.x, f.position.y),
+            (80_000.0, 80_000.0),
+            "on the geyser"
+        );
+        let fid = f.id.clone();
+        assert!(
+            !s.state.ports.values().any(|p| p.factory == fid),
+            "no OUT port — geothermal power feeds the grid"
+        );
+
+        let d = s.solve_all_readonly();
+        let gen = produced(
+            &s,
+            &d,
+            "Build_GeneratorGeoThermal_C",
+            gamedata::docs::POWER_ITEM,
+        );
+        assert!(
+            (gen - mw).abs() < 1e-3,
+            "{purity} geyser group = {mw} MW, got {gen}"
+        );
+        // …and the same MW reaches the EMPIRE generation total (an independent
+        // fold), not just the group card.
+        assert!(
+            (d.total_generation_mw - mw).abs() < 1e-3,
+            "{purity} geyser adds {mw} MW to empire generation, got {}",
+            d.total_generation_mw
+        );
+        // the generator's clock is LOCKED (purity-fixed) — a clock edit that
+        // would silently rescale MW is refused.
+        let gid = s
+            .state
+            .groups
+            .values()
+            .find(|g| g.factory == fid && g.machine == "Build_GeneratorGeoThermal_C")
+            .unwrap()
+            .id
+            .clone();
+        assert!(
+            s.edit(vec![Command::SetGroupClock {
+                id: gid,
+                clock: 1.0
+            }])
+            .is_err(),
+            "geothermal clock is fixed by geyser purity"
+        );
+
+        // double-claim refused
+        assert!(
+            s.edit(vec![Command::ClaimGeyser {
+                geyser: "gy".into()
+            }])
+            .is_err(),
+            "second claim of the same geyser is refused"
+        );
+    }
+
+    // unknown geyser errors
+    let mut s = Session::in_memory(None).unwrap();
+    assert!(s
+        .edit(vec![Command::ClaimGeyser {
+            geyser: "nope".into()
+        }])
+        .is_err());
+}
+
+/// Undo of a geyser claim removes the factory + its generator atomically; redo
+/// restores. And the dispatch wiring: a RAW planner-core apply of ClaimGeyser
+/// hits the defensive error, and a raw claim_node on a GEYSER is refused.
+#[test]
+fn claim_geyser_undo_and_dispatch_wiring() {
+    use planner_core::commands::{apply, DomainError};
+    use planner_core::state::PlanState;
+
+    // raw planner-core apply → defensive session-layer-only error
+    let mut st = PlanState::default();
+    assert!(matches!(
+        apply(&mut st, &Command::ClaimGeyser { geyser: "x".into() }).unwrap_err(),
+        DomainError::Invalid { .. }
+    ));
+
+    let mut s = Session::in_memory(None).unwrap();
+    push_geyser(&mut s, "gy", "pure", 81_000.0, 81_000.0);
+    let base = (s.state.factories.len(), s.state.groups.len());
+    s.edit(vec![Command::ClaimGeyser {
+        geyser: "gy".into(),
+    }])
+    .unwrap();
+    let after = (s.state.factories.len(), s.state.groups.len());
+    assert_eq!(after, (base.0 + 1, base.1 + 1));
+    s.undo().unwrap().unwrap();
+    assert_eq!(
+        (s.state.factories.len(), s.state.groups.len()),
+        base,
+        "undo removes both"
+    );
+    s.redo().unwrap().unwrap();
+    assert_eq!(
+        (s.state.factories.len(), s.state.groups.len()),
+        after,
+        "redo restores both"
+    );
+
+    // a raw claim_node on a geyser is refused by the session guard (PR 3's guard
+    // covers every non-plain node — geysers included).
+    let fid = s
+        .edit(vec![Command::CreateFactory {
+            name: "F".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: String::new(),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    assert!(
+        s.edit(vec![Command::ClaimNode {
+            factory: fid,
+            node: "gy".into(),
+            extractor: "Build_MinerMk2_C".into(),
+            clock: 1.0,
+        }])
+        .is_err(),
+        "claiming a geyser as a miner node is refused"
+    );
+}
+
 /// Sum the solved out-rate of `item` across every group of `machine`.
 fn produced(s: &Session, d: &app::session::Derived, machine: &str, item: &str) -> f64 {
     let ids: std::collections::BTreeSet<String> = s

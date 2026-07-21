@@ -312,11 +312,20 @@ export const isPlainNode = (n: { nodeType: WorldNode["nodeType"] }): boolean =>
 
 /**
  * The gate for "does this node RENDER + is it interactable on the map". Plain
- * nodes and fracking satellites both render (a satellite opens the well drawer,
- * not the miner claim). Geysers stay hidden until geothermal placement lands.
+ * nodes render + claim as miners; fracking satellites open the well drawer;
+ * geysers open the geothermal drawer. All are drawn and selectable — only the
+ * plain ones (isPlainNode) take the miner-claim path.
  */
 export const isRenderableNode = (n: { nodeType: WorldNode["nodeType"] }): boolean =>
-  n.nodeType === "node" || n.nodeType === "fracking-satellite";
+  n.nodeType === "node" || n.nodeType === "fracking-satellite" || n.nodeType === "geyser";
+
+/**
+ * The rate/output multiplier the game applies by node purity — mirrors Rust
+ * `gamedata::docs::purity_factor`. The single TS source of truth (extraction
+ * rates, geothermal MW). Keep in sync with the Rust table.
+ */
+export const purityFactor = (purity: string): number =>
+  purity === "pure" ? 2 : purity === "impure" ? 0.5 : 1;
 export interface WorldRegion { id: string; name: string; labelX: number; labelY: number }
 export interface World {
   version: number;
@@ -885,6 +894,7 @@ export type Command =
   | { type: "delete_edge"; id: Id }
   | { type: "claim_node"; factory: Id; node: string; extractor: string; clock: number }
   | { type: "claim_well"; well: string }
+  | { type: "claim_geyser"; geyser: string }
   | { type: "release_node"; id: Id }
   | { type: "set_claim"; id: Id; extractor: string; clock: number }
   | { type: "rename_plan"; name: string }

@@ -80,6 +80,7 @@ pub const COLORS: &[Token] = tokens![
     "resource-sam" => "#96587F",
     "resource-water" => "#2E6C9E",
     "resource-nitrogen" => "#2C737E",
+    "resource-geyser" => "#B24A2E",
     "resource-generic" => "#5A6570",
     // MANIFOLD low-poly ore facets (brand handoff §3): -light/-dark shade the
     // faceted chunk, -hi is the specular highlight/sparkle/glow. Coal and

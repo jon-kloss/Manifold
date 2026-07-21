@@ -495,6 +495,7 @@ impl Session {
             // planner-core's pure apply can't see — resolve it here.
             let applied = match cmd {
                 Command::ClaimWell { well } => self.apply_claim_well(well),
+                Command::ClaimGeyser { geyser } => self.apply_claim_geyser(geyser),
                 // A geyser / fracking satellite is NOT a plain miner node — the UI
                 // routes them to the well claim, but the raw /edit API could send
                 // a claim_node; planner-core has no world catalog to reject it, so
@@ -508,6 +509,21 @@ impl Session {
                 {
                     Err(DomainError::Invalid {
                         message: format!("{node} is a well/geyser site, not a claimable node"),
+                    })
+                }
+                // A Geothermal Generator's output is fixed by its geyser's purity
+                // (encoded in the group clock) and geysers are NOT overclockable —
+                // reject a clock change so the drawer's purity → MW and the graph
+                // card can never disagree.
+                Command::SetGroupClock { id, .. }
+                    if self
+                        .state
+                        .groups
+                        .get(id)
+                        .is_some_and(|g| g.machine == "Build_GeneratorGeoThermal_C") =>
+                {
+                    Err(DomainError::Invalid {
+                        message: "a geothermal generator is fixed by its geyser's purity".into(),
                     })
                 }
                 other => commands::apply(&mut self.state, other),
@@ -2137,6 +2153,85 @@ impl Session {
             node_claims: vec![],
             groups: group_ids,
             ports: vec![pid],
+            style_guide: None,
+            replaces: None,
+            status: Status::Planned,
+            created_by: CreatedBy::Manual,
+        })));
+        Ok(tx)
+    }
+
+    /// Claim a geyser (planned placement): stamp a factory at the geyser holding
+    /// ONE Geothermal Generator whose power scales with the geyser's purity. The
+    /// generator is recipe-less (nameplate-driven), so purity rides its clock —
+    /// `inject_generator_nameplates` credits `200 MW × count × clock`, and clock =
+    /// {impure .5 / normal 1 / pure 2} → 100 / 200 / 400 MW. Safe (a geyser is
+    /// never overclocked, so clock ≤ 2.0 < the [0.01, 2.5] clamp). One
+    /// transaction. Errors on an unknown geyser or a double-claim.
+    fn apply_claim_geyser(&mut self, geyser: &str) -> Result<Transaction, DomainError> {
+        let Some(g) = self
+            .world
+            .nodes
+            .iter()
+            .find(|n| n.id == geyser && n.node_type == "geyser")
+        else {
+            return Err(DomainError::Invalid {
+                message: format!("no geyser {geyser}"),
+            });
+        };
+        let (gx, gy, purity, region) = (g.x, g.y, g.purity.clone(), g.region.clone());
+        // No double-claim: a Geothermal Generator factory already on this geyser.
+        let already = self.state.factories.values().any(|f| {
+            (f.position.x - gx).abs() < 1.0
+                && (f.position.y - gy).abs() < 1.0
+                && f.groups.iter().any(|gid| {
+                    self.state
+                        .groups
+                        .get(gid)
+                        .is_some_and(|g| g.machine == "Build_GeneratorGeoThermal_C")
+                })
+        });
+        if already {
+            return Err(DomainError::Invalid {
+                message: format!("geyser {geyser} is already claimed"),
+            });
+        }
+
+        let mut tx = Transaction::new("claim geyser");
+        let fid = new_id();
+        let gen = MachineGroup {
+            id: new_id(),
+            factory: fid.clone(),
+            machine: "Build_GeneratorGeoThermal_C".into(),
+            recipe: String::new(),
+            count: 1,
+            clock: gamedata::docs::purity_factor(&purity),
+            somersloops: 0,
+            planned_delta: None,
+            graph_pos: GraphPos { x: 0.0, y: 0.0 },
+            floor: 0,
+            status: Status::Planned,
+            created_by: CreatedBy::Manual,
+        };
+        let gen_id = gen.id.clone();
+        tx.record(self.state.upsert(Entity::Group(gen)));
+        tx.created.push(gen_id.clone());
+        tx.created.push(fid.clone());
+        tx.record(self.state.upsert(Entity::Factory(Factory {
+            id: fid,
+            name: format!(
+                "GEYSER — {} MW",
+                (200.0 * gamedata::docs::purity_factor(&purity)) as i64
+            ),
+            position: MapPos {
+                x: gx,
+                y: gy,
+                z: 0.0,
+            },
+            region,
+            node_claims: vec![],
+            groups: vec![gen_id],
+            ports: vec![],
             style_guide: None,
             replaces: None,
             status: Status::Planned,

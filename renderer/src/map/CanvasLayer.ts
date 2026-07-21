@@ -484,6 +484,7 @@ export class MapCanvasLayer extends L.Layer {
         Desc_SAM_C: "SAM",
         Desc_Water_C: "WATER",
         Desc_NitrogenGas_C: "NITROGEN",
+        Desc_Geyser_C: "GEYSER",
       }[node.item] ??
       // save-only nodes carry item:"" — degrade to a readable NODE, not "".
       (node.item || "NODE").replace("Desc_", "").replace("_C", "").replace(/_/g, " ").toUpperCase();
@@ -1187,6 +1188,7 @@ export class MapCanvasLayer extends L.Layer {
       Desc_SAM_C: css("--resource-sam"),
       Desc_Water_C: css("--resource-water"),
       Desc_NitrogenGas_C: css("--resource-nitrogen"),
+      Desc_Geyser_C: css("--resource-geyser"),
     };
 
     // 459 real nodes at world zoom are a wall of rings — dots shrink as the

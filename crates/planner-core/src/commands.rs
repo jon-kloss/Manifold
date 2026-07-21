@@ -207,6 +207,13 @@ pub enum Command {
     ClaimWell {
         well: String,
     },
+    /// Claim a geyser: stamp a new factory with a single Geothermal Generator
+    /// whose output scales with the geyser's purity (100 / 200 / 400 MW for
+    /// impure / normal / pure). Resolved at the SESSION layer (needs the world
+    /// catalog), never here — the planner-core arm is a defensive error.
+    ClaimGeyser {
+        geyser: String,
+    },
     ReleaseNode {
         id: Id,
     },
@@ -342,6 +349,7 @@ impl Command {
             Command::DeleteEdge { .. } => "delete belt",
             Command::ClaimNode { .. } => "claim node",
             Command::ClaimWell { .. } => "claim well",
+            Command::ClaimGeyser { .. } => "claim geyser",
             Command::ReleaseNode { .. } => "release node",
             Command::RenamePlan { .. } => "rename plan",
             Command::CreateProposal { .. } => "draft proposal",
@@ -1619,6 +1627,11 @@ pub fn apply(state: &mut PlanState, cmd: &Command) -> Result<Transaction, Domain
             // Reaching planner-core means the interception was bypassed.
             return Err(DomainError::Invalid {
                 message: "claim_well must be resolved at the session layer".into(),
+            });
+        }
+        Command::ClaimGeyser { .. } => {
+            return Err(DomainError::Invalid {
+                message: "claim_geyser must be resolved at the session layer".into(),
             });
         }
         Command::ReleaseNode { id } => {
