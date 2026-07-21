@@ -946,13 +946,44 @@ fn claim_well_stamps_a_planned_well_factory() {
         1,
         "one Pressurizer"
     );
-    // a routable nitrogen OUT port exists
+    // the OUT port is sized to total production (2×120 + 30 = 270), not just present
+    let port = s
+        .state
+        .ports
+        .values()
+        .find(|p| {
+            p.factory == f.id && p.item == "Desc_NitrogenGas_C" && p.direction == PortDirection::Out
+        })
+        .expect("routable nitrogen OUT port");
     assert!(
-        s.state.ports.values().any(|p| p.factory == f.id
-            && p.item == "Desc_NitrogenGas_C"
-            && p.direction == PortDirection::Out),
-        "well has a routable nitrogen OUT port"
+        (port.rate - 270.0).abs() < 1e-3,
+        "OUT port sized to Σ, got {}",
+        port.rate
     );
+    // each extractor group is wired to the OUT port (Group→Port edge) — without
+    // these the source idles at 0 (the whole point of the wiring).
+    let ext_ids: std::collections::BTreeSet<&str> = s
+        .state
+        .groups
+        .values()
+        .filter(|g| g.factory == f.id && g.machine == "Build_FrackingExtractor_C")
+        .map(|g| g.id.as_str())
+        .collect();
+    for gid in &ext_ids {
+        assert!(
+            s.state.edges.values().any(|e| e.factory == f.id
+                && matches!(&e.from, EdgeEnd::Group(g) if g == gid)
+                && matches!(&e.to, EdgeEnd::Port(p) if p == &port.id)),
+            "extractor group {gid} is wired to the OUT port"
+        );
+    }
+    // the factory pins on the well centroid (x ∈ {90000,90020,90040} → 90020)
+    assert!(
+        (f.position.x - 90_020.0).abs() < 1e-3,
+        "pin on centroid, got {}",
+        f.position.x
+    );
+
     // solve: 2 pure (120 each) + 1 impure (30) = 270 m³/min, 150 MW draw
     let d = s.solve_all_readonly();
     let nitro = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_NitrogenGas_C");
@@ -964,6 +995,191 @@ fn claim_well_stamps_a_planned_well_factory() {
     assert!(
         (power - 150.0).abs() < 1e-3,
         "Pressurizer draws 150 MW, got {power}"
+    );
+}
+
+/// Claiming the same well twice is refused (no duplicate factory) — the centroid
+/// guard catches it. And undo of a well claim removes EVERYTHING it stamped
+/// (factory + all groups + port + edges); redo restores it.
+#[test]
+fn claim_well_is_idempotent_and_undoes_atomically() {
+    let mut s = Session::in_memory(None).unwrap();
+    push_sat(
+        &mut s,
+        "u-p",
+        "Desc_NitrogenGas_C",
+        "pure",
+        91_000.0,
+        91_000.0,
+    );
+    push_sat(
+        &mut s,
+        "u-i",
+        "Desc_NitrogenGas_C",
+        "impure",
+        91_020.0,
+        91_000.0,
+    );
+    for n in s.world.nodes.iter_mut().filter(|n| n.id.starts_with("u-")) {
+        n.well = Some("well-u".into());
+    }
+    let base = (
+        s.state.factories.len(),
+        s.state.groups.len(),
+        s.state.ports.len(),
+        s.state.edges.len(),
+    );
+    let claim = || Command::ClaimWell {
+        well: "well-u".into(),
+    };
+
+    s.edit(vec![claim()]).unwrap();
+    let after = (
+        s.state.factories.len(),
+        s.state.groups.len(),
+        s.state.ports.len(),
+        s.state.edges.len(),
+    );
+    assert_eq!(after.0, base.0 + 1, "one factory");
+
+    // re-claim the same well → refused, nothing added
+    assert!(
+        s.edit(vec![claim()]).is_err(),
+        "second claim of the same well is refused"
+    );
+    assert_eq!(
+        s.state.factories.len(),
+        after.0,
+        "no duplicate well factory"
+    );
+
+    // undo removes the whole well atomically; redo restores it
+    s.undo().unwrap().unwrap();
+    assert_eq!(
+        (
+            s.state.factories.len(),
+            s.state.groups.len(),
+            s.state.ports.len(),
+            s.state.edges.len()
+        ),
+        base,
+        "undo removes factory + groups + port + edges"
+    );
+    s.redo().unwrap().unwrap();
+    assert_eq!(
+        (
+            s.state.factories.len(),
+            s.state.groups.len(),
+            s.state.ports.len(),
+            s.state.edges.len()
+        ),
+        after,
+        "redo restores everything"
+    );
+}
+
+/// A well with all three purities → three extractor groups summing to
+/// 120 + 60 + 30 = 210 m³/min. Also proves an OIL well produces Crude Oil (not
+/// only nitrogen is wired), and that claim_well errors on an unknown well id.
+#[test]
+fn claim_well_all_purities_and_oil() {
+    let mut s = Session::in_memory(None).unwrap();
+    push_sat(&mut s, "a-p", "Desc_NitrogenGas_C", "pure", 92_000.0, 0.0);
+    push_sat(&mut s, "a-n", "Desc_NitrogenGas_C", "normal", 92_020.0, 0.0);
+    push_sat(&mut s, "a-i", "Desc_NitrogenGas_C", "impure", 92_040.0, 0.0);
+    push_sat(&mut s, "o-1", "Desc_LiquidOil_C", "normal", 93_000.0, 0.0);
+    for n in s.world.nodes.iter_mut() {
+        if n.id.starts_with("a-") {
+            n.well = Some("well-a".into());
+        } else if n.id.starts_with("o-") {
+            n.well = Some("well-o".into());
+        }
+    }
+    assert!(
+        s.edit(vec![Command::ClaimWell {
+            well: "nope".into()
+        }])
+        .is_err(),
+        "unknown well errors"
+    );
+
+    s.edit(vec![Command::ClaimWell {
+        well: "well-a".into(),
+    }])
+    .unwrap();
+    let na = s
+        .state
+        .factories
+        .values()
+        .find(|f| f.name.contains("NITROGEN"))
+        .unwrap();
+    assert_eq!(
+        s.state
+            .groups
+            .values()
+            .filter(|g| g.factory == na.id && g.machine == "Build_FrackingExtractor_C")
+            .count(),
+        3,
+        "one group per purity"
+    );
+    let d = s.solve_all_readonly();
+    let nitro = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_NitrogenGas_C");
+    assert!((nitro - 210.0).abs() < 1e-3, "120+60+30 = 210, got {nitro}");
+
+    s.edit(vec![Command::ClaimWell {
+        well: "well-o".into(),
+    }])
+    .unwrap();
+    let d = s.solve_all_readonly();
+    let oil = produced(&s, &d, "Build_FrackingExtractor_C", "Desc_LiquidOil_C");
+    assert!((oil - 60.0).abs() < 1e-3, "normal oil well = 60, got {oil}");
+}
+
+/// The dispatch wiring: `edit()` intercepts ClaimWell (never reaching planner-core),
+/// while a RAW `commands::apply` of ClaimWell hits the defensive error. And a raw
+/// claim_node on a fracking satellite is refused at the session layer.
+#[test]
+fn claim_well_dispatch_wiring_and_satellite_claim_guard() {
+    use planner_core::commands::{apply, DomainError};
+    use planner_core::state::PlanState;
+
+    // raw planner-core apply of ClaimWell → defensive session-layer-only error
+    let mut st = PlanState::default();
+    let err = apply(&mut st, &Command::ClaimWell { well: "x".into() }).unwrap_err();
+    assert!(matches!(err, DomainError::Invalid { .. }));
+
+    // a raw claim_node on a fracking satellite is rejected by edit()
+    let mut s = Session::in_memory(None).unwrap();
+    let sat = s
+        .world
+        .nodes
+        .iter()
+        .find(|n| n.node_type == "fracking-satellite")
+        .unwrap()
+        .id
+        .clone();
+    let f = s
+        .edit(vec![Command::CreateFactory {
+            name: "F".into(),
+            position: MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: String::new(),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    assert!(
+        s.edit(vec![Command::ClaimNode {
+            factory: f,
+            node: sat,
+            extractor: "Build_MinerMk2_C".into(),
+            clock: 1.0,
+        }])
+        .is_err(),
+        "claiming a fracking satellite as a miner node is refused"
     );
 }
 

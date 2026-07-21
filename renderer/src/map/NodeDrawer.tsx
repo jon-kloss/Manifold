@@ -37,9 +37,23 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
     for (const sat of sats) byPurity[sat.purity] = (byPurity[sat.purity] ?? 0) + 1;
     const fluid = itemLabel(gamedata.items, node.item) || "FLUID";
     const regionName = world.regions.find((r) => r.id === node.region)?.name ?? node.region;
+    // Already claimed? Mirror the Rust guard: a Pressurizer factory sitting on
+    // this well's (deterministic) satellite centroid. Show GO TO WELL, not a
+    // second CLAIM (a re-claim is refused by the session anyway).
+    const cx = sats.reduce((a, n) => a + n.x, 0) / sats.length;
+    const cy = sats.reduce((a, n) => a + n.y, 0) / sats.length;
+    const claimedFactory = Object.values(plan.factories).find(
+      (f) =>
+        Math.abs(f.position.x - cx) < 1 &&
+        Math.abs(f.position.y - cy) < 1 &&
+        Object.values(plan.groups).some(
+          (g) => g.factory === f.id && g.machine === "Build_FrackingSmasher_C",
+        ),
+    );
     const claimWell = () => {
-      void dispatch([{ type: "claim_well", well }]);
-      setSelection(null);
+      // { select: true } highlights + pans to the new well factory (its id is in
+      // the edit's `created`); without it the user gets no feedback.
+      void dispatch([{ type: "claim_well", well }], { select: true });
     };
     return (
       <aside className="drawer summary-drawer" data-testid="node-drawer">
@@ -60,18 +74,36 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
           <div className="insp-note" data-testid="well-purity">
             {byPurity.pure} pure · {byPurity.normal} normal · {byPurity.impure} impure
           </div>
-          <p className="insp-note" style={{ marginTop: 8 }}>
-            Claims the Resource Well Pressurizer (150 MW) plus one Resource Well Extractor per
-            satellite, as a new {fluid} well factory with a routable pipe output.
-          </p>
-          <button
-            className="btn btn-primary"
-            style={{ width: "100%", marginTop: 8 }}
-            onClick={claimWell}
-            data-testid="btn-claim-well"
-          >
-            CLAIM WELL
-          </button>
+          {claimedFactory ? (
+            <>
+              <p className="insp-note" style={{ marginTop: 8 }}>
+                This well is already claimed as <b>{claimedFactory.name}</b>.
+              </p>
+              <button
+                className="btn"
+                style={{ width: "100%", marginTop: 8 }}
+                onClick={() => setSelection({ kind: "factory", id: claimedFactory.id })}
+                data-testid="btn-goto-well"
+              >
+                GO TO WELL
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="insp-note" style={{ marginTop: 8 }}>
+                Claims the Resource Well Pressurizer (150 MW) plus one Resource Well Extractor per
+                satellite, as a new {fluid} well factory with a routable pipe output.
+              </p>
+              <button
+                className="btn btn-primary"
+                style={{ width: "100%", marginTop: 8 }}
+                onClick={claimWell}
+                data-testid="btn-claim-well"
+              >
+                CLAIM WELL
+              </button>
+            </>
+          )}
         </section>
       </aside>
     );

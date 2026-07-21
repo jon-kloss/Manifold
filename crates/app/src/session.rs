@@ -495,6 +495,21 @@ impl Session {
             // planner-core's pure apply can't see — resolve it here.
             let applied = match cmd {
                 Command::ClaimWell { well } => self.apply_claim_well(well),
+                // A geyser / fracking satellite is NOT a plain miner node — the UI
+                // routes them to the well claim, but the raw /edit API could send
+                // a claim_node; planner-core has no world catalog to reject it, so
+                // gate it here (plain nodes and save:<id> claims are unaffected).
+                Command::ClaimNode { node, .. }
+                    if self
+                        .world
+                        .nodes
+                        .iter()
+                        .any(|n| &n.id == node && !n.is_plain_node()) =>
+                {
+                    Err(DomainError::Invalid {
+                        message: format!("{node} is a well/geyser site, not a claimable node"),
+                    })
+                }
                 other => commands::apply(&mut self.state, other),
             };
             match applied {
@@ -1981,6 +1996,27 @@ impl Session {
         let item = sats[0].item.clone();
         let cx = sats.iter().map(|n| n.x).sum::<f64>() / sats.len() as f64;
         let cy = sats.iter().map(|n| n.y).sum::<f64>() / sats.len() as f64;
+        let region = sats[0].region.clone();
+        // No double-claim: a well claimed twice would stamp a second identical
+        // factory extracting the same satellites. The centroid is deterministic
+        // from a well's satellites, so a Pressurizer factory already at this
+        // centroid means the well is claimed. (The drawer mirrors this test to
+        // show CLAIM WELL vs an already-claimed state.)
+        let already_claimed = self.state.factories.values().any(|f| {
+            (f.position.x - cx).abs() < 1.0
+                && (f.position.y - cy).abs() < 1.0
+                && f.groups.iter().any(|gid| {
+                    self.state
+                        .groups
+                        .get(gid)
+                        .is_some_and(|g| g.machine == "Build_FrackingSmasher_C")
+                })
+        });
+        if already_claimed {
+            return Err(DomainError::Invalid {
+                message: format!("resource well {well} is already claimed"),
+            });
+        }
         // Satellites aggregate by purity → one Extractor group per purity.
         let mut by_purity: BTreeMap<String, u32> = BTreeMap::new();
         for n in &sats {
@@ -2065,8 +2101,9 @@ impl Session {
             created_by: CreatedBy::Manual,
         })));
         for eid in &ext_ids {
+            let edge_id = new_id();
             tx.record(self.state.upsert(Entity::Edge(BeltEdge {
-                id: new_id(),
+                id: edge_id.clone(),
                 factory: fid.clone(),
                 from: EdgeEnd::Group(eid.clone()),
                 to: EdgeEnd::Port(pid.clone()),
@@ -2075,6 +2112,7 @@ impl Session {
                 status: Status::Planned,
                 created_by: CreatedBy::Manual,
             })));
+            tx.created.push(edge_id);
         }
         let name = self
             .gamedata
@@ -2082,6 +2120,10 @@ impl Session {
             .get(&item)
             .map(|i| format!("{} WELL", i.display_name.to_uppercase()))
             .unwrap_or_else(|| "RESOURCE WELL".into());
+        // Every created id (groups, port, edges, factory) goes in `tx.created`
+        // per the command contract — the renderer selects them.
+        tx.created.extend(group_ids.iter().cloned());
+        tx.created.push(pid.clone());
         tx.created.push(fid.clone());
         tx.record(self.state.upsert(Entity::Factory(Factory {
             id: fid,
@@ -2091,7 +2133,7 @@ impl Session {
                 y: cy,
                 z: 0.0,
             },
-            region: String::new(),
+            region,
             node_claims: vec![],
             groups: group_ids,
             ports: vec![pid],

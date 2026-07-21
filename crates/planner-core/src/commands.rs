@@ -200,9 +200,10 @@ pub enum Command {
         clock: f64,
     },
     /// Claim a whole Resource Well: stamp a new factory with the Pressurizer +
-    /// one Extractor group per satellite (at its purity's rate). Resolved at the
-    /// SESSION layer (it needs the world catalog + gamedata recipes), never here —
-    /// the planner-core arm is a defensive error.
+    /// one Extractor group per distinct satellite PURITY (aggregated count, at
+    /// that purity's rate). Resolved at the SESSION layer (it needs the world
+    /// catalog + gamedata recipes), never here — the planner-core arm is a
+    /// defensive error.
     ClaimWell {
         well: String,
     },

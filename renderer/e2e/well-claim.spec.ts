@@ -38,14 +38,20 @@ test("a fracking satellite claims the whole well from its drawer", async ({ page
     await expect(drawer.locator(".t-title")).toContainText("WELL");
     await expect(page.getByTestId("well-purity")).toBeVisible();
 
-    await page.getByTestId("btn-claim-well").click();
+    // A satellite must NOT offer the per-node miner claim.
+    await expect(page.getByTestId("btn-claim")).toHaveCount(0);
 
-    // The well imported as one factory: a Pressurizer + ≥1 fracking extractor
-    // group, and a routable nitrogen OUT port.
+    // Await the /edit round-trip so hydrate reads the landed claim (the dispatch
+    // is fire-and-forget, so the click alone doesn't guarantee it committed).
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/edit") && r.request().method() === "POST"),
+      page.getByTestId("btn-claim-well").click(),
+    ]);
+
+    // The well stamped one factory: a Pressurizer + ≥1 fracking extractor group,
+    // and a routable nitrogen OUT port. NO satellite got a node claim.
     const h = await hydrate(request);
-    const wellFactory = Object.values<any>(h.plan.factories).find((f) =>
-      f.name.includes("NITROGEN"),
-    );
+    const wellFactory = Object.values<any>(h.plan.factories).find((f) => f.name.includes("NITROGEN"));
     expect(wellFactory, "a NITROGEN … WELL factory was created").toBeTruthy();
     const groups = Object.values<any>(h.plan.groups).filter((g) => g.factory === wellFactory.id);
     expect(groups.some((g) => g.machine === "Build_FrackingSmasher_C")).toBe(true);
@@ -55,10 +61,16 @@ test("a fracking satellite claims the whole well from its drawer", async ({ page
         (p) => p.factory === wellFactory.id && p.item === "Desc_NitrogenGas_C" && p.direction === "out",
       ),
     ).toBe(true);
-
-    // Clean up so the serial suite's shared plan is unchanged.
-    await edit(request, [{ type: "delete_factory", id: wellFactory.id }]);
+    expect(Object.values<any>(h.plan.nodeClaims).length, "no per-satellite node claim").toBe(0);
   } finally {
+    // Unconditional cleanup: delete ANY leaked well factory (this or a prior
+    // failed run) by name so the serial suite's shared plan is restored.
+    const h = await hydrate(request).catch(() => null);
+    for (const f of Object.values<any>(h?.plan.factories ?? {})) {
+      if (typeof f.name === "string" && f.name.includes("WELL")) {
+        await edit(request, [{ type: "delete_factory", id: f.id }]).catch(() => {});
+      }
+    }
     await resetView(request);
   }
 });

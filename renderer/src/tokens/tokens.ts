@@ -44,6 +44,8 @@ export const tokens = {
   /** color */ resource_bauxite: "#B57C5E",
   /** color */ resource_uranium: "#4F7A45",
   /** color */ resource_sam: "#96587F",
+  /** color */ resource_water: "#2E6C9E",
+  /** color */ resource_nitrogen: "#2C737E",
   /** color */ resource_generic: "#5A6570",
   /** color */ resource_iron_light: "#9AA8B6",
   /** color */ resource_iron_dark: "#47525D",
