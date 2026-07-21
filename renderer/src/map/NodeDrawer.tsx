@@ -6,7 +6,7 @@ import { useStore } from "../state/store";
 import { extractionRate, extractorsFor } from "./maputil";
 import { pickReusePort } from "./claimPorts";
 import { fmtRate, itemLabel } from "../lib/format";
-import type { WorldNode } from "../state/types";
+import { purityFactor, type WorldNode } from "../state/types";
 import ItemIcon from "../lib/ItemIcon";
 
 export default function NodeDrawer({ node }: { node: WorldNode }) {
@@ -112,12 +112,15 @@ export default function NodeDrawer({ node }: { node: WorldNode }) {
   // A geyser opens the GEOTHERMAL drawer: place a Geothermal Generator whose
   // output scales with the geyser's purity (100 / 200 / 400 MW).
   if (node.nodeType === "geyser") {
-    const mw = 200 * (node.purity === "pure" ? 2 : node.purity === "impure" ? 0.5 : 1);
+    const mw = 200 * purityFactor(node.purity);
     const regionName = world.regions.find((r) => r.id === node.region)?.name ?? node.region;
+    // Match against the RAW catalog position (apply_claim_geyser stamps the
+    // factory there), not `node` which may carry a plan-local drift override.
+    const raw = world.nodes.find((n) => n.id === node.id) ?? node;
     const claimedFactory = Object.values(plan.factories).find(
       (f) =>
-        Math.abs(f.position.x - node.x) < 1 &&
-        Math.abs(f.position.y - node.y) < 1 &&
+        Math.abs(f.position.x - raw.x) < 1 &&
+        Math.abs(f.position.y - raw.y) < 1 &&
         Object.values(plan.groups).some(
           (g) => g.factory === f.id && g.machine === "Build_GeneratorGeoThermal_C",
         ),

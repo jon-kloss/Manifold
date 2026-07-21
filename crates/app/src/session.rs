@@ -511,6 +511,21 @@ impl Session {
                         message: format!("{node} is a well/geyser site, not a claimable node"),
                     })
                 }
+                // A Geothermal Generator's output is fixed by its geyser's purity
+                // (encoded in the group clock) and geysers are NOT overclockable —
+                // reject a clock change so the drawer's purity → MW and the graph
+                // card can never disagree.
+                Command::SetGroupClock { id, .. }
+                    if self
+                        .state
+                        .groups
+                        .get(id)
+                        .is_some_and(|g| g.machine == "Build_GeneratorGeoThermal_C") =>
+                {
+                    Err(DomainError::Invalid {
+                        message: "a geothermal generator is fixed by its geyser's purity".into(),
+                    })
+                }
                 other => commands::apply(&mut self.state, other),
             };
             match applied {

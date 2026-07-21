@@ -78,12 +78,11 @@ pub struct WorldNode {
 
 impl WorldNode {
     /// True for a plain miner / oil-pump resource node — the only site type the
-    /// app currently claims, binds imported extractors to, and offers as an
-    /// opportunity. Geysers (geothermal) and fracking satellites are in the
-    /// catalog but not yet wired to claim/placement; the consumers that would
-    /// act on a node gate on this so the new sites stay inert until their
-    /// features land (game-parity arc). Callers that DO support a new type
-    /// (future geyser/well placement) check `node_type` directly instead.
+    /// MINER-CLAIM path (import bind, wizard siting, opportunity offers) touches.
+    /// Fracking satellites (well claim) and geysers (geothermal placement) are
+    /// their OWN claim paths — `ClaimWell` / `ClaimGeyser` — and must never take
+    /// a miner claim, so those consumers gate on this. Callers that support the
+    /// new types check `node_type` directly instead.
     pub fn is_plain_node(&self) -> bool {
         self.node_type == "node"
     }

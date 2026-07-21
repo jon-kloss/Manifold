@@ -1,7 +1,7 @@
 // World meters ↔ Leaflet CRS.Simple coordinates. 1 map unit = 50 m; north up.
 
 import L from "leaflet";
-import type { GameMachine, MapPos } from "../state/types";
+import { purityFactor, type GameMachine, type MapPos } from "../state/types";
 
 export const METERS_PER_UNIT = 50;
 
@@ -18,8 +18,7 @@ export function extractionRate(machine: GameMachine | undefined, purity: string,
   const m = machine as (GameMachine & { itemsPerCycle?: number; cycleTimeS?: number }) | undefined;
   if (!m || m.kind !== "extractor" || !m.itemsPerCycle || !m.cycleTimeS) return 0;
   const base = (m.itemsPerCycle / m.cycleTimeS) * 60;
-  const purityFactor = purity === "pure" ? 2 : purity === "impure" ? 0.5 : 1;
-  return base * purityFactor * clock;
+  return base * purityFactor(purity) * clock;
 }
 
 export const EXTRACTORS = ["Build_MinerMk1_C", "Build_MinerMk2_C", "Build_MinerMk3_C"];

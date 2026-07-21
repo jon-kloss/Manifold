@@ -318,6 +318,14 @@ export const isPlainNode = (n: { nodeType: WorldNode["nodeType"] }): boolean =>
  */
 export const isRenderableNode = (n: { nodeType: WorldNode["nodeType"] }): boolean =>
   n.nodeType === "node" || n.nodeType === "fracking-satellite" || n.nodeType === "geyser";
+
+/**
+ * The rate/output multiplier the game applies by node purity — mirrors Rust
+ * `gamedata::docs::purity_factor`. The single TS source of truth (extraction
+ * rates, geothermal MW). Keep in sync with the Rust table.
+ */
+export const purityFactor = (purity: string): number =>
+  purity === "pure" ? 2 : purity === "impure" ? 0.5 : 1;
 export interface WorldRegion { id: string; name: string; labelX: number; labelY: number }
 export interface World {
   version: number;

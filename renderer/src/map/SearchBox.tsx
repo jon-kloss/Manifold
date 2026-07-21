@@ -51,8 +51,9 @@ export default function SearchBox({ onJump }: { onJump: (pos: { x: number; y: nu
         });
     }
     for (const n of world.nodes) {
-      // Plain nodes and fracking satellites are jumpable/selectable; geysers are
-      // not rendered yet, so a hit would dead-end at MapView's filtered nodes.
+      // Plain nodes, fracking satellites, AND geysers are jumpable/selectable
+      // (each opens its own drawer); anything else would dead-end at MapView's
+      // filtered nodes.
       if (!isRenderableNode(n)) continue;
       const item = itemLabel(gamedata.items, n.item);
       if (item.toLowerCase().includes(q) || n.id.includes(q)) {

@@ -28,14 +28,22 @@ test("a geyser places a geothermal generator from its drawer", async ({ page, re
     const skip = page.getByTestId("onboard-skip");
     if (await skip.isVisible().catch(() => false)) await skip.click();
 
-    // Geyser ids contain "geyser", so the ⌘K search surfaces them; selecting one
-    // opens the GEOTHERMAL drawer.
-    await page.locator(".searchbox input").fill("geyser");
+    // A specific geyser id from the catalog — searching the full id is
+    // deterministic (only that node matches), and stays selectable after the
+    // claim (the new GEYSER factory doesn't carry that id).
+    const geyserId = Object.values<any>((await hydrate(request)).world.nodes).find(
+      (n) => n.nodeType === "geyser",
+    )?.id;
+    expect(geyserId, "the catalog has a geyser").toBeTruthy();
+
+    await page.locator(".searchbox input").fill(geyserId);
     await page.keyboard.press("Enter");
     const drawer = page.getByTestId("node-drawer");
     await expect(drawer).toBeVisible();
     await expect(drawer.locator(".t-title")).toContainText("GEYSER");
-    // a satellite/plain miner claim must NOT be offered
+    // the drawer offers PLACE GEOTHERMAL (with an MW figure), NOT a miner claim
+    await expect(page.getByTestId("btn-claim-geyser")).toContainText("GEOTHERMAL");
+    await expect(drawer.locator(".drawer-sub")).toContainText("MW");
     await expect(page.getByTestId("btn-claim")).toHaveCount(0);
 
     await Promise.all([
@@ -48,10 +56,17 @@ test("a geyser places a geothermal generator from its drawer", async ({ page, re
     const geyserFactory = Object.values<any>(h.plan.factories).find((f) => f.name.includes("GEYSER"));
     expect(geyserFactory, "a GEYSER factory was created").toBeTruthy();
     expect(
-      Object.values<any>(h.plan.groups).some(
+      Object.values<any>(h.plan.groups).filter(
         (g) => g.factory === geyserFactory.id && g.machine === "Build_GeneratorGeoThermal_C",
-      ),
-    ).toBe(true);
+      ).length,
+    ).toBe(1);
+
+    // re-opening the SAME geyser now shows the claimed state (GO TO GENERATOR),
+    // never a second PLACE.
+    await page.locator(".searchbox input").fill(geyserId);
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("btn-goto-geyser")).toBeVisible();
+    await expect(page.getByTestId("btn-claim-geyser")).toHaveCount(0);
   } finally {
     const h = await hydrate(request).catch(() => null);
     for (const f of Object.values<any>(h?.plan.factories ?? {})) {
