@@ -34,16 +34,14 @@ async function rightDrag(page: Page, from: { x: number; y: number }, to: { x: nu
 }
 
 test("empire: a water OUT → IN pair draws a PIPE route", async ({ page, request }) => {
-  // Clean plan first: a prior import spec can leave its own "WATER WORKS"
-  // factory (imported Water Extractors now build one), which would collide with
-  // ours by name in the serial suite.
-  await request.post(`${API}/new_empire`, { data: "{}" });
-  // WATER WORKS ships water; POWER PLANT wants it. Minimal ports are enough to
-  // exercise the drawing UI (the popover enumerates unbound OUT ports on the
+  // WATER SOURCE ships water; POWER PLANT wants it. (Named WATER SOURCE, not
+  // "WATER WORKS", to avoid colliding with the water factory a prior import
+  // spec now leaves in the serial suite's shared plan.) Minimal ports are enough
+  // to exercise the drawing UI (the popover enumerates unbound OUT ports on the
   // source and item-matches IN ports on the target).
   const waterWorks = (
     await edit(request, [
-      { type: "create_factory", name: "WATER WORKS", position: { x: -1000, y: 0 }, region: "GRASS FIELDS" },
+      { type: "create_factory", name: "WATER SOURCE", position: { x: -1000, y: 0 }, region: "GRASS FIELDS" },
     ])
   ).created[0];
   await edit(request, [
@@ -80,7 +78,7 @@ test("empire: a water OUT → IN pair draws a PIPE route", async ({ page, reques
     if (await skip.isVisible().catch(() => false)) await skip.click();
     await expect(page.getByTestId("map-root")).toBeVisible();
 
-    await rightDrag(page, await pinCenter(page, "WATER WORKS"), await pinCenter(page, "POWER PLANT"));
+    await rightDrag(page, await pinCenter(page, "WATER SOURCE"), await pinCenter(page, "POWER PLANT"));
     await expect(page.getByTestId("route-popover")).toBeVisible();
 
     // The only candidate is Water — and because it's a fluid, the popover shows

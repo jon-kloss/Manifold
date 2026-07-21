@@ -20,12 +20,11 @@ async function hydrate(request: APIRequestContext): Promise<any> {
 
 test("a Water Extractor can be placed in a factory from the add-machine picker", async ({ page, request }) => {
   await resetView(request);
-  // Clean plan first: a prior import spec can leave its own "WATER WORKS"
-  // factory (imported Water Extractors now build one) — avoid a name collision.
-  await request.post(`${API}/new_empire`, { data: "{}" });
+  // Named WATER SOURCE, not "WATER WORKS", to avoid colliding with the water
+  // factory a prior import spec now leaves in the serial suite's shared plan.
   const f = (
     await edit(request, [
-      { type: "create_factory", name: "WATER WORKS", position: { x: -2000, y: 2000 }, region: "GRASS FIELDS" },
+      { type: "create_factory", name: "WATER SOURCE", position: { x: -2000, y: 2000 }, region: "GRASS FIELDS" },
     ])
   ).created[0];
 
@@ -33,7 +32,7 @@ test("a Water Extractor can be placed in a factory from the add-machine picker",
     await page.goto("/");
     const skip = page.getByTestId("onboard-skip");
     if (await skip.isVisible().catch(() => false)) await skip.click();
-    await page.locator(".searchbox input").fill("WATER WORKS");
+    await page.locator(".searchbox input").fill("WATER SOURCE");
     await page.keyboard.press("Enter");
     await page.getByTestId("btn-open-factory").click();
 

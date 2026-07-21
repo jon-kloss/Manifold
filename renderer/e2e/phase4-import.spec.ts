@@ -45,7 +45,7 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   // "RE-IMPORT SAVE" the instant its own write lands
   await expect(page.locator('[data-testid="import-modal"] .t-title')).toHaveText("IMPORT SAVE AS BUILT");
   await page.locator(".wizard-foot .btn-primary").click();
-  expect(await factoryCount()).toBe(before + 13);
+  expect(await factoryCount()).toBe(before + 14); // +1: the imported water factory
   // 13 clustered pins → the declutter pass may cull this chip at world zoom;
   // attached proves the ◆ pin exists, search-select proves it wins the cull
   await expect(page.locator(".pin-chip", { hasText: "IRON INGOT WORKS 1" })).toBeAttached();
@@ -95,7 +95,7 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   // close WITHOUT running — later sections assume the built layer as-is
   await page.locator('[data-testid="import-modal"] .btn-ghost').click();
   await expect(page.getByTestId("import-preview")).toBeHidden();
-  expect(await factoryCount()).toBe(before + 13);
+  expect(await factoryCount()).toBe(before + 14); // +1: the imported water factory
 
   // ---- a different world's save: pure game drift → review + DIFF rows ----
   await importSave(page, "269.sav");
@@ -106,7 +106,7 @@ test("import Dunarr-076 as the built layer; drift renders in DIFF", async ({ pag
   expect(driftItems).toBeGreaterThan(5);
   // exit WITHOUT accepting — re-imports never write
   await page.getByTestId("btn-exit-review").click();
-  expect(await factoryCount()).toBe(before + 13);
+  expect(await factoryCount()).toBe(before + 14); // +1: the imported water factory
 
   // the DIFF tab carries the game-drift rows with a REVIEW action
   await page.keyboard.press("Tab");
