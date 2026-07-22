@@ -40,6 +40,20 @@ pub fn sanitize_name(name: &str) -> Result<String, String> {
     {
         return Err("empire name can't contain path separators".into());
     }
+    // Windows-reserved filename characters — the desktop shell ships there, and
+    // letting them through would surface as an opaque SQLite create error
+    // instead of a reason. (Trailing dots/spaces are covered by trim + the
+    // dot-suffix check below being about extensions only; a trailing dot is
+    // rejected here explicitly.)
+    if name
+        .chars()
+        .any(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+    {
+        return Err("empire name can't contain < > : \" | ? *".into());
+    }
+    if name.ends_with('.') {
+        return Err("empire name can't end with a dot".into());
+    }
     if name.to_ascii_lowercase().ends_with(".ficsit") {
         return Err("leave off the .ficsit extension".into());
     }
@@ -141,6 +155,11 @@ mod tests {
         assert!(sanitize_name(".hidden").is_err());
         assert!(sanitize_name("x.ficsit").is_err());
         assert!(sanitize_name(&"x".repeat(65)).is_err());
+        // Windows-reserved characters + trailing dot are refused with a reason
+        assert!(sanitize_name("OUT:POST").is_err());
+        assert!(sanitize_name("what?").is_err());
+        assert!(sanitize_name("star*").is_err());
+        assert!(sanitize_name("dot.").is_err());
     }
 
     #[test]

@@ -130,8 +130,17 @@ async function idbDelete(key: string): Promise<void> {
 /** Load (or adopt) the empire registry and point `activeKey` at the active
  *  empire's blob slot. The legacy `current` key becomes "EMPIRE 1". */
 async function ensureRegistry(): Promise<EmpireRegistry> {
-  let reg = await idbGetJson<EmpireRegistry>(EMPIRES_KEY);
-  if (!reg || !reg.slots || !reg.active || !reg.slots[reg.active]) {
+  // A corrupt registry value must never brick the boot (this runs BEFORE the
+  // plan/docs park-and-degrade cascade): an unreadable/malformed value is
+  // treated exactly like a missing one — adopt the legacy single-plan key as
+  // "EMPIRE 1" and rewrite the registry.
+  let reg: EmpireRegistry | undefined;
+  try {
+    reg = await idbGetJson<EmpireRegistry>(EMPIRES_KEY);
+  } catch (e) {
+    console.warn("[wasm-worker] empire registry unreadable — adopting the default", e);
+  }
+  if (!reg || typeof reg !== "object" || !reg.slots || !reg.active || !reg.slots[reg.active]) {
     reg = { active: "EMPIRE 1", slots: { "EMPIRE 1": KEY } };
     await idbPut(EMPIRES_KEY, JSON.stringify(reg));
   }
