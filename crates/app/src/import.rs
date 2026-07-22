@@ -272,6 +272,26 @@ fn fracking_group_for(
     gd.recipes.contains_key(&recipe).then_some(recipe)
 }
 
+/// An imported geothermal generator's clock ENCODES its geyser's purity, exactly
+/// like a placed one (`apply_claim_geyser`): `clock = purity_factor(nearest
+/// geyser)`, so `inject_generator_nameplates` credits `200 MW × clock` =
+/// 100/200/400 for impure/normal/pure. A generator carries no node ref (unlike a
+/// miner), so the geyser — hence the purity — is resolved by nearest position in
+/// the world catalog (mirroring `fracking_group_for`). No geyser in range →
+/// clock 1.0 (flat nameplate), the prior behavior. The `SetGroupClock` guard
+/// (session layer) then protects this clock just as it does a placed geyser's.
+fn geothermal_purity_clock(world: &gamedata::worldnodes::WorldSnapshot, x: f64, y: f64) -> f64 {
+    world
+        .nodes
+        .iter()
+        .filter(|n| n.node_type == "geyser")
+        .map(|n| (n, (n.x - x).hypot(n.y - y)))
+        .filter(|(_, d)| *d <= NODE_MATCH_M)
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(n, _)| gamedata::docs::purity_factor(&n.purity))
+        .unwrap_or(1.0)
+}
+
 /// The plan-local id a save-only node (no catalog match) claims under.
 fn save_node_key(e: &ClusterExtractor) -> String {
     match &e.node_actor_id {
@@ -511,20 +531,32 @@ pub fn cluster(
         let cx = members.iter().map(|m| m.x).sum::<f64>() / members.len() as f64;
         let cy = members.iter().map(|m| m.y).sum::<f64>() / members.len() as f64;
         let cz = members.iter().map(|m| m.z).sum::<f64>() / members.len() as f64;
-        // group by (machine class, recipe). A generator carries no recipe from
-        // the save; infer its burn recipe from the loaded fuel so the ◆ plant
-        // models fuel/water/waste (else it folds into a recipe-less nameplate
-        // group). Generators on different fuels cluster into separate groups.
+        // group by (machine class, recipe). A generator carries no recipe from the
+        // save; infer its burn recipe from the loaded fuel so the ◆ plant models
+        // fuel/water/waste (else it folds into a recipe-less nameplate group).
+        // Generators on different fuels cluster into separate groups. Geothermal
+        // is the exception: it has no fuel/recipe, but its CLOCK encodes geyser
+        // purity, so each unit contributes its purity-clock (0.5/1/2) instead of
+        // the flat save clock. Units stay in ONE recipe-less group and average —
+        // avg-clock × count = Σ purity-clocks, so the empire total is exact even
+        // when a cluster spans mixed-purity geysers (rare), while keeping the
+        // group's `(machine, recipe="")` identity stable for re-import (a
+        // per-purity split would collide two `recipe=""` groups in the diff).
         let mut groups: BTreeMap<(String, String), (u32, f64)> = BTreeMap::new();
         for m in &members {
-            let recipe = m
-                .recipe
-                .clone()
-                .or_else(|| generator_burn_recipe(gd, &m.class, m.fuel.as_deref()))
-                .unwrap_or_default();
+            let (recipe, member_clock) = if m.class == "Build_GeneratorGeoThermal_C" {
+                (String::new(), geothermal_purity_clock(world, m.x, m.y))
+            } else {
+                let recipe = m
+                    .recipe
+                    .clone()
+                    .or_else(|| generator_burn_recipe(gd, &m.class, m.fuel.as_deref()))
+                    .unwrap_or_default();
+                (recipe, m.clock)
+            };
             let e = groups.entry((m.class.clone(), recipe)).or_insert((0, 0.0));
             e.0 += 1;
-            e.1 += m.clock;
+            e.1 += member_clock;
         }
         let groups: Vec<ClusterGroup> = groups
             .into_iter()
