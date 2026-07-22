@@ -1886,3 +1886,109 @@ fn count_down_sync_shrinks_rate_but_never_lowers_tier() {
         "tier is never lowered — the player may have overbuilt"
     );
 }
+
+/// A fueled generator names its factory by the MACHINE, not the POWER pseudo-item
+/// product — "COAL-POWERED GENERATOR WORKS", not "POWER WORKS" (regression guard:
+/// once a generator carries an inferred burn recipe, its sole product is Power).
+#[test]
+fn imported_fueled_generator_factory_names_by_machine() {
+    let mut s = Session::in_memory(None).unwrap();
+    s.import_save(snapshot(vec![ImportMachine {
+        class: "Build_GeneratorCoal_C".into(),
+        recipe: None,
+        fuel: Some("Desc_Coal_C".into()),
+        clock: 1.0,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        ..Default::default()
+    }]))
+    .unwrap();
+    let f = s
+        .state
+        .factories
+        .values()
+        .find(|f| f.status == Status::Built)
+        .expect("imported generator factory");
+    assert_eq!(
+        f.name, "COAL-POWERED GENERATOR WORKS 1",
+        "named by the machine, not the Power product"
+    );
+}
+
+/// The Critical re-import case: a generator imported BEFORE recipe inference has
+/// recipe "", and the user planned an overclock on it. Re-importing (now reading
+/// the fuel) must RETUNE the SAME group in place — adopting the inferred recipe
+/// while PRESERVING the planned overclock — never demolish + re-add it (which
+/// would silently drop the overclock). Also covers idle-fuel flapping: the same
+/// reconciliation keeps the group stable when a save has no loaded fuel.
+#[test]
+fn reimport_adopts_generator_recipe_in_place_preserving_planned_overclock() {
+    use planner_core::commands::Command;
+
+    let mut s = Session::in_memory(None).unwrap();
+    let gen = |fuel: Option<&str>| ImportMachine {
+        class: "Build_GeneratorCoal_C".into(),
+        recipe: None,
+        fuel: fuel.map(String::from),
+        clock: 1.0,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        ..Default::default()
+    };
+
+    // Import as if PRE-inference: no fuel read → recipe "".
+    s.import_save(snapshot(vec![gen(None)])).unwrap();
+    let gid = s
+        .state
+        .groups
+        .values()
+        .find(|g| g.machine == "Build_GeneratorCoal_C")
+        .expect("imported generator")
+        .id
+        .clone();
+    assert_eq!(
+        s.state.groups[&gid].recipe, "",
+        "pre-inference: empty recipe"
+    );
+
+    // The user plans an overclock on the imported generator.
+    s.edit(vec![Command::SetGroupClock {
+        id: gid.clone(),
+        clock: 1.5,
+    }])
+    .unwrap();
+
+    // Re-import, now reading the fuel: retune in place, don't demolish+re-add.
+    let ImportOutcome::Drift { proposal, .. } = s
+        .import_save(snapshot(vec![gen(Some("Desc_Coal_C"))]))
+        .unwrap()
+    else {
+        panic!("expected drift for the in-place recipe adoption");
+    };
+    s.accept_proposal(&proposal).unwrap();
+
+    // SAME group id (indexing panics if it was recreated), recipe adopted, and
+    // the planned overclock survived.
+    let g = &s.state.groups[&gid];
+    assert_eq!(
+        g.recipe, "Recipe_Power_Build_GeneratorCoal_Desc_Coal_C",
+        "inferred recipe adopted in place"
+    );
+    assert_eq!(
+        g.planned_delta.and_then(|d| d.clock),
+        Some(1.5),
+        "planned overclock preserved through the retune (not dropped by demolish+re-add)"
+    );
+
+    // Re-importing the same fueled save again is now IN SYNC — no flapping.
+    assert!(
+        matches!(
+            s.import_save(snapshot(vec![gen(Some("Desc_Coal_C"))]))
+                .unwrap(),
+            ImportOutcome::InSync
+        ),
+        "steady-state re-import is in sync"
+    );
+}

@@ -535,17 +535,24 @@ pub fn cluster(
                 clock: (clock_sum / count as f64 * 1000.0).round() / 1000.0,
             })
             .collect();
-        // name by dominant output: biggest group's recipe product
+        // name by dominant output: biggest group's recipe product — EXCEPT a
+        // generator, whose product is the POWER pseudo-item ("Power"); name those
+        // by the machine (COAL-POWERED GENERATOR), not "POWER WORKS".
         let dominant = groups.iter().max_by_key(|g| g.count);
         let name = dominant
-            .and_then(|g| gd.recipes.get(&g.recipe))
-            .and_then(|r| r.products.first())
-            .and_then(|(item, _)| gd.items.get(item))
-            .map(|i| i.display_name.to_uppercase())
-            .or_else(|| {
-                dominant
-                    .and_then(|g| gd.machines.get(&g.machine))
-                    .map(|m| m.display_name.to_uppercase())
+            .map(|g| {
+                gd.recipes
+                    .get(&g.recipe)
+                    .and_then(|r| r.products.first())
+                    .filter(|(item, _)| item != gamedata::docs::POWER_ITEM)
+                    .and_then(|(item, _)| gd.items.get(item))
+                    .map(|i| i.display_name.to_uppercase())
+                    .or_else(|| {
+                        gd.machines
+                            .get(&g.machine)
+                            .map(|m| m.display_name.to_uppercase())
+                    })
+                    .unwrap_or_else(|| "IMPORTED".into())
             })
             .unwrap_or_else(|| "IMPORTED".into());
         pre.push(Pre {
@@ -1050,6 +1057,19 @@ pub enum SyncOp {
         count: u32,
         clock: f64,
     },
+    /// Retune a GENERATOR's inferred burn recipe IN PLACE (its recipe is derived
+    /// from the save's transient loaded-fuel, so a fuel change / idle save / a
+    /// pre-inference `""` must update the SAME group, preserving its id and the
+    /// user's `planned_delta` — never demolish+re-add, which would drop a planned
+    /// overclock). Matched by `(machine, old_recipe)`.
+    RetuneGroup {
+        factory: Id,
+        machine: String,
+        old_recipe: String,
+        new_recipe: String,
+        count: u32,
+        clock: f64,
+    },
     /// The whole factory vanished in game — remove it and everything it owns.
     RemoveFactory {
         factory: Id,
@@ -1142,10 +1162,25 @@ pub fn diff_against_built(
                         )
                     })
                     .collect();
+                let is_generator = |machine: &str| {
+                    matches!(
+                        gd.machines.get(machine).map(|m| &m.kind),
+                        Some(gamedata::docs::MachineKind::Generator { .. })
+                    )
+                };
+                // Existing built keys reconciled to a save group (exact match or a
+                // generator retune) — the demolish loop leaves these alone.
+                let mut consumed: std::collections::BTreeSet<(String, String)> =
+                    std::collections::BTreeSet::new();
+                // Save generators with no exact-recipe match: deferred to in-place
+                // reconciliation (a generator's recipe is derived from transient
+                // fuel, so it must retune the same group, not demolish+re-add).
+                let mut unmatched_gen: Vec<&ClusterGroup> = Vec::new();
                 for g in &c.groups {
                     let key = (g.machine.clone(), g.recipe.clone());
                     match existing.get(&key) {
                         Some((count, clock, _, delta)) if *count == g.count => {
+                            consumed.insert(key.clone());
                             // Compare against the clamped save clock — the
                             // value apply_sync will actually store — so an
                             // accepted item converges to InSync on re-import.
@@ -1196,6 +1231,7 @@ pub fn diff_against_built(
                             }
                         }
                         Some((count, clock_b, _, delta)) => {
+                            consumed.insert(key.clone());
                             let target = g.clock.clamp(0.01, 2.5);
                             let op = SyncOp::UpdateGroup {
                                 factory: f.id.clone(),
@@ -1238,6 +1274,11 @@ pub fn diff_against_built(
                                 ));
                             }
                         }
+                        None if is_generator(&g.machine) => {
+                            // A generator's recipe is derived from transient fuel;
+                            // reconcile it in place below, never "added".
+                            unmatched_gen.push(g);
+                        }
                         None => items.push(drift_item(
                             format!("Δ {} — {} added in game", f.name, item_name(&g.recipe)),
                             format!("×{} @ {:.0}%", g.count, g.clock * 100.0),
@@ -1251,12 +1292,101 @@ pub fn diff_against_built(
                         )),
                     }
                 }
-                for ((machine, recipe), (count, clock, _, _)) in &existing {
-                    if !c
-                        .groups
+                // Reconcile each unmatched save generator to an unconsumed existing
+                // generator group of the SAME machine (1:1) and retune it in place —
+                // preserving its id + planned_delta. An idle save (empty recipe)
+                // keeps the existing inferred recipe; a fueled save adopts the new
+                // one; a pre-inference "" adopts its first inferred recipe. Only a
+                // save generator with no existing counterpart is genuinely "added".
+                let machine_name = |machine: &str| {
+                    gd.machines
+                        .get(machine)
+                        .map(|m| m.display_name.to_uppercase())
+                        .unwrap_or_else(|| machine.to_string())
+                };
+                for g in &unmatched_gen {
+                    let matched = existing
                         .iter()
-                        .any(|g| &g.machine == machine && &g.recipe == recipe)
-                    {
+                        .find(|((m, r), _)| {
+                            m == &g.machine && !consumed.contains(&(m.clone(), r.clone()))
+                        })
+                        .map(|((_, r), (c, k, _, d))| (r.clone(), *c, *k, *d));
+                    let Some((old_recipe, count_b, clock_b, delta)) = matched else {
+                        items.push(drift_item(
+                            format!("Δ {} — {} added in game", f.name, machine_name(&g.machine)),
+                            format!("×{} @ {:.0}%", g.count, g.clock * 100.0),
+                            SyncOp::UpdateGroup {
+                                factory: f.id.clone(),
+                                machine: g.machine.clone(),
+                                recipe: g.recipe.clone(),
+                                count: g.count,
+                                clock: g.clock,
+                            },
+                        ));
+                        continue;
+                    };
+                    consumed.insert((g.machine.clone(), old_recipe.clone()));
+                    // idle save (empty recipe) keeps the existing inferred recipe.
+                    let new_recipe = if g.recipe.is_empty() {
+                        old_recipe.clone()
+                    } else {
+                        g.recipe.clone()
+                    };
+                    let target = g.clock.clamp(0.01, 2.5);
+                    let recipe_changed = new_recipe != old_recipe;
+                    let count_changed = count_b != g.count;
+                    let clock_changed = (clock_b - target).abs() > CLOCK_EPS;
+                    if !recipe_changed && !count_changed && !clock_changed {
+                        continue; // nothing meaningful changed → in sync
+                    }
+                    let op = SyncOp::RetuneGroup {
+                        factory: f.id.clone(),
+                        machine: g.machine.clone(),
+                        old_recipe: old_recipe.clone(),
+                        new_recipe,
+                        count: g.count,
+                        clock: g.clock,
+                    };
+                    // A count/clock change the user also edited is a conflict
+                    // (mine vs theirs); a pure fuel re-derivation is a benign drift.
+                    let mine_count = delta
+                        .and_then(|d| d.count)
+                        .filter(|c| count_changed && *c != g.count);
+                    let mine_clock = delta
+                        .and_then(|d| d.clock)
+                        .filter(|mc| clock_changed && (mc - target).abs() > CLOCK_EPS);
+                    if mine_count.is_some() || mine_clock.is_some() {
+                        let eff_count = delta.and_then(|d| d.count).unwrap_or(g.count);
+                        let eff_clock = delta.and_then(|d| d.clock).unwrap_or(target);
+                        items.push(conflict_item(
+                            format!(
+                                "Δ {} — {} refueled in game",
+                                f.name,
+                                machine_name(&g.machine)
+                            ),
+                            op,
+                            format!("×{eff_count} @ {:.0}%", eff_clock * 100.0),
+                            format!("×{} @ {:.0}%", g.count, target * 100.0),
+                        ));
+                    } else {
+                        items.push(drift_item(
+                            format!(
+                                "Δ {} — {} fuel updated from save",
+                                f.name,
+                                machine_name(&g.machine)
+                            ),
+                            format!(
+                                "×{count_b} @ {:.1}% → ×{} @ {:.1}%",
+                                g.count,
+                                clock_b * 100.0,
+                                target * 100.0
+                            ),
+                            op,
+                        ));
+                    }
+                }
+                for ((machine, recipe), (count, clock, _, _)) in &existing {
+                    if !consumed.contains(&(machine.clone(), recipe.clone())) {
                         items.push(drift_item(
                             format!("Δ {} — {} demolished in game", f.name, item_name(recipe)),
                             format!("×{count} built → gone"),
@@ -1877,6 +2007,48 @@ pub fn apply_sync(
                     resync_built_wiring(state, tx, factory, import_id, gd);
                 }
                 None => {}
+            }
+        }
+        SyncOp::RetuneGroup {
+            factory,
+            machine,
+            old_recipe,
+            new_recipe,
+            count,
+            clock,
+        } => {
+            // Retune a generator's inferred recipe IN PLACE: find the group by its
+            // OLD recipe, adopt the new one, refresh count/clock — preserving the
+            // group id and the user's planned_delta (never demolish+re-add). This
+            // is what keeps a fuel change / idle save / pre-inference "" from
+            // dropping a planned overclock on re-import.
+            let existing = state
+                .factories
+                .get(factory)
+                .into_iter()
+                .flat_map(|f| f.groups.iter())
+                .filter_map(|gid| state.groups.get(gid))
+                .find(|g| &g.machine == machine && &g.recipe == old_recipe)
+                .cloned();
+            if let Some(mut g) = existing {
+                g.recipe = new_recipe.clone();
+                g.count = *count;
+                g.clock = clock.clamp(0.01, 2.5);
+                if take_save {
+                    g.planned_delta = None;
+                } else if let Some(mut d) = g.planned_delta {
+                    if d.count == Some(g.count) {
+                        d.count = None;
+                    }
+                    if d.clock.is_some_and(|c| (c - g.clock).abs() < 1e-9) {
+                        d.clock = None;
+                    }
+                    g.planned_delta = (!d.is_empty()).then_some(d);
+                }
+                tx.record(state.upsert(Entity::Group(g)));
+                // The recipe change moves the factory's fuel/water/waste ports, so
+                // rebuild the boundary from the new recipe partners.
+                resync_built_wiring(state, tx, factory, import_id, gd);
             }
         }
         SyncOp::RemoveFactory { factory } => {
