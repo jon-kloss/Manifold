@@ -335,6 +335,16 @@ export interface AppStore {
       success; false on a backend error (recorded in `cmdError`, never a
       rejection). */
   newEmpire(): Promise<boolean>;
+  /** Multi-empire switcher (1.0). `empireList` is the last-fetched listing
+      (refreshed by refreshEmpires and every mutation); switch/create re-hydrate
+      onto the newly-live session. All resolve true on success, false on a
+      backend refusal (surfaced on the chip, never a rejection). */
+  empireList: { active: string; names: string[] } | null;
+  refreshEmpires(): Promise<void>;
+  empireSwitch(name: string): Promise<boolean>;
+  empireCreate(name: string): Promise<boolean>;
+  empireRename(from: string, to: string): Promise<boolean>;
+  empireDelete(name: string): Promise<boolean>;
   /** Sync Phase 2: parse a re-read `.sav` and run it through import — headless
       (no preview modal), the one-click counterpart to the ImportModal flow.
       Drift opens the review surface; every branch fires a toast. Resolves with
@@ -902,6 +912,69 @@ export const useStore = create<AppStore>((set, get) => ({
     get().setView({ mode: "map" });
     await get().hydrate();
     get().pushToast("New empire — the old plan was cleared. Import your save to begin.", "success");
+    return true;
+  },
+
+  empireList: null,
+
+  async refreshEmpires() {
+    try {
+      set({ empireList: await backend.empires() });
+    } catch (e) {
+      // listing is advisory chrome — never a fatal error
+      console.warn("empire listing failed", e);
+    }
+  },
+
+  async empireSwitch(name) {
+    // Persisting the outgoing empire and reconstructing the session is the
+    // backend's job; here we reset selection/view (they point at the OLD
+    // empire's entities) and re-hydrate onto the newly-live session.
+    try {
+      set({ empireList: await backend.empireSwitch(name) });
+    } catch (e) {
+      get().reportCmdError(`Couldn't switch empire — ${errText(e)}`);
+      return false;
+    }
+    get().setSelection(null);
+    get().setView({ mode: "map" });
+    await get().hydrate();
+    get().pushToast(`Switched to ${name}.`, "success");
+    return true;
+  },
+
+  async empireCreate(name) {
+    try {
+      set({ empireList: await backend.empireCreate(name) });
+    } catch (e) {
+      get().reportCmdError(`Couldn't create the empire — ${errText(e)}`);
+      return false;
+    }
+    get().setSelection(null);
+    get().setView({ mode: "map" });
+    await get().hydrate();
+    get().pushToast(`${name} created — you're now in the new empire.`, "success");
+    return true;
+  },
+
+  async empireRename(from, to) {
+    try {
+      set({ empireList: await backend.empireRename(from, to) });
+    } catch (e) {
+      get().reportCmdError(`Couldn't rename the empire — ${errText(e)}`);
+      return false;
+    }
+    return true;
+  },
+
+  async empireDelete(name) {
+    try {
+      set({ empireList: await backend.empireDelete(name) });
+    } catch (e) {
+      get().reportCmdError(`Couldn't delete the empire — ${errText(e)}`);
+      return false;
+    }
+    get().pushToast(`${name} deleted.`, "success");
     return true;
   },
 

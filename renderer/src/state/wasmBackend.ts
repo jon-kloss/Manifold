@@ -39,7 +39,7 @@ import type {
   ViewState,
   WizardGoal,
 } from "./types";
-import type { Backend, PlanReplacementResult } from "./backend";
+import type { Backend, EmpireList, PlanReplacementResult } from "./backend";
 
 interface WorkerReply {
   id: number;
@@ -109,6 +109,34 @@ export class WasmBackend implements Backend {
    *  snapshot-after-mutate writes the now-empty blob to IndexedDB. */
   async newEmpire() {
     await this.call("new_empire");
+  }
+
+  /** Multi-empire (1.0): CONTROL messages like uploadDocs — the worker owns
+   *  the IndexedDB slots and rebuilds the WebSession from whichever blob the
+   *  named empire stores; a dispatch can't do that (gamedata + plan are
+   *  construction-only). */
+  private empireOp(op: string, args?: Record<string, unknown>): Promise<EmpireList> {
+    if (this.deadError) return Promise.reject(this.deadError);
+    const id = ++this.seq;
+    return new Promise<EmpireList>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      this.worker.postMessage({ id, kind: "empire", op, ...args });
+    });
+  }
+  empires() {
+    return this.empireOp("list");
+  }
+  empireCreate(name: string) {
+    return this.empireOp("create", { name });
+  }
+  empireSwitch(name: string) {
+    return this.empireOp("switch", { name });
+  }
+  empireRename(from: string, to: string) {
+    return this.empireOp("rename", { from, to });
+  }
+  empireDelete(name: string) {
+    return this.empireOp("delete", { name });
   }
 
   hydrate() {

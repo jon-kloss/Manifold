@@ -5,6 +5,12 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least privilege: CI only reads the repo. The release workflow (windows.yml)
+# carries its own contents:write and never runs on pull_request, so fork PRs
+# can never reach a writing token.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 

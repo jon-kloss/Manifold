@@ -36,7 +36,9 @@ fn err(status: u16, message: impl std::fmt::Display) -> Response<std::io::Cursor
 }
 
 fn main() -> anyhow::Result<()> {
-    let plan_path = std::env::var("FICSIT_PLAN").unwrap_or_else(|_| "dev-world.ficsit".into());
+    let mut plan_path = std::path::PathBuf::from(
+        std::env::var("FICSIT_PLAN").unwrap_or_else(|_| "dev-world.ficsit".into()),
+    );
     let docs = std::env::var("FICSIT_DOCS_JSON")
         .ok()
         .and_then(|p| std::fs::read(p).ok());
@@ -46,11 +48,24 @@ fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8791);
 
-    let session = Mutex::new(Session::open(&plan_path, docs, &build)?);
+    // Multi-empire (1.0): every `*.ficsit` beside the active plan file is a
+    // named empire; docs+build are retained so a switch reconstructs the
+    // session with the same catalog.
+    let plans_dir = |p: &std::path::Path| -> std::path::PathBuf {
+        match p.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+            _ => std::path::PathBuf::from("."),
+        }
+    };
+
+    let session = Mutex::new(Session::open(&plan_path, docs.clone(), &build)?);
     let jobs = JobRegistry::default();
     let server =
         Server::http(("127.0.0.1", port)).map_err(|e| anyhow::anyhow!("bind failed: {e}"))?;
-    eprintln!("dev-bridge listening on http://127.0.0.1:{port} (plan: {plan_path})");
+    eprintln!(
+        "dev-bridge listening on http://127.0.0.1:{port} (plan: {})",
+        plan_path.display()
+    );
 
     for mut request in server.incoming_requests() {
         let url = request.url().to_string();
@@ -104,6 +119,116 @@ fn main() -> anyhow::Result<()> {
                     Ok(resp) => ok(&resp),
                     Err(e) => err(500, e),
                 },
+                // ---- multi-empire switcher (1.0): named plan files ----
+                (Method::Get, "/api/empires") => {
+                    ok(&app::empires::list(&plans_dir(&plan_path), &plan_path))
+                }
+                (Method::Post, "/api/empire/create") => {
+                    let name = serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| v["name"].as_str().map(String::from))
+                        .unwrap_or_default();
+                    let dir = plans_dir(&plan_path);
+                    match app::empires::sanitize_name(&name)
+                        .and_then(|n| app::empires::ensure_absent(&dir, &n))
+                        .and_then(|p| {
+                            Session::open(&p, docs.clone(), &build)
+                                .map(|sess| (p, sess))
+                                .map_err(|e| e.to_string())
+                        }) {
+                        Ok((p, sess)) => {
+                            *s = sess;
+                            plan_path = p;
+                            ok(&app::empires::list(&dir, &plan_path))
+                        }
+                        Err(e) => err(422, e),
+                    }
+                }
+                (Method::Post, "/api/empire/switch") => {
+                    let name = serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| v["name"].as_str().map(String::from))
+                        .unwrap_or_default();
+                    let dir = plans_dir(&plan_path);
+                    match app::empires::sanitize_name(&name)
+                        .and_then(|n| app::empires::ensure_present(&dir, &n))
+                        .and_then(|p| {
+                            Session::open(&p, docs.clone(), &build)
+                                .map(|sess| (p, sess))
+                                .map_err(|e| e.to_string())
+                        }) {
+                        Ok((p, sess)) => {
+                            *s = sess;
+                            plan_path = p;
+                            ok(&app::empires::list(&dir, &plan_path))
+                        }
+                        Err(e) => err(422, e),
+                    }
+                }
+                (Method::Post, "/api/empire/rename") => {
+                    let v = serde_json::from_str::<serde_json::Value>(&body).unwrap_or_default();
+                    let from = v["from"].as_str().unwrap_or_default().to_string();
+                    let to = v["to"].as_str().unwrap_or_default().to_string();
+                    let dir = plans_dir(&plan_path);
+                    let prep = app::empires::sanitize_name(&from).and_then(|f| {
+                        let t = app::empires::sanitize_name(&to)?;
+                        let src = app::empires::ensure_present(&dir, &f)?;
+                        let dst = app::empires::ensure_absent(&dir, &t)?;
+                        Ok((src, dst))
+                    });
+                    match prep {
+                        Err(e) => err(422, e),
+                        Ok((src, dst)) => {
+                            let result: Result<(), String> = if src == plan_path {
+                                // Drop the live SQLite handle before moving the
+                                // file (an in-memory placeholder keeps `s`
+                                // valid), then reopen at the new path —
+                                // reverting the move if the reopen fails so the
+                                // bridge never strands the plan.
+                                (|| {
+                                    *s = Session::in_memory(None).map_err(|e| e.to_string())?;
+                                    app::empires::rename_files(&src, &dst)?;
+                                    match Session::open(&dst, docs.clone(), &build) {
+                                        Ok(sess) => {
+                                            *s = sess;
+                                            plan_path = dst.clone();
+                                            Ok(())
+                                        }
+                                        Err(e) => {
+                                            let _ = app::empires::rename_files(&dst, &src);
+                                            *s = Session::open(&src, docs.clone(), &build)
+                                                .map_err(|e2| e2.to_string())?;
+                                            Err(e.to_string())
+                                        }
+                                    }
+                                })()
+                            } else {
+                                app::empires::rename_files(&src, &dst)
+                            };
+                            match result {
+                                Ok(()) => ok(&app::empires::list(&dir, &plan_path)),
+                                Err(e) => err(422, e),
+                            }
+                        }
+                    }
+                }
+                (Method::Post, "/api/empire/delete") => {
+                    let name = serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| v["name"].as_str().map(String::from))
+                        .unwrap_or_default();
+                    let dir = plans_dir(&plan_path);
+                    match app::empires::sanitize_name(&name).and_then(|n| {
+                        let p = app::empires::ensure_present(&dir, &n)?;
+                        if p == plan_path {
+                            return Err("switch to another empire before deleting this one".into());
+                        }
+                        app::empires::delete_files(&p)
+                    }) {
+                        Ok(()) => ok(&app::empires::list(&dir, &plan_path)),
+                        Err(e) => err(422, e),
+                    }
+                }
                 (Method::Post, "/api/redo") => match s.redo() {
                     Ok(resp) => ok(&resp),
                     Err(e) => err(500, e),

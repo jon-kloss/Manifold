@@ -50,6 +50,111 @@ fn new_empire(window: tauri::Window, state: State<AppState>) -> Result<EditRespo
     Ok(resp)
 }
 
+// ---- multi-empire switcher (1.0): named plan files in the app data dir ----
+
+/// The ACTIVE empire's plan path + the catalog needed to reopen sessions.
+struct EmpireEnv {
+    plan_path: Mutex<std::path::PathBuf>,
+    docs: Option<Vec<u8>>,
+    build: String,
+}
+
+fn plans_dir(p: &std::path::Path) -> std::path::PathBuf {
+    match p.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    }
+}
+
+#[tauri::command]
+fn empires_list(env: State<EmpireEnv>) -> app::empires::EmpireList {
+    let path = env.plan_path.lock().unwrap();
+    app::empires::list(&plans_dir(&path), &path)
+}
+
+#[tauri::command]
+fn empire_create(
+    state: State<AppState>,
+    env: State<EmpireEnv>,
+    name: String,
+) -> Result<app::empires::EmpireList, String> {
+    let mut path = env.plan_path.lock().unwrap();
+    let dir = plans_dir(&path);
+    let n = app::empires::sanitize_name(&name)?;
+    let p = app::empires::ensure_absent(&dir, &n)?;
+    let sess = Session::open(&p, env.docs.clone(), &env.build).map_err(|e| e.to_string())?;
+    *state.0.lock().unwrap() = sess;
+    *path = p;
+    Ok(app::empires::list(&dir, &path))
+}
+
+#[tauri::command]
+fn empire_switch(
+    state: State<AppState>,
+    env: State<EmpireEnv>,
+    name: String,
+) -> Result<app::empires::EmpireList, String> {
+    let mut path = env.plan_path.lock().unwrap();
+    let dir = plans_dir(&path);
+    let n = app::empires::sanitize_name(&name)?;
+    let p = app::empires::ensure_present(&dir, &n)?;
+    let sess = Session::open(&p, env.docs.clone(), &env.build).map_err(|e| e.to_string())?;
+    *state.0.lock().unwrap() = sess;
+    *path = p;
+    Ok(app::empires::list(&dir, &path))
+}
+
+#[tauri::command]
+fn empire_rename(
+    state: State<AppState>,
+    env: State<EmpireEnv>,
+    from: String,
+    to: String,
+) -> Result<app::empires::EmpireList, String> {
+    let mut path = env.plan_path.lock().unwrap();
+    let dir = plans_dir(&path);
+    let f = app::empires::sanitize_name(&from)?;
+    let t = app::empires::sanitize_name(&to)?;
+    let src = app::empires::ensure_present(&dir, &f)?;
+    let dst = app::empires::ensure_absent(&dir, &t)?;
+    if src == *path {
+        // Drop the live SQLite handle before moving the file (in-memory
+        // placeholder), then reopen at the new path — reverting the move if
+        // the reopen fails so the app never strands the plan.
+        let mut s = state.0.lock().unwrap();
+        *s = Session::in_memory(None).map_err(|e| e.to_string())?;
+        app::empires::rename_files(&src, &dst)?;
+        match Session::open(&dst, env.docs.clone(), &env.build) {
+            Ok(sess) => {
+                *s = sess;
+                *path = dst;
+            }
+            Err(e) => {
+                let _ = app::empires::rename_files(&dst, &src);
+                *s = Session::open(&src, env.docs.clone(), &env.build)
+                    .map_err(|e2| e2.to_string())?;
+                return Err(e.to_string());
+            }
+        }
+    } else {
+        app::empires::rename_files(&src, &dst)?;
+    }
+    Ok(app::empires::list(&dir, &path))
+}
+
+#[tauri::command]
+fn empire_delete(env: State<EmpireEnv>, name: String) -> Result<app::empires::EmpireList, String> {
+    let path = env.plan_path.lock().unwrap();
+    let dir = plans_dir(&path);
+    let n = app::empires::sanitize_name(&name)?;
+    let p = app::empires::ensure_present(&dir, &n)?;
+    if p == *path {
+        return Err("switch to another empire before deleting this one".into());
+    }
+    app::empires::delete_files(&p)?;
+    Ok(app::empires::list(&dir, &path))
+}
+
 #[tauri::command]
 fn plan_redo(
     window: tauri::Window,
@@ -331,8 +436,13 @@ fn main() {
                 .ok()
                 .and_then(|p| std::fs::read(p).ok());
             let build = std::env::var("FICSIT_GAME_BUILD").unwrap_or_else(|_| "fixture".into());
-            let session = Session::open(&plan_path, docs, &build).expect("session open");
+            let session = Session::open(&plan_path, docs.clone(), &build).expect("session open");
             app.manage(AppState(Mutex::new(session)));
+            app.manage(EmpireEnv {
+                plan_path: Mutex::new(plan_path),
+                docs,
+                build,
+            });
             app.manage(Jobs(JobRegistry::default()));
             Ok(())
         })
@@ -342,6 +452,11 @@ fn main() {
             plan_undo,
             plan_redo,
             new_empire,
+            empires_list,
+            empire_create,
+            empire_switch,
+            empire_rename,
+            empire_delete,
             set_view_state,
             set_sync_meta,
             sync_meta,

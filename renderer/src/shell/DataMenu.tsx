@@ -49,9 +49,21 @@ export default function DataMenu() {
   const setAutoSync = useStore((s) => s.setAutoSync);
   const autoPull = useStore((s) => s.autoPull);
 
+  const empireList = useStore((s) => s.empireList);
+  const refreshEmpires = useStore((s) => s.refreshEmpires);
+  const empireSwitch = useStore((s) => s.empireSwitch);
+  const empireCreate = useStore((s) => s.empireCreate);
+  const empireRename = useStore((s) => s.empireRename);
+  const empireDelete = useStore((s) => s.empireDelete);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const docsRef = useRef<HTMLInputElement>(null);
   const [dataMenu, setDataMenu] = useState(false);
+  // Multi-empire section state: the pending new-empire name, an in-flight
+  // rename (of the active empire), and the per-name two-click delete latch.
+  const [newName, setNewName] = useState("");
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   // "Start new empire": a two-click destructive latch — the first click arms
   // the confirm, the second wipes the plan (keeping the Docs.json).
   const [confirmReset, setConfirmReset] = useState(false);
@@ -62,8 +74,17 @@ export default function DataMenu() {
   // Disarm the destructive confirm whenever the menu closes by ANY path — an
   // armed confirm surviving the close would wipe the plan on a single click.
   useEffect(() => {
-    if (!dataMenu) setConfirmReset(false);
+    if (!dataMenu) {
+      setConfirmReset(false);
+      setConfirmDelete(null);
+      setRenaming(null);
+    }
   }, [dataMenu]);
+  // The empire listing is fetched when the menu opens (it lists FILES/slots,
+  // not store state, so it can change outside the app).
+  useEffect(() => {
+    if (dataMenu) void refreshEmpires();
+  }, [dataMenu, refreshEmpires]);
 
   // Escape closes the dropdown (top layer first — capture, so it works even
   // while focus sits in the header search input), and invoking the ⌘K search
@@ -361,6 +382,128 @@ export default function DataMenu() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+            {/* Multi-empire switcher (1.0): every empire is its own plan
+                (a .ficsit file beside the active one on desktop/bridge; an
+                IndexedDB slot on web). Switching swaps the live session and
+                re-hydrates; delete is a per-row two-click latch and refuses
+                the active empire (switch away first). */}
+            {empireList && (
+              <div className="data-menu-empires" data-testid="empires-section">
+                <div className="data-menu-hint-head" style={{ padding: "6px 12px 2px" }}>
+                  EMPIRES
+                </div>
+                {empireList.names.map((n) =>
+                  renaming === n ? (
+                    <form
+                      key={n}
+                      className="data-menu-item"
+                      style={{ display: "flex", gap: 6 }}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const next = new FormData(e.currentTarget).get("to");
+                        setRenaming(null);
+                        if (typeof next === "string" && next.trim() && next.trim() !== n)
+                          void empireRename(n, next.trim());
+                      }}
+                    >
+                      <input
+                        name="to"
+                        autoFocus
+                        defaultValue={n}
+                        maxLength={64}
+                        className="mono"
+                        style={{ flex: 1 }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") setRenaming(null);
+                        }}
+                        data-testid="empire-rename-input"
+                      />
+                      <button className="btn btn-ghost" type="submit">
+                        OK
+                      </button>
+                    </form>
+                  ) : (
+                    <div
+                      key={n}
+                      className="data-menu-item data-menu-empire-row"
+                      style={{ display: "flex", alignItems: "center", gap: 6 }}
+                      data-testid={`empire-row-${n}`}
+                    >
+                      <button
+                        className="data-menu-item-label"
+                        style={{
+                          all: "unset",
+                          cursor: n === empireList.active ? "default" : "pointer",
+                          flex: 1,
+                          fontWeight: n === empireList.active ? 700 : 400,
+                        }}
+                        title={n === empireList.active ? "the active empire" : `switch to ${n}`}
+                        onClick={() => {
+                          if (n === empireList.active) return;
+                          closeDataMenu();
+                          void empireSwitch(n);
+                        }}
+                        data-testid={`empire-switch-${n}`}
+                      >
+                        {n === empireList.active ? `● ${n}` : n}
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ height: 22, padding: "0 6px" }}
+                        title="Rename"
+                        onClick={() => setRenaming(n)}
+                        data-testid={`empire-rename-${n}`}
+                      >
+                        ✎
+                      </button>
+                      {n !== empireList.active && (
+                        <button
+                          className={`btn btn-ghost ${confirmDelete === n ? "active" : ""}`}
+                          style={{ height: 22, padding: "0 6px" }}
+                          title={confirmDelete === n ? "Click again to delete" : "Delete"}
+                          onClick={() => {
+                            if (confirmDelete !== n) {
+                              setConfirmDelete(n);
+                              return;
+                            }
+                            setConfirmDelete(null);
+                            void empireDelete(n);
+                          }}
+                          data-testid={`empire-delete-${n}`}
+                        >
+                          {confirmDelete === n ? "✕?" : "✕"}
+                        </button>
+                      )}
+                    </div>
+                  ),
+                )}
+                <form
+                  className="data-menu-item"
+                  style={{ display: "flex", gap: 6 }}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const name = newName.trim();
+                    if (!name) return;
+                    setNewName("");
+                    closeDataMenu();
+                    void empireCreate(name);
+                  }}
+                >
+                  <input
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="New empire name…"
+                    maxLength={64}
+                    className="mono"
+                    style={{ flex: 1 }}
+                    data-testid="empire-new-name"
+                  />
+                  <button className="btn btn-ghost" type="submit" disabled={!newName.trim()} data-testid="empire-create">
+                    + CREATE
+                  </button>
+                </form>
               </div>
             )}
             {/* Start over: a cross-platform Session::new_empire (SQLite

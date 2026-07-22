@@ -8,6 +8,7 @@ pub mod altopt;
 pub mod buildqueue;
 pub mod chat;
 pub mod cutover;
+pub mod empires;
 pub mod import;
 pub mod jobs;
 pub mod opportunities;

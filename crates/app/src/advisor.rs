@@ -219,6 +219,58 @@ pub fn evaluate(state: &PlanState, derived: &Derived) -> Vec<Event> {
         }
     }
 
+    // UnpoweredFactory — machines draw power but NO power line reaches the
+    // factory and nothing on site generates. The planner deliberately keeps
+    // solving an unpowered factory (power is a planning ledger, not a solver
+    // gate) — but in game nothing here would run, so the gap must be surfaced
+    // with the same honesty as a deficit. A factory hosting any generation
+    // (a power plant, or on-site generators) is self-powered and stays quiet;
+    // so does anything wired into a grid — its margin is power_swing's job.
+    // GATED on power planning having begun (≥1 grid or any generation in the
+    // empire): before that, every factory is "unpowered" by construction and
+    // the card would nag through normal early planning — the status bar's
+    // PWR 0 MW already tells that story.
+    if !derived.circuits.is_empty() || derived.total_generation_mw > 1e-6 {
+        let gridded: std::collections::BTreeSet<&Id> = derived
+            .circuits
+            .iter()
+            .flat_map(|c| c.members.iter())
+            .collect();
+        for (fid, df) in &derived.factories {
+            if df.total_power_mw <= 1e-6 || gridded.contains(fid) {
+                continue;
+            }
+            let on_site_gen: f64 = df
+                .groups
+                .values()
+                .filter_map(|g| g.out_rates.get(gamedata::docs::POWER_ITEM))
+                .sum();
+            if on_site_gen > 1e-6 {
+                continue;
+            }
+            events.push(Event {
+                key: format!("unpowered:{fid}"),
+                rule: "unpowered_factory",
+                severity: Severity::Trend,
+                title: format!("{} has no power", fname(fid)),
+                body: format!(
+                    "Its machines draw {:.1} MW but no power line reaches the factory and \
+                     nothing on site generates — in game, none of this runs. Right-drag a \
+                     ⚡ line from a generator factory to wire it into a grid.",
+                    df.total_power_mw
+                ),
+                saw: format!(
+                    "draw {:.1} MW, on-site generation 0, member of no grid",
+                    df.total_power_mw
+                ),
+                cta: Some(CardCta::Trace {
+                    selection: "factory".into(),
+                    id: fid.clone(),
+                }),
+            });
+        }
+    }
+
     // DriftDetected — an open SaveReimport proposal is unreviewed game drift
     for p in state.proposals.values() {
         if p.source == planner_core::proposals::ProposalSource::SaveReimport

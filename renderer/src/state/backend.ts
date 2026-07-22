@@ -125,6 +125,21 @@ export interface Backend {
    *  save. A `Session::new_empire` op on every transport: SQLite wipe (desktop /
    *  dev bridge) or the wasm store reset snapshotted to IndexedDB (web). */
   newEmpire(): Promise<void>;
+  /** Multi-empire switcher (1.0): several NAMED empires, each its own plan
+   *  file (desktop/bridge: `<name>.ficsit` beside the active plan) or
+   *  IndexedDB slot (web). Every mutation returns the fresh listing; the
+   *  caller re-hydrates after create/switch/rename-active (a different
+   *  session is now live). */
+  empires(): Promise<EmpireList>;
+  empireCreate(name: string): Promise<EmpireList>;
+  empireSwitch(name: string): Promise<EmpireList>;
+  empireRename(from: string, to: string): Promise<EmpireList>;
+  empireDelete(name: string): Promise<EmpireList>;
+}
+
+export interface EmpireList {
+  active: string;
+  names: string[];
 }
 
 /** The desktop shell and dev bridge get their catalog from the host process
@@ -256,6 +271,21 @@ class TauriBackend implements Backend {
   }
   async newEmpire() {
     await this.invoke("new_empire");
+  }
+  empires() {
+    return this.invoke<EmpireList>("empires_list");
+  }
+  empireCreate(name: string) {
+    return this.invoke<EmpireList>("empire_create", { name });
+  }
+  empireSwitch(name: string) {
+    return this.invoke<EmpireList>("empire_switch", { name });
+  }
+  empireRename(from: string, to: string) {
+    return this.invoke<EmpireList>("empire_rename", { from, to });
+  }
+  empireDelete(name: string) {
+    return this.invoke<EmpireList>("empire_delete", { name });
   }
 }
 
@@ -390,6 +420,21 @@ class BridgeBackend implements Backend {
   }
   async newEmpire() {
     await this.call("new_empire", { method: "POST" });
+  }
+  empires() {
+    return this.call<EmpireList>("empires");
+  }
+  empireCreate(name: string) {
+    return this.call<EmpireList>("empire/create", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  empireSwitch(name: string) {
+    return this.call<EmpireList>("empire/switch", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  empireRename(from: string, to: string) {
+    return this.call<EmpireList>("empire/rename", { method: "POST", body: JSON.stringify({ from, to }) });
+  }
+  empireDelete(name: string) {
+    return this.call<EmpireList>("empire/delete", { method: "POST", body: JSON.stringify({ name }) });
   }
 }
 

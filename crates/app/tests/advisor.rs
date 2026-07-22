@@ -839,3 +839,163 @@ fn selection_context_resolves_edges_and_world_nodes() {
     assert_eq!(ctx.payload["kind"], "node");
     assert!(ctx.payload["claim"].is_null());
 }
+
+/// unpowered_factory: a factory whose machines draw MW with no power line and
+/// no on-site generation flags — but only once power planning has BEGUN
+/// (any grid or generation in the empire). Before that, silence: every early
+/// factory is "unpowered" by construction and the card would nag.
+#[test]
+fn unpowered_factory_flags_offgrid_draw_once_power_exists() {
+    let mut s = Session::in_memory(None).unwrap();
+    let (a, _out) = build_starvable(&mut s);
+
+    // Machines draw MW, but no generation anywhere → gated silent.
+    let d = s.solve_all_readonly();
+    assert!(
+        !app::advisor::evaluate(&s.state, &d)
+            .iter()
+            .any(|e| e.rule == "unpowered_factory"),
+        "no power planning yet — the rule must stay quiet"
+    );
+
+    // A coal plant appears (generation exists) → the drawing factories flag,
+    // the PLANT itself (on-site generation) does not.
+    let plant = s
+        .edit(vec![Command::CreateFactory {
+            name: "PLANT".into(),
+            position: MapPos {
+                x: 900.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            region: "GRASS FIELDS".into(),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let coal_in = s
+        .edit(vec![Command::AddPort {
+            factory: plant.clone(),
+            direction: PortDirection::In,
+            item: "Desc_Coal_C".into(),
+            rate: 0.0,
+            rate_ceiling: Some(120.0),
+            graph_pos: gp(0.0, 100.0),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let water_in = s
+        .edit(vec![Command::AddPort {
+            factory: plant.clone(),
+            direction: PortDirection::In,
+            item: "Desc_Water_C".into(),
+            rate: 0.0,
+            rate_ceiling: Some(300.0),
+            graph_pos: gp(0.0, 220.0),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let mw_out = s
+        .edit(vec![Command::AddPort {
+            factory: plant.clone(),
+            direction: PortDirection::Out,
+            item: "__PowerMW".into(),
+            rate: 0.0,
+            rate_ceiling: None,
+            graph_pos: gp(600.0, 100.0),
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    let gens = s
+        .edit(vec![Command::AddGroup {
+            factory: plant.clone(),
+            machine: "Build_GeneratorCoal_C".into(),
+            recipe: "Recipe_Power_Build_GeneratorCoal_Desc_Coal_C".into(),
+            count: 1,
+            clock: 1.0,
+            graph_pos: gp(300.0, 100.0),
+            floor: 0,
+        }])
+        .unwrap()
+        .created[0]
+        .clone();
+    for (from, to, item) in [
+        (
+            EdgeEnd::Port(coal_in),
+            EdgeEnd::Group(gens.clone()),
+            "Desc_Coal_C",
+        ),
+        (
+            EdgeEnd::Port(water_in),
+            EdgeEnd::Group(gens.clone()),
+            "Desc_Water_C",
+        ),
+        (
+            EdgeEnd::Group(gens.clone()),
+            EdgeEnd::Port(mw_out.clone()),
+            "__PowerMW",
+        ),
+    ] {
+        s.edit(vec![Command::AddEdge {
+            factory: plant.clone(),
+            from,
+            to,
+            item: item.into(),
+            tier: 1,
+        }])
+        .unwrap();
+    }
+    s.edit(vec![Command::SetPortRate {
+        id: mw_out,
+        rate: 75.0,
+    }])
+    .unwrap();
+
+    let d = s.solve_all_readonly();
+    let events = app::advisor::evaluate(&s.state, &d);
+    let unpowered: Vec<_> = events
+        .iter()
+        .filter(|e| e.rule == "unpowered_factory")
+        .collect();
+    assert!(
+        unpowered.iter().any(|e| e.key == format!("unpowered:{a}")),
+        "the off-grid drawing factory flags: {:?}",
+        unpowered.iter().map(|e| &e.key).collect::<Vec<_>>()
+    );
+    assert!(
+        !unpowered
+            .iter()
+            .any(|e| e.key == format!("unpowered:{plant}")),
+        "the plant self-powers and stays quiet"
+    );
+
+    // Wire the factory into the plant's grid → the condition clears.
+    s.edit(vec![Command::AddRoute {
+        kind: RouteKind::Power,
+        from: plant.clone(),
+        to: a.clone(),
+        path: vec![
+            MapPos {
+                x: 900.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            MapPos {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        ],
+    }])
+    .unwrap();
+    let d = s.solve_all_readonly();
+    assert!(
+        !app::advisor::evaluate(&s.state, &d)
+            .iter()
+            .any(|e| e.rule == "unpowered_factory" && e.key == format!("unpowered:{a}")),
+        "gridded factory no longer flags"
+    );
+}

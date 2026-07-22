@@ -39,6 +39,20 @@ const DOCS_KEY = "docs";
  *  longer accepts previously-stored bytes must degrade to the bundled fixture,
  *  never brick the boot — durability of a catalog cannot cost opening the app. */
 const DOCS_CORRUPT_KEY = "docs-corrupt";
+/** Multi-empire (1.0): the registry key. Value = JSON {active, slots} where
+ *  slots maps empire NAME → the IndexedDB key its plan blob lives under. On
+ *  first read a missing registry ADOPTS the legacy single-plan key as an
+ *  empire named "EMPIRE 1", so pre-switcher saves appear unchanged. */
+const EMPIRES_KEY = "empires";
+interface EmpireRegistry {
+  active: string;
+  slots: Record<string, string>;
+}
+/** The ACTIVE empire's blob key — every plan snapshot read/write targets it. */
+let activeKey: string = KEY;
+/** The catalog bytes the live session was built over (undefined = fixture),
+ *  retained so empire switches rebuild sessions on the same catalog. */
+let docsBytes: Uint8Array | undefined;
 
 /** The dispatch envelope Rust returns (M1): `mutated` is the authoritative
  *  "did this write the store?" signal; `result` is the marshaled reply. */
@@ -61,7 +75,7 @@ function openDb(): Promise<IDBDatabase> {
 async function loadBlob(): Promise<Uint8Array | undefined> {
   const db = await openDb();
   return new Promise<Uint8Array | undefined>((resolve, reject) => {
-    const req = db.transaction(STORE, "readonly").objectStore(STORE).get(KEY);
+    const req = db.transaction(STORE, "readonly").objectStore(STORE).get(activeKey);
     req.onsuccess = () => {
       const v = req.result as Uint8Array | ArrayBuffer | undefined;
       if (!v) resolve(undefined);
@@ -78,10 +92,65 @@ async function saveBlob(bytes: Uint8Array): Promise<void> {
     // Copy off the wasm heap: the Uint8Array `export_blob` returns is a view
     // that a later mutation would invalidate; IndexedDB stores a structured
     // clone, but the clone must snapshot stable bytes, so hand it a fresh copy.
-    tx.objectStore(STORE).put(new Uint8Array(bytes), KEY);
+    tx.objectStore(STORE).put(new Uint8Array(bytes), activeKey);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("indexedDB put failed"));
   });
+}
+
+async function idbGetJson<T>(key: string): Promise<T | undefined> {
+  const db = await openDb();
+  return new Promise<T | undefined>((resolve, reject) => {
+    const req = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
+    req.onsuccess = () => resolve(req.result === undefined ? undefined : (JSON.parse(String(req.result)) as T));
+    req.onerror = () => reject(req.error ?? new Error("indexedDB get failed"));
+  });
+}
+
+async function idbPut(key: string, value: unknown): Promise<void> {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("indexedDB put failed"));
+  });
+}
+
+async function idbDelete(key: string): Promise<void> {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("indexedDB delete failed"));
+  });
+}
+
+/** Load (or adopt) the empire registry and point `activeKey` at the active
+ *  empire's blob slot. The legacy `current` key becomes "EMPIRE 1". */
+async function ensureRegistry(): Promise<EmpireRegistry> {
+  // A corrupt registry value must never brick the boot (this runs BEFORE the
+  // plan/docs park-and-degrade cascade): an unreadable/malformed value is
+  // treated exactly like a missing one — adopt the legacy single-plan key as
+  // "EMPIRE 1" and rewrite the registry.
+  let reg: EmpireRegistry | undefined;
+  try {
+    reg = await idbGetJson<EmpireRegistry>(EMPIRES_KEY);
+  } catch (e) {
+    console.warn("[wasm-worker] empire registry unreadable — adopting the default", e);
+  }
+  if (!reg || typeof reg !== "object" || !reg.slots || !reg.active || !reg.slots[reg.active]) {
+    reg = { active: "EMPIRE 1", slots: { "EMPIRE 1": KEY } };
+    await idbPut(EMPIRES_KEY, JSON.stringify(reg));
+  }
+  activeKey = reg.slots[reg.active];
+  return reg;
+}
+
+async function saveRegistry(reg: EmpireRegistry): Promise<void> {
+  await idbPut(EMPIRES_KEY, JSON.stringify(reg));
+  activeKey = reg.slots[reg.active];
 }
 
 async function loadDocs(): Promise<Uint8Array | undefined> {
@@ -109,7 +178,7 @@ async function saveDocsAndPlan(docs: Uint8Array, plan: Uint8Array): Promise<void
     const tx = db.transaction(STORE, "readwrite");
     const os = tx.objectStore(STORE);
     os.put(new Uint8Array(docs), DOCS_KEY);
-    os.put(new Uint8Array(plan), KEY);
+    os.put(new Uint8Array(plan), activeKey);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("indexedDB docs+plan put failed"));
   });
@@ -123,7 +192,7 @@ async function backupCorruptBlob(bytes: Uint8Array): Promise<void> {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      tx.objectStore(STORE).put(new Uint8Array(bytes), CORRUPT_KEY);
+      tx.objectStore(STORE).put(new Uint8Array(bytes), activeKey === KEY ? CORRUPT_KEY : `${activeKey}-corrupt`);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error("indexedDB backup put failed"));
     });
@@ -168,7 +237,9 @@ let ready: Promise<void> | null = null;
 function ensureReady(): Promise<void> {
   ready ??= (async () => {
     await init({ module_or_path: wasmUrl });
+    await ensureRegistry(); // points activeKey at the active empire's slot
     const [blob, docs] = await Promise.all([loadBlob(), loadDocs()]);
+    docsBytes = docs;
     // docs → a previously-uploaded real Docs.json (Phase 4a); undefined → the
     // bundled fixture catalog compiled into the wasm. blob → reconstruct the
     // saved plan, else a fresh empty one. EITHER argument can make construction
@@ -242,6 +313,92 @@ async function uploadDocs(bytes: Uint8Array): Promise<void> {
   const next = new WebSession(bytes, planCopy);
   await saveDocsAndPlan(bytes, next.export_blob());
   session = next;
+  docsBytes = bytes;
+}
+
+/** Multi-empire ops (1.0). All run on the serialization chain; every mutation
+ *  persists the registry (and any moved blobs) before answering, and returns
+ *  the fresh listing. The caller re-hydrates after create/switch (a different
+ *  session is live). Names are trimmed; slot keys are opaque (`plan:<name>` for
+ *  new empires; the adopted legacy plan keeps `current`), so renames only touch
+ *  the registry. */
+async function empireOp(
+  op: string,
+  name?: string,
+  from?: string,
+  to?: string,
+): Promise<{ active: string; names: string[] }> {
+  await ensureReady();
+  const reg = await ensureRegistry();
+  const listing = (r: EmpireRegistry) => ({ active: r.active, names: Object.keys(r.slots).sort() });
+  const clean = (n: string | undefined, what: string): string => {
+    const t = (n ?? "").trim();
+    if (!t) throw new Error(`${what} is empty`);
+    if (t.length > 64) throw new Error(`${what} is longer than 64 characters`);
+    return t;
+  };
+  switch (op) {
+    case "list":
+      return listing(reg);
+    case "create": {
+      const n = clean(name, "empire name");
+      if (reg.slots[n]) throw new Error(`an empire named ${n} already exists`);
+      // persist the outgoing empire's plan before swapping sessions
+      await snapshotNow();
+      reg.slots[n] = `plan:${n}`;
+      reg.active = n;
+      session = new WebSession(docsBytes, undefined);
+      await saveRegistry(reg);
+      await snapshotNow(); // the fresh empty plan lands in the new slot
+      return listing(reg);
+    }
+    case "switch": {
+      const n = clean(name, "empire name");
+      const slot = reg.slots[n];
+      if (!slot) throw new Error(`no empire named ${n}`);
+      if (n === reg.active) return listing(reg);
+      await snapshotNow(); // outgoing empire's last edits
+      const prevActive = reg.active;
+      const prevKey = activeKey;
+      reg.active = n;
+      activeKey = slot;
+      const blob = await loadBlob();
+      const next = tryConstruct(docsBytes, blob);
+      if (!next) {
+        // failed to reconstruct the target — stay on the current empire
+        reg.active = prevActive;
+        activeKey = prevKey;
+        throw new Error(`empire ${n} could not be loaded (its save may be from an older version)`);
+      }
+      session = next;
+      await saveRegistry(reg);
+      return listing(reg);
+    }
+    case "rename": {
+      const f = clean(from, "empire name");
+      const t = clean(to, "new empire name");
+      if (!reg.slots[f]) throw new Error(`no empire named ${f}`);
+      if (reg.slots[t]) throw new Error(`an empire named ${t} already exists`);
+      reg.slots[t] = reg.slots[f];
+      delete reg.slots[f];
+      if (reg.active === f) reg.active = t;
+      await saveRegistry(reg);
+      return listing(reg);
+    }
+    case "delete": {
+      const n = clean(name, "empire name");
+      const slot = reg.slots[n];
+      if (!slot) throw new Error(`no empire named ${n}`);
+      if (n === reg.active) throw new Error("switch to another empire before deleting this one");
+      delete reg.slots[n];
+      await saveRegistry(reg);
+      await idbDelete(slot);
+      await idbDelete(`${slot}-corrupt`);
+      return listing(reg);
+    }
+    default:
+      throw new Error(`unknown empire op ${op}`);
+  }
 }
 
 interface Req {
@@ -250,11 +407,16 @@ interface Req {
    *  "upload_docs" → rebuild the session over an uploaded Docs.json (Phase 4a).
    *  ("new_empire" is a plain dispatch — Session::new_empire — not a control
    *   message, so the worker's snapshot-after-mutate persists the empty plan.) */
-  kind?: "upload_docs";
+  kind?: "upload_docs" | "empire";
   cmd?: string;
   args?: unknown;
   /** upload_docs payload: the raw uploaded Docs.json bytes. */
   bytes?: Uint8Array;
+  /** empire payload */
+  op?: string;
+  name?: string;
+  from?: string;
+  to?: string;
 }
 
 // Serialize every request behind a single promise chain (see header): a
@@ -304,7 +466,7 @@ function scheduleViewSnapshot(): void {
 }
 
 self.onmessage = (e: MessageEvent<Req>) => {
-  const { id, kind, cmd, args, bytes } = e.data;
+  const { id, kind, cmd, args, bytes, op, name, from, to } = e.data;
   chain = chain.then(async () => {
     try {
       // Control path: rebuild the session over an uploaded Docs.json (Phase 4a).
@@ -313,6 +475,13 @@ self.onmessage = (e: MessageEvent<Req>) => {
       if (kind === "upload_docs") {
         await uploadDocs(bytes ?? new Uint8Array());
         self.postMessage({ id, ok: true, result: undefined });
+        return;
+      }
+      // Control path: multi-empire slot ops (list/create/switch/rename/delete)
+      // — the worker owns the IndexedDB slots, same serialization chain.
+      if (kind === "empire") {
+        const result = await empireOp(op ?? "", name, from, to);
+        self.postMessage({ id, ok: true, result });
         return;
       }
       await ensureReady();
