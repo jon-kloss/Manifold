@@ -37,6 +37,7 @@ import GraphContextMenu, { type CtxTarget } from "./GraphContextMenu";
 import { fmtPower } from "../lib/format";
 import ItemIcon from "../lib/ItemIcon";
 import { isEditableTarget } from "../lib/keys";
+import { useDismiss } from "../lib/useDismiss";
 import { computeEdgeLayout, type JunctionShape, type LabelSize, type NodeGeom } from "./edgeLayout";
 import {
   EDGE_RETRACT_MS,
@@ -268,6 +269,10 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
   const [addMenu, setAddMenu] = useState<{ x: number; y: number; flowX: number; flowY: number } | null>(null);
   const [portMenu, setPortMenu] = useState<"in" | "out" | null>(null);
   const [logisticMenu, setLogisticMenu] = useState(false);
+  // click-off or Escape drops the + LOGISTIC dropdown (it used to stick
+  // around until an explicit pick or re-toggle and got in the way)
+  const logisticRef = useRef<HTMLDivElement>(null);
+  useDismiss(logisticRef, () => setLogisticMenu(false), logisticMenu);
   const [buildSheet, setBuildSheet] = useState(false);
   const [makeOpen, setMakeOpen] = useState(false);
   const [ctx, setCtx] = useState<CtxTarget | null>(null);
@@ -1179,7 +1184,7 @@ function GraphViewInner({ factoryId }: { factoryId: Id }) {
         >
           + MACHINE
         </button>
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative" }} ref={logisticRef}>
           <button className="btn btn-ghost" onClick={() => setLogisticMenu((o) => !o)} data-testid="btn-logistic">
             + LOGISTIC
           </button>

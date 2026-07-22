@@ -1,10 +1,11 @@
 // Double-click canvas → add machine group: recipe picker at the click point.
 
-import { useMemo, useState, type RefObject } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useStore } from "../state/store";
 import type { Id } from "../state/types";
 import ItemIcon from "../lib/ItemIcon";
+import { useDismiss } from "../lib/useDismiss";
 
 export default function AddGroupMenu({
   at,
@@ -22,6 +23,8 @@ export default function AddGroupMenu({
   const dispatch = useStore((s) => s.dispatch);
   const { screenToFlowPosition } = useReactFlow();
   const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  useDismiss(rootRef, onClose); // click-off or Escape drops the picker
 
   const recipes = useMemo(() => {
     const q = query.toLowerCase();
@@ -77,7 +80,7 @@ export default function AddGroupMenu({
   };
 
   return (
-    <div className="addgroup-menu" style={{ left: at.x, top: at.y }}>
+    <div ref={rootRef} className="addgroup-menu" style={{ left: at.x, top: at.y }}>
       <input
         autoFocus
         placeholder="Add machine group — recipe…"

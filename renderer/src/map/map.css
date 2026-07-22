@@ -49,17 +49,28 @@
 .overlay-chip {
   height: 30px;
 }
+/* The toolbar sits ON the map: a transparent ghost washes out over pale
+   terrain. Every top-chrome button (the overlay chips AND + FACTORY) gets the
+   zoom control's solid steel plate, so the whole row reads with one weight
+   alongside DATA / the zoom stepper / the CTA. */
+.map-chrome-top .btn-ghost {
+  background: var(--steel-800);
+}
+.map-chrome-top .btn-ghost:hover {
+  background: var(--steel-700);
+}
 /* Filter toggles are VIEW STATES, not the CTA. An active filter reads as a calm
-   orange-TINTED pill (outline + wash), leaving the solid signal fill to the one
-   true action — PLAN SUPPLY CHAIN — so the toolbar stops reading as a wall of
-   identical orange blocks. More specific than the shared .btn-ghost.active. */
+   orange-TINTED pill (outline + wash over the solid plate), leaving the solid
+   signal fill to the one true action — PLAN SUPPLY CHAIN — so the toolbar stops
+   reading as a wall of identical orange blocks. More specific than the shared
+   .btn-ghost.active. */
 .map-overlay-chips .overlay-chip.active {
-  background: rgba(247, 139, 35, 0.14);
+  background: color-mix(in srgb, var(--signal-500) 16%, var(--steel-800));
   border-color: var(--signal-500);
   color: var(--signal-500);
 }
 .map-overlay-chips .overlay-chip.active:hover {
-  background: rgba(247, 139, 35, 0.24);
+  background: color-mix(in srgb, var(--signal-500) 26%, var(--steel-800));
   border-color: var(--signal-400);
   color: var(--signal-400);
 }

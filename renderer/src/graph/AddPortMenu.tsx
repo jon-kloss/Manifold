@@ -2,10 +2,11 @@
 // input ports normally arrive via node claims (ceiling attached), but manual
 // creation is allowed — unconstrained until bound.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import type { Id, PortDirection } from "../state/types";
 import ItemIcon from "../lib/ItemIcon";
+import { useDismiss } from "../lib/useDismiss";
 
 export default function AddPortMenu({
   direction,
@@ -20,6 +21,8 @@ export default function AddPortMenu({
   const plan = useStore((s) => s.plan);
   const dispatch = useStore((s) => s.dispatch);
   const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  useDismiss(rootRef, onClose); // click-off or Escape drops the picker
 
   const items = useMemo(() => {
     const q = query.toLowerCase();
@@ -48,7 +51,7 @@ export default function AddPortMenu({
   };
 
   return (
-    <div className="addgroup-menu" style={{ left: "50%", top: 60, transform: "translateX(-50%)" }}>
+    <div ref={rootRef} className="addgroup-menu" style={{ left: "50%", top: 60, transform: "translateX(-50%)" }}>
       <input
         autoFocus
         placeholder={`${direction === "in" ? "Input" : "Output"} port — item…`}

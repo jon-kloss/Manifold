@@ -61,6 +61,14 @@ export interface CanvasLayerData {
     planned: boolean;
     conflict: boolean;
     highlight: boolean;
+    /** the claim's extraction is actually being drawn (derived IN-port flow
+     *  > 0) — the tether then carries the same moving-dash flow animation as
+     *  a route, so ore visibly travels node → factory like water does on a
+     *  pipe route */
+    flowing: boolean;
+    /** flow ÷ extraction ceiling (0..1) — drives the dash speed like route
+     *  saturation does */
+    saturation: number;
   }[];
   /** old ◆ → new ◇ refactor tethers (W2a): the "this replaces that" link */
   replacesLinks: {
@@ -258,6 +266,13 @@ export class MapCanvasLayer extends L.Layer {
     return this.data.routes.filter((r) => r.flow > 0);
   }
 
+  /** Claim tethers with live extraction flow — animated exactly like flowing
+   *  routes (same review pause; tethers are not gated on the routes overlay). */
+  private flowingTethers(): CanvasLayerData["claimLinks"] {
+    if (this.data.review) return [];
+    return this.data.claimLinks.filter((l) => l.flowing);
+  }
+
   /** MANIFOLD motion (§5): a transient draw-in window is live. Entities the
    *  static canvas defers (born tethers/routes) are hidden ONLY while the
    *  loop actually runs — under reduced motion / hidden tab the loop never
@@ -279,7 +294,7 @@ export class MapCanvasLayer extends L.Layer {
     const motionWanted = this.data.motion != null && Date.now() < this.data.motion.until;
     const want =
       this.animCanvas != null &&
-      (this.flowingRoutes().length > 0 || motionWanted) &&
+      (this.flowingRoutes().length > 0 || this.flowingTethers().length > 0 || motionWanted) &&
       document.visibilityState === "visible" &&
       !this.reduceMotion?.matches;
     if (want && this.animRaf == null) {
@@ -343,6 +358,26 @@ export class MapCanvasLayer extends L.Layer {
       ctx.strokeStyle = ink;
       ctx.globalAlpha = 0.95;
       ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    // Live claim tethers flow too — ore travels node → factory the same way
+    // water rides a pipe route (slightly slimmer beads: the tether base line
+    // is 1.25px vs a route band's 3+).
+    for (const l of this.flowingTethers()) {
+      const a = map.latLngToContainerPoint(toLatLng(l.node));
+      const b = map.latLngToContainerPoint(toLatLng(l.factory));
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.setLineDash([4, ANIM_PERIOD - 4]);
+      ctx.lineDashOffset = -((secs * animSpeed(l.saturation)) % ANIM_PERIOD);
+      ctx.strokeStyle = "rgba(6, 10, 14, 0.85)";
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+      ctx.strokeStyle = ink;
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
     ctx.setLineDash([]);
