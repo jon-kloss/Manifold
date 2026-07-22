@@ -42,6 +42,10 @@ const BUILDABLE_NATIVE = new Set([
   "FGBuildableGeneratorNuclear",
   "FGBuildableGeneratorGeoThermal",
   "FGBuildableConveyorBelt",
+  // Fracking wells (game-parity arc): the Pressurizer + Resource Well
+  // Extractor render as machine-group cards, so they need real icons too.
+  "FGBuildableFrackingActivator",
+  "FGBuildableFrackingExtractor",
 ]);
 // The graph LOGISTIC menu renders these buildables as placeable rows too.
 const EXTRA_BUILDABLES = [
@@ -50,6 +54,9 @@ const EXTRA_BUILDABLES = [
   "Build_ConveyorAttachmentSplitterProgrammable_C",
   "Build_ConveyorAttachmentMerger_C",
   "Build_StorageContainerMk1_C",
+  // The 4-way Pipeline Junction Cross (PR #81) — same catalog row treatment
+  // as the belt splitter/merger.
+  "Build_PipelineJunction_Cross_C",
 ];
 
 const docsPath = process.argv[2];
