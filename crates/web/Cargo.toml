@@ -30,7 +30,7 @@ console_error_panic_hook = "0.1"
 # the JS backend on wasm — enable its feature here and set the cfg backend in
 # .cargo/config.toml. ULID's clock is already wasm-safe (web-time, internal).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.3", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
