@@ -308,5 +308,13 @@ feeds phase-5's advisor).
 - `DECISIONS.md` — every deviation/extension, one line each, with doc refs.
 - `BACKLOG.md` — deferred work, tagged v1.1/v2.
 
+## License
+
+The code is dual-licensed under **MIT OR Apache-2.0** — pick either
+([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)). Contributions
+are accepted under the same terms (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+Bundled community/game-derived assets are third-party content covered by
+[NOTICE.md](NOTICE.md), not the project license.
+
 MANIFOLD is a fan-made planning tool and is not affiliated with Coffee Stain
 Studios. Satisfactory and its assets are © Coffee Stain Studios.
