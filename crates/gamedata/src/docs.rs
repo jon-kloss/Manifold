@@ -1691,6 +1691,61 @@ mod tests {
     }
 
     #[test]
+    fn packaged_water_parses_at_current_60_per_min() {
+        // Verbatim shape of the CURRENT (1.0/1.1) Recipe_PackagedWater_C: 2 s
+        // cycle, 2000 mL water + 2 canisters → 2 packaged = 60/min. A Reddit
+        // report claimed MANIFOLD shows the pre-1.0 20/min recipe; this pins
+        // that the parser reads a current Docs.json correctly — the rate the
+        // app shows is exactly the rate the uploaded catalog says, so a stale
+        // number means a stale Docs.json, not a parse bug.
+        let text = r#"[
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGResourceDescriptor'",
+            "Classes": [
+              { "ClassName": "Desc_Water_C", "mDisplayName": "Water", "mForm": "RF_LIQUID", "mStackSize": "SS_FLUID" }
+            ]
+          },
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGItemDescriptor'",
+            "Classes": [
+              { "ClassName": "Desc_FluidCanister_C", "mDisplayName": "Empty Canister", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" },
+              { "ClassName": "Desc_PackagedWater_C", "mDisplayName": "Packaged Water", "mForm": "RF_SOLID", "mStackSize": "SS_MEDIUM" }
+            ]
+          },
+          {
+            "NativeClass": "/Script/CoreUObject.Class'/Script/FactoryGame.FGRecipe'",
+            "Classes": [
+              {
+                "ClassName": "Recipe_PackagedWater_C",
+                "mDisplayName": "Packaged Water",
+                "mManufactoringDuration": "2.000000",
+                "mIngredients": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/RawResources/Water/Desc_Water.Desc_Water_C'\",Amount=2000),(ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/FluidCanister/Desc_FluidCanister.Desc_FluidCanister_C'\",Amount=2))",
+                "mProduct": "((ItemClass=\"/Script/Engine.BlueprintGeneratedClass'/Game/FactoryGame/Resource/Parts/PackagedWater/Desc_PackagedWater.Desc_PackagedWater_C'\",Amount=2))",
+                "mProducedIn": "(\"/Game/FactoryGame/Buildable/Factory/Packager/Build_Packager.Build_Packager_C\")"
+              }
+            ]
+          }
+        ]"#;
+        let gd = parse_docs(text, "test").unwrap();
+        let r = &gd.recipes["Recipe_PackagedWater_C"];
+        assert_eq!(r.duration_s, 2.0);
+        // Water normalized mL→m³; canister stays as-is.
+        assert_eq!(
+            r.ingredients,
+            vec![
+                ("Desc_Water_C".to_string(), 2.0),
+                ("Desc_FluidCanister_C".to_string(), 2.0)
+            ]
+        );
+        assert_eq!(r.products, vec![("Desc_PackagedWater_C".to_string(), 2.0)]);
+        // The number a user sees: 2/cycle · 60 ÷ 2 s = 60/min, all three flows.
+        let per_min = 60.0 / r.duration_s;
+        assert_eq!(r.products[0].1 * per_min, 60.0);
+        assert_eq!(r.ingredients[0].1 * per_min, 60.0, "60 m³ water/min");
+        assert_eq!(r.ingredients[1].1 * per_min, 60.0, "60 canisters/min");
+    }
+
+    #[test]
     fn liquid_fuel_burn_recipe_is_m3_per_min() {
         let gd = parse_docs(include_str!("../assets/docs-fixture.json"), "test").unwrap();
         // Authored fluid recipes: Docs stores liters; parse normalizes to m³.
