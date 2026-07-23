@@ -79,6 +79,20 @@ export function legPoint(off: number, u: number): [number, number] {
   return [CX + off, BUS_Y + d];
 }
 
+/**
+ * Minimum wall seconds the animated splash holds before revealing the map — a
+ * floor so the boot choreography always plays in full instead of a warm,
+ * sub-second hydrate flashing past. Scales UP with empire size (a bigger plan is
+ * more to take in) at `perFactory` per factory, clamped to `[min, max]`. A
+ * genuinely slow load already outlives this floor, so it's a no-op there.
+ */
+export const minSplashSeconds = (
+  factoryCount: number,
+  min = 2.4,
+  perFactory = 0.06,
+  max = 5.0,
+): number => Math.min(max, min + Math.max(0, factoryCount) * perFactory);
+
 export const c01 = (v: number) => Math.max(0, Math.min(1, v));
 export const seg = (p: number, a: number, b: number) => c01((p - a) / (b - a));
 /** ease-out cubic */

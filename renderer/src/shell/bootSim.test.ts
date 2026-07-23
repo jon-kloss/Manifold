@@ -3,7 +3,7 @@
 // dots ride only landed legs. Pure math — no DOM, no timers.
 
 import { describe, expect, it } from "vitest";
-import { HALF, LEGS, OFFS, legLive, legPoint, newBootSim, stepBootSim } from "./bootSim";
+import { HALF, LEGS, OFFS, legLive, legPoint, minSplashSeconds, newBootSim, stepBootSim } from "./bootSim";
 
 const run = (sim: ReturnType<typeof newBootSim>, seconds: number, target: number, dt = 1 / 60) => {
   for (let t = 0; t < seconds; t += dt) stepBootSim(sim, dt, target);
@@ -64,6 +64,20 @@ describe("bootSim", () => {
     // the 0.5s tap draw-in gates a just-landed leg too
     const justLanded = OFFS.findIndex((_, i) => sim.land[i] >= 0 && sim.t - sim.land[i] < 0.5);
     if (justLanded >= 0) expect(legLive(sim, OFFS[justLanded])).toBe(false);
+  });
+
+  it("minSplashSeconds floors an empty plan and scales up with empire size to a cap", () => {
+    // Empty / tiny plan → the base floor (a couple seconds), so even a warm
+    // sub-second hydrate plays the full animation.
+    expect(minSplashSeconds(0)).toBeCloseTo(2.4, 5);
+    expect(minSplashSeconds(0)).toBeGreaterThanOrEqual(2.0);
+    // Bigger empires linger longer — strictly monotonic in factory count…
+    expect(minSplashSeconds(10)).toBeGreaterThan(minSplashSeconds(0));
+    expect(minSplashSeconds(40)).toBeGreaterThan(minSplashSeconds(10));
+    // …but clamped so it never drags on forever.
+    expect(minSplashSeconds(10_000)).toBe(5.0);
+    // A nonsense negative count can't drop below the base floor.
+    expect(minSplashSeconds(-5)).toBeCloseTo(2.4, 5);
   });
 
   it("legPoint traces source → bus → sink, ending at the sink column", () => {

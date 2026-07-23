@@ -14,11 +14,14 @@
 // FAST-BOOT: §7 pins the survey intro to wall time ("no data needed yet"),
 // so it always plays in full even when a warm local plan hydrates in tens
 // of ms — the expansion then closes fast from the already-complete fraction.
-// Only the done-beat compresses (FAST_BEAT_S): the wordmark hold exists to
-// mark the end of a wait, and on a warm boot nothing waited. The full beat
-// plays whenever loading genuinely outlives the intro (web boot, big saves).
+// The animated splash then holds for a MINIMUM wall time (MIN_SPLASH_S) before
+// revealing, so the choreography — expansion, wordmark rising letter-by-letter,
+// a short done-beat — always plays in full instead of a warm boot flashing past.
+// That floor SCALES UP with empire size (bigger plan → more to take in →
+// PER_FACTORY_SPLASH_S per factory, capped at MAX_SPLASH_S). The full DONE_BEAT
+// still plays whenever loading genuinely outlives the intro (web boot, big saves).
 // prefers-reduced-motion: a static mark + live ticker, dismissed the moment
-// the app is ready — same contract the map animation loop honors.
+// the app is ready — same contract the map animation loop honors; no floor.
 // Glow is 3 layered strokes + a radial-gradient bloom — no CSS filters.
 
 import { useEffect, useRef, useState } from "react";
@@ -37,6 +40,7 @@ import {
   eoc,
   legLive,
   legPoint,
+  minSplashSeconds,
   newBootSim,
   seg,
   stepBootSim,
@@ -45,7 +49,10 @@ import "./boot.css";
 
 const SURVEY_S = 1.1;
 const DONE_BEAT_S = 1.7;
-const FAST_BEAT_S = 0.25;
+// The warm-boot done-beat: long enough for the wordmark to rise letter-by-letter
+// (finishes at done ≈ 0.58) and hold a beat, so the animation is seen — not the
+// old 0.25s pop that revealed almost immediately.
+const FAST_BEAT_S = 0.8;
 const REVEAL_S = 0.5;
 
 export type BootPhase = "load" | "reveal" | "done";
@@ -139,7 +146,12 @@ export default function BootScreen({
       if (sim.t < SURVEY_S && targetRef.current >= 1) fastRef.current = true;
       stepBootSim(sim, dt, sim.t < SURVEY_S ? 0 : targetRef.current);
       const beat = fastRef.current ? FAST_BEAT_S : DONE_BEAT_S;
-      if (phaseRef.current === "load" && sim.done >= beat && useStore.getState().ready) {
+      const st = useStore.getState();
+      // Hold the splash for at least a floor that grows with empire size, so the
+      // animation plays in full and a warm boot no longer flashes past. A
+      // genuinely slow load already outlives this floor, so it's a no-op there.
+      const minSplash = minSplashSeconds(Object.keys(st.plan.factories).length);
+      if (phaseRef.current === "load" && sim.done >= beat && st.ready && sim.t >= minSplash) {
         revealAtRef.current = sim.t;
         setPhaseSafe("reveal");
       }
@@ -201,8 +213,9 @@ export default function BootScreen({
   const feedP = inSurvey ? 0 : eoc(c01((t - SURVEY_S) / 0.3));
   const tip = HALF * prog;
   const breath = 0.35 + 0.09 * Math.sin(t * 2.4);
-  const wordLetter = (i: number) =>
-    fastRef.current ? (done > 0 ? 1 : 0) : seg(done, 0.05 + i * 0.04, 0.3 + i * 0.04);
+  // Always rise letter-by-letter (driven by `done`) — the warm-boot floor gives
+  // the beat room to play, so there's no need to pop the wordmark instantly.
+  const wordLetter = (i: number) => seg(done, 0.05 + i * 0.04, 0.3 + i * 0.04);
 
   return (
     <div className="boot-screen" data-testid="boot-screen" style={{ opacity: splashOp }}>
