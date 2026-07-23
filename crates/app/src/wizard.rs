@@ -935,6 +935,21 @@ pub fn global_solve(
         );
     }
 
+    // Lay the new factory out cleanly the moment it materializes: the same
+    // layered auto-layout the TIDY button runs (In ports → depth-ranked
+    // groups/junctions → Out ports, independent chains banded apart), appended
+    // as the LAST create command so it sees every group/port/edge just added.
+    // Without it a wizard-made factory renders on this emit-order grid until the
+    // user manually hits TIDY.
+    push(
+        &mut cmds,
+        &mut aliases,
+        Command::TidyLayout {
+            factory: "$site".into(),
+        },
+        None,
+    );
+
     let create_id = new_id();
     let machines_total: u32 = stages.iter().map(|s| s.count).sum();
     items.push(ProposalItem {
