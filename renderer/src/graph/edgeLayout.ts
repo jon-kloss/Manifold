@@ -59,6 +59,7 @@ export interface LabelSize {
 const STUB = 24; // straight run leaving/entering a card
 const CORNER_R = 8; // belt curve radius
 const HOP_R = 6; // crossing bridge radius
+const LANE_GAP = 16; // min horizontal separation between parallel belt lanes
 
 /** Point on a node face `dir` at fractional offset `frac` along that face. */
 function faceAnchor(n: NodeGeom, dir: Dir, frac = 0.5): Anchor {
@@ -191,11 +192,72 @@ function orthoRoute(s: Anchor, t: Anchor): Pt[] {
   return [{ x: s.x, y: s.y }, s1, ...mids, t1, { x: t.x, y: t.y }];
 }
 
-/** Axis-aligned polyline from source anchor to target anchor. */
-function route(s: Pt, t: Pt, srcNode: NodeGeom, dstNode: NodeGeom): Pt[] {
+/** Assign each plain forward belt the x of its vertical turn segment, spreading
+ *  belts that would otherwise stack onto ONE line into distinct parallel lanes.
+ *  Greedy + deterministic: process by base turn-x then span; each belt keeps its
+ *  natural midpoint unless that lane already carries a vertical segment
+ *  overlapping in y (within LANE_GAP in x), in which case it steps outward
+ *  (±LANE_GAP…) to the nearest free lane inside the corridor between the two
+ *  cards. Only belts that actually conflict move — a lone belt keeps its midX. */
+function assignForwardLanes(
+  edges: EdgeIn[],
+  src: Record<string, Anchor>,
+  dst: Record<string, Anchor>,
+  oriented: (e: EdgeIn) => boolean,
+): Record<string, number> {
+  const turn: Record<string, number> = {};
+  const fwd = edges
+    .filter(
+      (e) =>
+        src[e.id] &&
+        dst[e.id] &&
+        !oriented(e) &&
+        dst[e.id].x > src[e.id].x + 4 &&
+        Math.abs(dst[e.id].y - src[e.id].y) >= 1,
+    )
+    .map((e) => {
+      const s = src[e.id];
+      const t = dst[e.id];
+      return {
+        id: e.id,
+        base: Math.round((s.x + t.x) / 2),
+        y1: Math.min(s.y, t.y),
+        y2: Math.max(s.y, t.y),
+        lo: Math.min(s.x, t.x) + 6, // keep the lane between the two faces
+        hi: Math.max(s.x, t.x) - 6,
+      };
+    })
+    .sort((a, b) => a.base - b.base || a.y1 - b.y1 || a.id.localeCompare(b.id));
+
+  const placed: { x: number; y1: number; y2: number }[] = [];
+  const conflicts = (x: number, y1: number, y2: number) =>
+    placed.some((p) => Math.abs(p.x - x) < LANE_GAP && y1 < p.y2 - 0.5 && y2 > p.y1 + 0.5);
+
+  for (const e of fwd) {
+    let x = e.base;
+    if (conflicts(x, e.y1, e.y2)) {
+      for (let k = 1; k < 64; k++) {
+        const cand = [e.base + k * LANE_GAP, e.base - k * LANE_GAP].filter((c) => c >= e.lo && c <= e.hi);
+        const free = cand.find((c) => !conflicts(c, e.y1, e.y2));
+        if (free !== undefined) {
+          x = free;
+          break;
+        }
+        if (cand.length === 0) break; // corridor exhausted — keep the base lane
+      }
+    }
+    turn[e.id] = x;
+    placed.push({ x, y1: e.y1, y2: e.y2 });
+  }
+  return turn;
+}
+
+/** Axis-aligned polyline from source anchor to target anchor. `turnX` is the
+ *  lane-assigned x of the vertical segment (defaults to the midpoint). */
+function route(s: Pt, t: Pt, srcNode: NodeGeom, dstNode: NodeGeom, turnX?: number): Pt[] {
   if (t.x > s.x + 4) {
-    // any forward progress: simple H-V-H with the turn at the midpoint
-    const midX = Math.round((s.x + t.x) / 2);
+    // any forward progress: simple H-V-H with the turn at its assigned lane
+    const midX = turnX ?? Math.round((s.x + t.x) / 2);
     if (Math.abs(t.y - s.y) < 1) return [s, t]; // straight run
     return [s, { x: midX, y: s.y }, { x: midX, y: t.y }, t];
   }
@@ -379,14 +441,16 @@ export function computeEdgeLayout(
 ): Record<string, EdgeGeom> {
   const usable = edges.filter((e) => nodes[e.source] && nodes[e.target]);
   const { src, dst } = anchorPositions(nodes, usable, shapes);
+  const isOriented = (e: EdgeIn) => !!shapes[e.source] || !!shapes[e.target];
+  // Lane-separate parallel belts' vertical segments so they don't merge into one.
+  const lanes = assignForwardLanes(usable, src, dst, isOriented);
   const polylines = usable.map((e) => {
     // Any belt touching an oriented junction uses the face-aware router so a
     // top/bottom departure reads correctly; everything else keeps the plain
-    // right→left belt run.
-    const oriented = !!shapes[e.source] || !!shapes[e.target];
-    const points = oriented
+    // right→left belt run (with its lane-assigned vertical turn).
+    const points = isOriented(e)
       ? orthoRoute(src[e.id], dst[e.id])
-      : route(src[e.id], dst[e.id], nodes[e.source], nodes[e.target]);
+      : route(src[e.id], dst[e.id], nodes[e.source], nodes[e.target], lanes[e.id]);
     return { id: e.id, points: dedupe(points) };
   });
   const hops = findHops(polylines);
